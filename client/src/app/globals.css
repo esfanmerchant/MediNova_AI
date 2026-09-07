@@ -1245,6 +1245,44 @@ select:focus ~ .select-chevron {
 }
 
 /* ---------------------------------------------------------------------------
+   Standalone safe areas
+   ---------------------------------------------------------------------------
+   `viewport-fit=cover` and a translucent status bar let the shell reach under
+   the notch and the home indicator — which is what makes an installed app look
+   like an app rather than a page in a frame. The layout was documented as
+   putting the content back and never did: there was not one `env(safe-area-*)`
+   anywhere in the project.
+
+   So on an iPhone with the app installed, the top bar sat underneath the clock
+   and the battery, and its buttons could not be tapped at all. It never showed
+   up in the browser, because there the browser's own chrome is already holding
+   that space — the bug existed only in the thing nobody tests in.
+
+   `env()` is zero on every device without an inset, so these are inert
+   everywhere else. */
+
+/* A bar pinned to the top of the screen. It grows by exactly the inset, so its
+   own contents keep the height they were designed at instead of being squashed
+   into a shorter box. */
+.safe-topbar {
+  padding-top: env(safe-area-inset-top);
+  height: calc(4rem + env(safe-area-inset-top));
+}
+
+/* For a bar that sizes itself — the landing nav animates its height — where
+   padding alone is enough. */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+/* For anything pinned to the bottom. Margin rather than a changed `bottom`,
+   because `bottom` positions the margin edge: this lifts the element clear of
+   the home indicator while leaving whatever offset it already had intact. */
+.safe-bottom {
+  margin-bottom: env(safe-area-inset-bottom);
+}
+
+/* ---------------------------------------------------------------------------
    In-page section navigation
 
    Two sticky bars can be above a section: the shell's header, and the section

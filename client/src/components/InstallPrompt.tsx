@@ -130,7 +130,7 @@ export function InstallPrompt() {
     <div
       role="dialog"
       aria-label={tr("Install MediNova AI", "MediNova AI install karein")}
-      className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-md rounded-2xl border border-line bg-card p-4 shadow-overlay sm:inset-x-auto sm:right-4"
+      className="safe-bottom fixed inset-x-3 bottom-3 z-50 mx-auto max-w-md rounded-2xl border border-line bg-card p-4 shadow-overlay sm:inset-x-auto sm:right-4"
     >
       <div className="flex items-start gap-3">
         <span

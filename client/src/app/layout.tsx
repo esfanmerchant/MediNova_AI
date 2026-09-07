@@ -106,9 +106,17 @@ export const metadata: Metadata = {
 
 /**
  * `viewport-fit=cover` is what lets the shell reach under a phone's notch and
- * home indicator; the safe-area insets in the layout put the content back where
- * a thumb can reach it. `themeColor` is the colour Android paints the status bar
- * and the task switcher card.
+ * home indicator, and it is only half a decision: something then has to put the
+ * content back where a thumb can reach it. The `.safe-topbar`, `.safe-top` and
+ * `.safe-bottom` utilities in `globals.css` are that half.
+ *
+ * This comment claimed they existed long before they did, and the gap only
+ * showed in the installed app — in a browser tab the chrome already holds that
+ * space, so the top bar sat under the clock and refused to be tapped on an
+ * iPhone home-screen launch and nowhere else.
+ *
+ * `themeColor` is the colour Android paints the status bar and the task
+ * switcher card.
  */
 export const viewport: Viewport = {
   themeColor: "#00194d",

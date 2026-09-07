@@ -1067,7 +1067,7 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
           <div ref={topbar} className="sticky top-0 z-40">
             <InactivityWarning />
 
-            <header className="glass flex h-16 items-center gap-3 rounded-none border-x-0 border-t-0 border-b border-line/80 px-4 !shadow-none sm:px-6">
+            <header className="glass safe-topbar flex items-center gap-3 rounded-none border-x-0 border-t-0 border-b border-line/80 px-4 !shadow-none sm:px-6">
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 <button
                   type="button"

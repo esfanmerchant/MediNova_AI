@@ -91,7 +91,7 @@ export function AssistantWidget() {
             exit={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.7, y: 24, x: 24 }}
             transition={{ type: "spring", stiffness: 380, damping: 32 }}
             style={{ transformOrigin: "bottom right" }}
-            className="glass fixed bottom-24 right-4 z-40 flex h-[min(600px,calc(100dvh-8rem))] w-[min(400px,calc(100vw-2rem))] flex-col overflow-hidden rounded-3xl sm:right-6"
+            className="glass safe-bottom fixed bottom-24 right-4 z-40 flex h-[min(600px,calc(100dvh-8rem))] w-[min(400px,calc(100vw-2rem))] flex-col overflow-hidden rounded-3xl sm:right-6"
           >
             {/* The same header the full page wears — avatar, purpose, status —
                 so the panel reads as the one assistant, not a second one. */}
@@ -139,7 +139,7 @@ export function AssistantWidget() {
         whileHover={reduced ? undefined : { scale: 1.06 }}
         whileTap={reduced ? undefined : { scale: 0.94 }}
         className={cx(
-          "bg-gradient-brand fixed bottom-6 right-4 z-40 grid h-14 w-14 place-items-center rounded-full text-white shadow-float focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary sm:right-6",
+          "bg-gradient-brand safe-bottom fixed bottom-6 right-4 z-40 grid h-14 w-14 place-items-center rounded-full text-white shadow-float focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary sm:right-6",
           !seen && !open && "animate-halo",
         )}
       >
