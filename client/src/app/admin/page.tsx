@@ -192,6 +192,12 @@ export default function AdminDashboard() {
                   and `hint` keeps it honest, because most of that total was
                   never the platform's. */}
               <StatTile
+                /* The whole row on a phone. A count is one or two digits and
+                   shares a line happily; "PKR 21,503" is eleven characters that
+                   have to stay on one line to be read as a figure at all. Half
+                   a phone's width cannot hold that, so this one takes the row
+                   and the counts keep their pair. */
+                className="col-span-2 lg:col-span-1"
                 label={tr("Handled all time", "Ab tak kul raqam")}
                 value={`${data.revenue.currency} ${new Intl.NumberFormat("en-PK", {
                   maximumFractionDigits: 0,

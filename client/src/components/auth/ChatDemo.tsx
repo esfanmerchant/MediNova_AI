@@ -147,8 +147,8 @@ export function AssistantChatDemo({
       {
         from: "assistant",
         text: tr(
-          "Amlodipine 5 mg, on your record since March, relaxes blood vessels so your pressure stays lower through the day. Take it at the same time each day — and if you get swollen ankles, mention it at your visit on the 12th.",
-          "Amlodipine 5 mg, jo March se aap ke record par hai, khoon ki naliyon ko dheela karti hai taake din bhar pressure kam rahe. Roz ek hi waqt par lein — aur agar takhnay soojein to 12 tareekh ki visit par zikr karein.",
+          "Amlodipine 5 mg, on your record since March. It relaxes blood vessels to keep your pressure down — take it at the same time each day.",
+          "Amlodipine 5 mg, jo March se aap ke record par hai. Yeh naliyon ko dheela kar ke pressure kam rakhti hai — roz ek hi waqt par lein.",
         ),
         note: tr("Guidance, not a diagnosis.", "Rehnumai, tashkhees nahi."),
       },
@@ -162,8 +162,8 @@ export function AssistantChatDemo({
       {
         from: "assistant",
         text: tr(
-          "Knee pain usually starts with Orthopaedics. There are three free slots on Thursday — I can open the booking page for you.",
-          "Ghutne ke dard ke liye aam tor par Orthopaedics. Jumeraat ko teen slot khali hain — main booking ka safha khol deta hoon.",
+          "Orthopaedics. Three slots are free on Thursday — shall I open the booking page?",
+          "Orthopaedics. Jumeraat ko teen slot khali hain — booking ka safha kholun?",
         ),
       },
       {
@@ -173,8 +173,8 @@ export function AssistantChatDemo({
       {
         from: "assistant",
         text: tr(
-          "That is a diagnosis, and a diagnosis is not mine to make. I have added your question to your file so Dr Farooq sees it at the visit.",
-          "Yeh tashkhees hai, aur tashkhees mera kaam nahi. Main ne aap ka sawal file mein likh diya hai taake Dr Farooq visit par dekh lein.",
+          "That is a diagnosis, and not mine to make. I have put your question in your file for Dr Farooq.",
+          "Yeh tashkhees hai, jo mera kaam nahi. Aap ka sawal file mein Dr Farooq ke liye likh diya hai.",
         ),
       },
     ],
@@ -327,10 +327,20 @@ export function AssistantChatDemo({
             />
             <div
               className={cx(
-                "relative flex flex-col justify-end gap-2 px-3.5 pb-3 pt-5",
-                // Fixed on the sign-in page, where the column has a known
-                // height; grown to fill inside a tile, which sets its own.
-                bare ? "h-full min-h-[248px]" : "h-[212px] xl:h-[252px]",
+                "relative flex flex-col justify-end gap-2 overflow-hidden px-3.5 pb-3 pt-5",
+                // A definite height in both places, and that is the whole fix.
+                //
+                // Inside a tile this was `h-full min-h-[248px]` — a floor, not
+                // a ceiling. Every new turn made the box taller, the tile taller
+                // with it, and the whole section below moved down the page while
+                // somebody was reading it.
+                //
+                // The design was already right for this: `justify-end` stacks
+                // from the bottom and the mask fades the top, so once the height
+                // stops moving, older turns simply rise out of view the way a
+                // messaging app's do. It only ever needed a ceiling and
+                // `overflow-hidden` to clip against.
+                bare ? "h-[330px]" : "h-[212px] xl:h-[252px]",
               )}
               style={{
                 maskImage: "linear-gradient(to bottom, transparent, #000 14%)",

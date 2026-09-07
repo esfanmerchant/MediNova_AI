@@ -184,6 +184,7 @@ export function StatTile({
   footer,
   href,
   trend,
+  className,
 }: {
   label: string;
   value: number | string;
@@ -199,6 +200,8 @@ export function StatTile({
   href?: string;
   /** Change against the previous period, when one is known. */
   trend?: { delta: number; label?: string };
+  /** Grid placement, mostly: a currency total needs more room than a count. */
+  className?: string;
 }) {
   const tones = {
     neutral: "text-strong",
@@ -233,7 +236,16 @@ export function StatTile({
       </div>
 
       <div className="relative flex items-end gap-2">
-        <span className={cx("font-display text-[40px] font-bold leading-none tabular-nums", tones[tone])}>
+        <span
+          className={cx(
+            // 40px was chosen for a quarter of a wide dashboard. Two of these
+            // sit side by side on a phone, roughly 116px of usable width each,
+            // and a formatted currency total does not fit that at any weight —
+            // it wrapped mid-figure and spilled out of the tile.
+            "font-display text-[30px] font-bold leading-none tabular-nums sm:text-[40px]",
+            tones[tone],
+          )}
+        >
           {typeof value === "number" ? <CountUp value={value} /> : value}
         </span>
         {unit && <span className="mb-1 text-sm text-muted">{unit}</span>}
@@ -263,8 +275,10 @@ export function StatTile({
     </>
   );
 
-  const frame =
-    "blob-corner group relative flex flex-col overflow-hidden rounded-2xl border border-line bg-card p-6 shadow-card hover-lift-sm";
+  const frame = cx(
+    "blob-corner group relative flex flex-col overflow-hidden rounded-2xl border border-line bg-card p-5 shadow-card hover-lift-sm sm:p-6",
+    className,
+  );
 
   if (href) {
     return (
