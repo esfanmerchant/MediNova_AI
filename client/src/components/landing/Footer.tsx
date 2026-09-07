@@ -74,7 +74,11 @@ export function Footer() {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-8 sm:grid-cols-4">
+          {/* `[&>*]:min-w-0` for the same reason as `Rise`: a grid item's automatic
+                minimum is its content's min-content width, so one long link label
+                in two columns on a phone would widen the track rather than wrap
+                inside it. */}
+            <div className="grid grid-cols-2 gap-8 [&>*]:min-w-0 sm:grid-cols-4">
             {columns.map((column) => (
               <div key={column.heading}>
                 <p className="mono-caps text-[0.6rem] text-faint">{column.heading}</p>

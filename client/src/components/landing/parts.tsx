@@ -1095,7 +1095,22 @@ export function Rise({
   return (
     <div
       ref={ref}
-      className={cx("ms-settle", armed && "ms-armed", armed && seen && "ms-in", className)}
+      /* `min-w-0` because this is almost always the grid or flex item, and the
+         tile inside it is not.
+         ------------------------------------------------------------------
+         A grid item's automatic minimum size is its content's *min-content*
+         width, so a track can be pushed wider than the screen by something it
+         contains — and the tile's own `overflow-hidden` does not help, because
+         the tile is a child of this, not the item itself.
+         What made it look intermittent rather than simply broken is that the
+         tile demos animate: their intrinsic width changes as they play, so the
+         section drifted past the right edge, came back, and went again. */
+      className={cx(
+        "ms-settle min-w-0",
+        armed && "ms-armed",
+        armed && seen && "ms-in",
+        className,
+      )}
       style={
         {
           "--ms-rise-y": `${y}px`,

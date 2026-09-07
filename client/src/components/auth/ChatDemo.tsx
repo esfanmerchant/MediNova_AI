@@ -107,6 +107,13 @@ function readingMs(text: string): number {
 }
 
 /** Per character, while the question is being written into the composer. */
+/* Hoisted so the two of them are stable references. Built inside the
+   component they were new objects on every keystroke, which would have made
+   the memoised bubble list below rebuild on every one — the exact cost it
+   exists to avoid. */
+const NO_MOTION = { duration: 0 } as const;
+const ARRIVING = { duration: 0.34, ease: "easeOut" } as const;
+
 const KEYSTROKE_MS = 34;
 /** The beat between the last character and the message leaving — a thumb
     travelling to send. Without it the bubble appears the instant typing stops,
@@ -168,7 +175,10 @@ export function AssistantChatDemo({
       },
       {
         from: "patient",
-        text: tr("Can you tell me if it is arthritis?", "Kya aap bata sakte hain ke yeh arthritis hai?"),
+        text: tr(
+          "Can you tell me if it is arthritis?",
+          "Kya aap bata sakte hain ke yeh arthritis hai?",
+        ),
       },
       {
         from: "assistant",
@@ -260,9 +270,66 @@ export function AssistantChatDemo({
   // Reduced motion gets the end of the conversation rather than the start of
   // it: the point is what the assistant says, not the order it arrives in.
   const turns = still ? script : script.slice(0, shown);
-  const enter = still ? { duration: 0 } : { duration: 0.34, ease: "easeOut" as const };
+  const enter = still ? NO_MOTION : ARRIVING;
 
   const bare = chrome === "bare";
+
+  /**
+   * Built once per turn, not once per keystroke.
+   *
+   * The composer types a question a character at a time, which is a `setState`
+   * every 34ms — and every one of those re-rendered these bubbles too. Each
+   * carries `layout="position"`, so framer-motion measured the DOM on all of
+   * them, thirty times a second, inside a masked and blurred container. On iOS
+   * that combination is the most expensive thing on the page, which is why the
+   * sign-in screen stuttered on an iPhone while the landing page — same demo,
+   * no blurred shell — did not.
+   *
+   * `useMemo` returns the same elements while only `draft` changes, and React
+   * skips a subtree whose element is referentially identical. The bubbles now
+   * re-render when a turn arrives, which is the only time they change.
+   */
+  const bubbles = useMemo(
+    () =>
+      turns.map((turn, index) => (
+        <motion.div
+          key={`${cycle}:${index}`}
+          layout="position"
+          initial={{ opacity: 0, y: 14, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{
+            opacity: 0,
+            scale: 0.98,
+            transition: { duration: still ? 0 : 0.22 },
+          }}
+          transition={enter}
+          className={cx(
+            "shrink-0",
+            turn.from === "patient"
+              ? "ml-auto max-w-[88%]"
+              : "mr-auto max-w-[94%]",
+          )}
+        >
+          <div
+            className={cx(
+              "rounded-2xl px-3.5 py-2.5 text-sm leading-[1.5]",
+              turn.from === "patient"
+                ? "rounded-br-md bg-primary font-medium text-primary-on"
+                : "rounded-bl-md border border-line bg-sunken text-strong",
+            )}
+          >
+            {turn.text}
+            {turn.note && (
+              <span className="mt-2 flex items-center gap-1.5 text-[11.5px] font-semibold text-muted">
+                <Icon name="shield" className="text-[14px]" />
+                {turn.note}
+              </span>
+            )}
+          </div>
+        </motion.div>
+      )),
+    [turns, cycle, still, enter],
+  );
 
   return (
     <div aria-hidden className={cx("relative", bare && "h-full", className)}>
@@ -283,7 +350,11 @@ export function AssistantChatDemo({
           "relative",
           bare
             ? "h-full"
-            : "rounded-[1.9rem] border border-white/25 bg-white/10 p-2.5 shadow-float backdrop-blur-sm",
+            : // The blur is a desktop flourish. Below `sm` it goes, and a slightly
+              // more opaque tint stands in — the shell reads the same, and on iOS a
+              // blurred layer wrapping a masked container full of layout-animated
+              // bubbles was the most expensive thing on the sign-in screen.
+              "rounded-[1.9rem] border border-white/25 bg-white/[0.16] p-2.5 shadow-float sm:bg-white/10 sm:backdrop-blur-sm",
         )}
       >
         <div
@@ -344,42 +415,13 @@ export function AssistantChatDemo({
               )}
               style={{
                 maskImage: "linear-gradient(to bottom, transparent, #000 14%)",
-                WebkitMaskImage: "linear-gradient(to bottom, transparent, #000 14%)",
+                WebkitMaskImage:
+                  "linear-gradient(to bottom, transparent, #000 14%)",
               }}
             >
               <AnimatePresence initial={false}>
-                {turns.map((turn, index) => (
-                  <motion.div
-                    key={`${cycle}:${index}`}
-                    layout="position"
-                    initial={{ opacity: 0, y: 14, scale: 0.98 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.98, transition: { duration: still ? 0 : 0.22 } }}
-                    transition={enter}
-                    className={cx(
-                      "shrink-0",
-                      turn.from === "patient" ? "ml-auto max-w-[88%]" : "mr-auto max-w-[94%]",
-                    )}
-                  >
-                    <div
-                      className={cx(
-                        "rounded-2xl px-3.5 py-2.5 text-sm leading-[1.5]",
-                        turn.from === "patient"
-                          ? "rounded-br-md bg-primary font-medium text-primary-on"
-                          : "rounded-bl-md border border-line bg-sunken text-strong",
-                      )}
-                    >
-                      {turn.text}
-                      {turn.note && (
-                        <span className="mt-2 flex items-center gap-1.5 text-[11.5px] font-semibold text-muted">
-                          <Icon name="shield" className="text-[14px]" />
-                          {turn.note}
-                        </span>
-                      )}
-                    </div>
-                  </motion.div>
-                ))}
-  
+                {bubbles}
+
                 {typing && !still && (
                   <motion.div
                     key={`${cycle}:typing`}
@@ -419,7 +461,10 @@ export function AssistantChatDemo({
                   <span className="line-clamp-2">{draft}</span>
                 </>
               ) : (
-                tr("Ask about your care…", "Apni dekh-bhaal ke baare mein poochhein…")
+                tr(
+                  "Ask about your care…",
+                  "Apni dekh-bhaal ke baare mein poochhein…",
+                )
               )}
             </span>
             <span
@@ -427,7 +472,9 @@ export function AssistantChatDemo({
                 "grid h-8 w-8 shrink-0 place-items-center rounded-full text-white transition-opacity duration-200",
                 // Dimmed until there is something to send, so the button reads
                 // as part of the same act rather than as decoration.
-                draft ? "bg-gradient-brand opacity-100 shadow-sm" : "bg-line-strong opacity-60",
+                draft
+                  ? "bg-gradient-brand opacity-100 shadow-sm"
+                  : "bg-line-strong opacity-60",
               )}
             >
               <Icon name="send" filled className="text-[16px]" />

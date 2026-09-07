@@ -144,7 +144,7 @@ export default function AdminDashboard() {
 
         {loading && (
           <>
-            <SkeletonTiles count={8} />
+            <SkeletonTiles count={9} />
             <SkeletonRows rows={4} />
           </>
         )}
@@ -245,6 +245,28 @@ export default function AdminDashboard() {
                 tone={(data.counts.failedLoginsThisWeek ?? 0) > 20 ? "warning" : "neutral"}
                 icon={<Icon name="lock" />}
                 href="/admin/audit"
+              />
+              {/* Money the hospital is holding and has not paid out. It was on
+                  the revenue page and nowhere an administrator would see it
+                  without going looking — and it is the one figure here that
+                  somebody is waiting on.
+
+                  The currency sits in the label rather than in the value. In a
+                  half-width tile on a phone "PKR 2,000" does not fit at any
+                  weight worth reading, and it is the number that has to be
+                  legible, not the unit. It also completes the row that the
+                  full-width total above leaves half empty. */}
+              <StatTile
+                label={tr(
+                  `Owed to doctors (${data.revenue.currency})`,
+                  `Doctors ko dena hai (${data.revenue.currency})`,
+                )}
+                value={new Intl.NumberFormat("en-PK", {
+                  maximumFractionDigits: 0,
+                }).format(Number(data.revenue.owedToDoctors) || 0)}
+                tone={Number(data.revenue.owedToDoctors) > 0 ? "warning" : "good"}
+                icon={<Icon name="account_balance_wallet" />}
+                href="/admin/withdrawals"
               />
             </Section>
 

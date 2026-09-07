@@ -1158,6 +1158,38 @@ select:focus ~ .select-chevron {
    leaves the layout intact and prints one thing.
    --------------------------------------------------------------------------- */
 @media print {
+  /* Take everything else out of the layout, not merely out of sight.
+   *
+   * This used to be `visibility: hidden` alone, and `visibility: hidden` hides
+   * an element while it goes on occupying every pixel of its height. So the
+   * whole application — sidebar, header, the dashboard behind the dialog —
+   * was still there on paper, invisible, generating four or five blank sheets
+   * after the bill.
+   *
+   * `:has()` is what makes this expressible: keep anything that *is* the
+   * printed thing, is *inside* it, or *contains* it, and remove everything
+   * else outright. Its ancestors have to stay, because a `display: none`
+   * ancestor would take the bill with it.
+   *
+   * The `visibility` rules below stay as they were. In a browser without
+   * `:has()` this selector is simply dropped, and the old behaviour — right
+   * page, extra blank ones — is what is left, which is the better of the two
+   * ways to be wrong. */
+  body
+    *:not(.invoice-print):not(.invoice-print *):not(:has(.invoice-print)):not(.record-print):not(
+      .record-print *
+    ):not(:has(.record-print)) {
+    display: none !important;
+  }
+
+  /* Nothing may impose a height of its own once the page is only the bill. */
+  html,
+  body {
+    height: auto !important;
+    min-height: 0 !important;
+    background: #fff !important;
+  }
+
   body * {
     visibility: hidden;
   }
