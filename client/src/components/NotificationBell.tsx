@@ -122,7 +122,21 @@ export function NotificationBell({ role }: { role: Role }) {
             exit={{ opacity: 0, scale: 0.95, y: -4 }}
             transition={{ type: "spring", stiffness: 420, damping: 34, mass: 0.8 }}
             style={{ transformOrigin: "top right" }}
-            className="glass absolute right-0 z-50 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl"
+            className={cx(
+              "glass z-50 overflow-hidden rounded-2xl",
+              /* On a phone the panel belongs to the screen, not to the bell.
+                 Anchored to the bell it was 22rem hanging off a button already
+                 near the right edge, and any sideways drift in the document
+                 took it with — which is what "the notifications are cut off"
+                 was. Pinned to the viewport with a margin on both sides, there
+                 is no arithmetic left to get wrong: it cannot reach an edge.
+                 `--topbar-h` is published by the header, so it sits under the
+                 bar however tall that bar happens to be. */
+              "fixed inset-x-3 top-[calc(var(--topbar-h,64px)+0.5rem)]",
+              /* Above that, back to a dropdown hanging off its own button,
+                 which is what a pointer expects. */
+              "sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-[22rem]",
+            )}
           >
             <div className="flex items-center gap-2 border-b border-line/70 px-4 py-3">
               <Icon name="notifications" className="text-[20px] text-primary" />

@@ -1,11 +1,15 @@
 "use client";
 
 /**
- * Bilingual text: Roman Urdu by default, English on demand.
+ * Bilingual text: English by default, Roman Urdu on demand.
  *
- * The site is written in Roman Urdu first — the language its users actually
- * type in — with a one-tap switch to English in the navigation. Both strings
- * live side by side at every call site:
+ * Every string exists in both languages; what changed is which one a stranger
+ * meets first. A visitor who has never been here — a judge opening a link, a
+ * doctor sent the address — arrives in English, and Roman Urdu is one tap away
+ * for the people who prefer to read it. A returning visitor gets whatever they
+ * last chose, which is the only preference this stores.
+ *
+ * Both strings live side by side at every call site:
  *
  *     tr("Book a visit", "Appointment book karein")
  *
@@ -31,7 +35,9 @@ import { useCallback, useSyncExternalStore } from "react";
 export type Lang = "ur" | "en";
 
 const STORAGE_KEY = "medisense:lang";
-const DEFAULT_LANG: Lang = "ur";
+// English, so that somebody arriving with no stored preference can read the
+// page without knowing there is a switch.
+const DEFAULT_LANG: Lang = "en";
 
 let current: Lang | null = null;
 const listeners = new Set<() => void>();

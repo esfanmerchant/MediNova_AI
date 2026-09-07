@@ -71,7 +71,10 @@ export function LogoMark({
 
 export function Wordmark({ className, onDark = false }: { className?: string; onDark?: boolean }) {
   return (
-    <span className={cx("font-display font-bold tracking-tight", className)}>
+    // One word, however many words it has — see the note in brand/Logo.tsx.
+    // The space before "AI" is an ordinary breaking one, so a narrow header
+    // split the name across two lines.
+    <span className={cx("font-display font-bold tracking-tight whitespace-nowrap", className)}>
       <span className={onDark ? "text-white" : "text-[#1B4FE0]"}>Medi</span>
       <span className={onDark ? "text-[#7DD3FC]" : "text-[#1A8FC7]"}>Nova</span>
       <span className={onDark ? "text-[#5EEAD4]" : "text-[#14C7C0]"}>{" "}AI</span>

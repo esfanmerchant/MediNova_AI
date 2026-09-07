@@ -565,6 +565,18 @@ function AccountMenu({
               </>
             )}
 
+            {/* Only where the header cannot hold it, so the control never
+                appears twice on one screen. The label is in both languages
+                because it is the one row somebody who cannot read the rest of
+                this menu has come here to find. */}
+            <div className="mt-1 flex min-h-11 items-center justify-between gap-2 rounded-xl px-3 sm:hidden">
+              <span className="flex items-center gap-2.5 text-sm font-semibold text-strong">
+                <Icon name="translate" className="text-[20px]" />
+                Language / Zubaan
+              </span>
+              <LanguageToggle />
+            </div>
+
             <div className="mt-1 flex min-h-11 items-center justify-between gap-2 rounded-xl px-3">
               <span className="flex items-center gap-2.5 text-sm font-semibold text-strong">
                 <Icon name="contrast" className="text-[20px]" />
@@ -1111,10 +1123,18 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
                 >
                   <Icon name="search" />
                 </button>
-                {/* Language stays on the bar at every width — it is the one
-                    control a reader may need before they can read the menu that
-                    would otherwise hold it. Theme is in the account menu. */}
-                <div className="shrink-0">
+                {/* Off the bar on a phone, where it was the widest thing on it.
+                    Two words in a pill next to a bell, an avatar and a menu
+                    button left the header with nothing to give, and the panels
+                    anchored to it had nowhere to open.
+
+                    It used to stay at every width on the argument that a reader
+                    might need it before they could read the menu holding it.
+                    That argument was for a site that opened in Roman Urdu; it
+                    now opens in English, so the menu is already readable to
+                    somebody looking for the switch — and it is one tap away
+                    inside, next to the theme. */}
+                <div className="hidden shrink-0 sm:block">
                   <LanguageToggle />
                 </div>
                 <div className="hidden shrink-0 sm:block">

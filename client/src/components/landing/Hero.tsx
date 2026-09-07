@@ -46,6 +46,7 @@ import { Icon } from "@/components/Icon";
 import { HeroStops } from "@/components/landing/HeroStops";
 import { MiniScreen } from "@/components/landing/hospital/MiniScreen";
 import { ROOMS, type Room } from "@/components/landing/hospital/plan";
+import { useCanAffordDecoration } from "@/lib/env";
 import { useTr } from "@/lib/lang";
 
 /** Never rendered on the server, and never bundled into a portal route. */
@@ -327,13 +328,38 @@ export function Hero({
   const [critical, setCritical] = useState(false);
 
   /**
-   * True once the scene has decided this machine cannot run it.
+   * True while this machine should not be running the scene.
    *
    * A browser with no WebGL, or one falling back to a software rasteriser,
    * gets the rendered still in the same slot. The picture came out of this
    * scene, so it is the same hospital — just the one frame of it.
+   *
+   * **It starts true, and that is the point.** The scene is behind a dynamic
+   * import, so it is only fetched once this renders it — which means deciding
+   * *before* that is the difference between a phone downloading Three.js and a
+   * phone never hearing about it. Starting false and correcting in an effect
+   * would be too late; the fetch is already in flight.
+   *
+   * It also happens to be the right first frame for everybody. The server has
+   * no window to ask, so it renders the still, the client hydrates to exactly
+   * the same markup, and the hero is a finished picture instead of an empty
+   * canvas waiting on a download.
    */
-  const [stillOnly, setStillOnly] = useState(false);
+  const [unsupported, setUnsupported] = useState(false);
+
+  /**
+   * Whether this machine is even offered the moving hospital.
+   *
+   * A phone is not. A WebGL render loop with shadows heats a mobile GPU and
+   * makes the rest of the page feel like it is dragging, and what it buys is
+   * decoration — the still is the same building, rendered from this same scene.
+   * So a phone gets the picture, and gets its scrolling back.
+   *
+   * Asked before anything renders rather than corrected afterwards, because the
+   * scene sits behind a dynamic import: this is the difference between a phone
+   * downloading Three.js and a phone never hearing about it.
+   */
+  const stillOnly = !useCanAffordDecoration() || unsupported;
 
   const goToStop = (index: number) => {
     const node = track.current;
@@ -480,7 +506,7 @@ export function Hero({
               onHover={setHovered}
               onAlert={setCritical}
               onRoomClick={(room) => goToStop(room.id)}
-              onUnsupported={() => setStillOnly(true)}
+              onUnsupported={() => setUnsupported(true)}
               dark={false}
             />
           )}

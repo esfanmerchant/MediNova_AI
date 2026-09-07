@@ -1201,6 +1201,25 @@ select:focus ~ .select-chevron {
    --------------------------------------------------------------------------- */
 html {
   scroll-padding-top: calc(var(--topbar-h, 64px) + var(--section-nav-h, 0px) + 16px);
+
+  /* No page scrolls sideways, whatever one element inside it decides to do.
+   *
+   * Horizontal overflow is the worst class of layout bug on a phone because it
+   * does not look like a layout bug. One card too wide, one long unbroken
+   * word, one table that escaped its wrapper — and the whole document becomes
+   * scrollable sideways. Every fixed and absolutely positioned thing on top of
+   * it then appears shifted, so a panel anchored correctly to a bell reads as
+   * "the dropdown is cut off", and it happens on every page at once because
+   * the cause is the document, not the page.
+   *
+   * `clip` rather than `hidden`: `hidden` makes this element a scroll
+   * container, which silently kills `position: sticky` on the header and the
+   * table headers inside it. `clip` refuses the scroll without becoming one.
+   *
+   * This is a floor, not a licence. Content that is legitimately wide — the
+   * billing and vitals tables — still gets its own `overflow-x-auto` wrapper,
+   * because being clipped is not the same as being reachable. */
+  overflow-x: clip;
 }
 
 .scroll-section {

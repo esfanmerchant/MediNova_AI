@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 
 import { ICON_NAMES } from "@/app/icon-names.generated";
 import { Providers } from "@/components/Providers";
+import { InstallPrompt } from "@/components/InstallPrompt";
 import { ServiceWorker } from "@/components/ServiceWorker";
 import "./globals.css";
 
@@ -131,6 +132,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       </head>
       <body className="text-strong antialiased">
         <ServiceWorker />
+        <InstallPrompt />
         {/* Keyboard users should be able to skip the navigation on every page. */}
         <a
           href="#main"

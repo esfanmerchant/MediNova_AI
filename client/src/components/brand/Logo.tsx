@@ -73,7 +73,11 @@ export function LogoMark({
 
 export function Wordmark({ className, onDark = false }: { className?: string; onDark?: boolean }) {
   return (
-    <span className={cx("font-display font-bold tracking-tight", className)}>
+    // `whitespace-nowrap` because a product's name is one word however many
+    // words it has. The space before "AI" is an ordinary breaking one, so in a
+    // header narrow enough — a phone's — the name wrapped, and the brand
+    // arrived as "MediNova" on one line and "AI" on the next.
+    <span className={cx("font-display font-bold tracking-tight whitespace-nowrap", className)}>
       {/* Three parts, because the mark has three. "Medi" is the deep blue of
           the cross's top-left, "Nova" carries the blue-to-teal run across it,
           and "AI" lands on the teal the circuit traces end in — so the wordmark
