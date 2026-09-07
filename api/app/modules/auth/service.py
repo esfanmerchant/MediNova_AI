@@ -1149,7 +1149,7 @@ async def create_session(
         device_class=device_class,
         ip_address=ctx.ip_address,
         user_agent=ctx.user_agent,
-        expires_at=utcnow() + timedelta(seconds=absolute_timeout_seconds()),
+        expires_at=utcnow() + timedelta(seconds=absolute_timeout_seconds(device_class)),
     )
     db.add(session)
     await db.flush()

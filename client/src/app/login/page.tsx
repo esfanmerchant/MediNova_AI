@@ -65,7 +65,11 @@ function LoginForm() {
   // next sign-in. The class the *server* honours is fixed when the session
   // opens, so an existing terminal session keeps its two minutes until then —
   // one more sign-out, and no more after that.
-  // an explicit pick in the form overrides it.
+  //
+  // There is no picker: every sign-in through this form claims a personal
+  // device. The server still tiers by class — a shared terminal gets two
+  // minutes — but nothing here ever asks for that tier, so in practice every
+  // session opened from the login page is a personal one.
   const deviceClass: DeviceClass = "PERSONAL";
 
   const reason = params.get("reason");
