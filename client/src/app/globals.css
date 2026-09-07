@@ -1,0 +1,1428 @@
+@import "tailwindcss";
+
+/**
+ * MediNova AI design system.
+ *
+ * The brand is the logo: a rounded medical cross carrying a white ECG pulse,
+ * with circuit traces and node dots leaving to the right, on a royal-blue →
+ * azure → teal 135° ramp. That ramp is the only gradient in the product, and
+ * the pulse and the nodes are the only decorative motifs — used as accents,
+ * never as wallpaper.
+ *
+ * **Two colour sets, on purpose.** The `--ms-*` values are the brand's, used
+ * for fills, gradients, borders and large type. Beside each sits a text-safe
+ * variant, darkened until it clears 4.5:1 on the surface it sits on. Teal at
+ * #0FA9B9 is right in a gradient and unreadable as 14px body text; shipping
+ * one value for both would mean choosing between the brand and the people
+ * reading it.
+ *
+ * **Status colour means status.** `critical` is for something a clinician must
+ * act on — never for emphasis, never for a delete button. The moment red also
+ * means "destructive", a ward stops reading red as urgent, which is how a
+ * monitoring system quietly stops working.
+ *
+ * Dark mode is a class, not a media query: `next-themes` puts `.dark` on the
+ * root so a person can choose light, dark, or whatever their system says.
+ */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  /* ---- brand ramp ---- */
+  --ms-blue-900: #0a2e7a;
+  --ms-blue-700: #0b3fa8;
+  --ms-blue-500: #1462c4;
+  --ms-azure-400: #1a8fc7;
+  --ms-teal-500: #0fa9b9;
+  --ms-teal-300: #14c4c1;
+  --ms-gradient: linear-gradient(135deg, #0b3fa8 0%, #1a8fc7 55%, #14c4c1 100%);
+  --ms-gradient-soft: linear-gradient(135deg, rgb(11 63 168 / 0.08), rgb(20 196 193 / 0.1));
+
+  --brand-primary: var(--ms-blue-700);
+  --brand-primary-hover: var(--ms-blue-500);
+  --brand-primary-active: var(--ms-blue-900);
+  --brand-primary-soft: #e6eefb;
+  --brand-primary-on: #ffffff;
+  --brand-navy-deep: var(--ms-blue-900);
+
+  /* Teal: `bright` and `light` are the logo's; `accent` is the readable one. */
+  --brand-accent: #0b7f8b;
+  --brand-accent-bright: var(--ms-teal-300);
+  --brand-accent-light: #5eead4;
+  --brand-accent-soft: #dcf6f6;
+
+  /* ---- surfaces ---- */
+  --surface-canvas: #f6f9fc;
+  --surface-card: #ffffff;
+  --surface-sunken: #eef4fa;
+  --surface-raised: #e2ecf7;
+  --surface-glass: rgb(255 255 255 / 0.72);
+
+  /* ---- text ---- */
+  --text-strong: #0e1b33;
+  --text-muted: #5c6b85;
+  --text-faint: #93a1b8;
+  --text-on-rail: #ffffff;
+
+  /* ---- lines ---- */
+  --line: #dce6f2;
+  --line-strong: #c2d1e6;
+
+  /* ---- status: the brand value, then the text-safe variant ---- */
+  --ms-success: #12b981;
+  --ms-warning: #f59e0b;
+  --ms-critical: #e5484d;
+  --ms-info: #1a8fc7;
+
+  --status-stable: #0e9f6e;
+  --status-stable-soft: #e2f7ee;
+  --status-warning: #b45309;
+  --status-warning-soft: #fef3dd;
+  --status-critical: #d13438;
+  --status-critical-soft: #fdeaea;
+  --status-info: #1173a3;
+  --status-info-soft: #e2f0fa;
+
+  /* ---- shape ---- */
+  --ms-radius-sm: 8px;
+  --ms-radius: 14px;
+  --ms-radius-lg: 22px;
+
+  /* ---- elevation ---- */
+  --shadow-sm: 0 1px 2px rgb(10 46 122 / 0.06), 0 1px 3px rgb(10 46 122 / 0.08);
+  --shadow-card: 0 1px 2px rgb(10 46 122 / 0.06), 0 8px 24px -8px rgb(10 46 122 / 0.18);
+  --shadow-overlay: 0 2px 6px rgb(10 46 122 / 0.08), 0 16px 40px -12px rgb(10 46 122 / 0.28);
+  --shadow-float: 0 24px 56px -16px rgb(10 46 122 / 0.32);
+  --glow: 0 0 0 1px rgb(20 196 193 / 0.25), 0 12px 40px -12px rgb(20 196 193 / 0.45);
+  --ring-focus: 0 0 0 3px rgb(20 196 193 / 0.28), 0 0 0 1px var(--ms-blue-700);
+
+  /* Ambient mesh behind the canvas. */
+  --glow-a: rgb(20 98 196 / 0.12);
+  --glow-b: rgb(20 196 193 / 0.14);
+}
+
+.dark {
+  --brand-primary: #6f9dff;
+  --brand-primary-hover: #8fb6ff;
+  --brand-primary-active: var(--ms-blue-700);
+  --brand-primary-soft: #16295c;
+  --brand-primary-on: #061024;
+  --brand-navy-deep: #050d20;
+
+  --brand-accent: #5eead4;
+  --brand-accent-bright: var(--ms-teal-300);
+  --brand-accent-light: #8ff5e6;
+  --brand-accent-soft: #0d3742;
+
+  --ms-gradient-soft: linear-gradient(135deg, rgb(111 157 255 / 0.14), rgb(20 196 193 / 0.14));
+
+  --surface-canvas: #071129;
+  --surface-card: #0d1b3a;
+  --surface-sunken: #122349;
+  --surface-raised: #1a2e5c;
+  --surface-glass: rgb(13 27 58 / 0.72);
+
+  --text-strong: #eaf1fb;
+  --text-muted: #9db0cc;
+  --text-faint: #6b7f9e;
+
+  --line: #1b2c52;
+  --line-strong: #2b4272;
+
+  --status-stable: #34d399;
+  --status-stable-soft: #0b2f24;
+  --status-warning: #fbbf24;
+  --status-warning-soft: #3a2a08;
+  --status-critical: #ff8085;
+  --status-critical-soft: #451418;
+  --status-info: #7cc0ea;
+  --status-info-soft: #0c2c44;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 12px 32px -12px rgb(0 0 0 / 0.6);
+  --shadow-overlay: 0 16px 40px -12px rgb(0 0 0 / 0.7);
+  --shadow-float: 0 24px 56px -16px rgb(0 0 0 / 0.8);
+  --ring-focus: 0 0 0 3px rgb(20 196 193 / 0.3), 0 0 0 1px var(--ms-teal-300);
+
+  --glow-a: rgb(11 63 168 / 0.35);
+  --glow-b: rgb(20 196 193 / 0.16);
+}
+
+@theme inline {
+  --color-primary: var(--brand-primary);
+  --color-primary-hover: var(--brand-primary-hover);
+  --color-primary-active: var(--brand-primary-active);
+  --color-primary-soft: var(--brand-primary-soft);
+  --color-primary-on: var(--brand-primary-on);
+  --color-primary-strong: var(--brand-primary-hover);
+  --color-navy-deep: var(--brand-navy-deep);
+
+  --color-accent: var(--brand-accent);
+  --color-accent-bright: var(--brand-accent-bright);
+  --color-accent-light: var(--brand-accent-light);
+  --color-accent-strong: var(--brand-accent);
+  --color-accent-soft: var(--brand-accent-soft);
+
+  --color-canvas: var(--surface-canvas);
+  --color-card: var(--surface-card);
+  --color-sunken: var(--surface-sunken);
+  --color-raised: var(--surface-raised);
+  --color-rail: var(--brand-primary-active);
+  --color-rail-hover: var(--brand-primary);
+
+  --color-strong: var(--text-strong);
+  --color-muted: var(--text-muted);
+  --color-faint: var(--text-faint);
+  --color-on-rail: var(--text-on-rail);
+
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+
+  --color-stable: var(--status-stable);
+  --color-stable-soft: var(--status-stable-soft);
+  --color-warning: var(--status-warning);
+  --color-warning-soft: var(--status-warning-soft);
+  --color-critical: var(--status-critical);
+  --color-critical-soft: var(--status-critical-soft);
+  --color-info: var(--status-info);
+  --color-info-soft: var(--status-info-soft);
+
+  /* The brand radii, mapped onto the utilities the components already use. */
+  --radius-sm: var(--ms-radius-sm);
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: var(--ms-radius);
+  --radius-2xl: var(--ms-radius-lg);
+  --radius-3xl: 28px;
+
+  --shadow-sm: var(--shadow-sm);
+  --shadow-card: var(--shadow-card);
+  --shadow-overlay: var(--shadow-overlay);
+  --shadow-float: var(--shadow-float);
+  --shadow-glow: var(--glow);
+  --shadow-focus: var(--ring-focus);
+
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: var(--font-display-face), var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono-face), ui-monospace, "SFMono-Regular", "Menlo", monospace;
+
+  --ease-out-soft: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+body {
+  background-color: var(--surface-canvas);
+  background-image:
+    radial-gradient(56rem 36rem at -8% -12%, var(--glow-a), transparent 62%),
+    radial-gradient(48rem 34rem at 108% 112%, var(--glow-b), transparent 62%);
+  background-attachment: fixed;
+  color: var(--text-strong);
+  font-family: var(--font-body), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display-face), var(--font-body), sans-serif;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+::selection {
+  background: var(--brand-primary-soft);
+  color: var(--text-strong);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+/* Mono-caps: the label style for field names, IDs and timestamps. */
+.mono-caps {
+  font-family: var(--font-mono-face), ui-monospace, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------------------
+   Brand surfaces
+   --------------------------------------------------------------------------- */
+
+/* Declared as utilities rather than plain classes: only a registered utility
+   can take a variant, and `hover:bg-gradient-soft` is exactly what a hover
+   state on a brand surface wants to say. */
+@utility bg-gradient-brand {
+  background-image: var(--ms-gradient);
+}
+@utility bg-gradient-soft {
+  background-image: var(--ms-gradient-soft);
+}
+@utility text-gradient-brand {
+  background: var(--ms-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.dark .text-gradient-brand {
+  background: linear-gradient(135deg, #8fb6ff 0%, #6ad6e6 55%, #5eead4 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+/* For a coloured ground, where the ramp must run light. */
+.text-gradient-medical {
+  background: linear-gradient(92deg, #5eead4 0%, #8fb6ff 55%, #dbe4ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* The navy gradient that carries a welcome banner or a brand panel. */
+.hero-navy {
+  background:
+    radial-gradient(40rem 20rem at 85% -20%, rgb(26 143 199 / 0.85), transparent 60%),
+    radial-gradient(30rem 18rem at -10% 120%, rgb(20 196 193 / 0.5), transparent 60%),
+    linear-gradient(135deg, #071129 0%, #0a2e7a 45%, #0b3fa8 100%);
+}
+
+/* The full brand ramp, for an auth panel or a hero band. */
+.brand-panel {
+  background: var(--ms-gradient);
+}
+
+/* A soft two-blob mesh, for a light hero. */
+.mesh-light {
+  background-image:
+    radial-gradient(32rem 24rem at 8% 6%, rgb(20 98 196 / 0.12), transparent 70%),
+    radial-gradient(30rem 22rem at 94% 92%, rgb(20 196 193 / 0.14), transparent 70%);
+}
+.dark .mesh-light {
+  background-image:
+    radial-gradient(32rem 24rem at 8% 6%, rgb(20 98 196 / 0.2), transparent 70%),
+    radial-gradient(30rem 22rem at 94% 92%, rgb(20 196 193 / 0.2), transparent 70%);
+}
+
+/* Glass: for anything that floats over content. */
+.glass {
+  background: var(--surface-glass);
+  border: 1px solid rgb(255 255 255 / 0.45);
+  backdrop-filter: blur(20px) saturate(1.3);
+  -webkit-backdrop-filter: blur(20px) saturate(1.3);
+  box-shadow: var(--shadow-overlay);
+}
+.dark .glass {
+  border-color: rgb(255 255 255 / 0.1);
+}
+.glass-dark {
+  background: rgb(255 255 255 / 0.1);
+  border: 1px solid rgb(255 255 255 / 0.2);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* A 1px gradient border on any rounded box, via two stacked backgrounds. */
+.border-gradient {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--surface-card), var(--surface-card)) padding-box,
+    var(--ms-gradient) border-box;
+}
+.border-gradient-thick {
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(var(--surface-card), var(--surface-card)) padding-box,
+    var(--ms-gradient) border-box;
+}
+/* Same, but filled with the soft tint — for a selected card.
+   The card colour sits *under* the tint: without it the ramp painted for the
+   border box shows through an 8%-alpha fill, and a "soft tint" renders as a
+   saturated gradient tile with dark body text stranded on it. */
+.border-gradient-fill {
+  border: 1.5px solid transparent;
+  background:
+    var(--ms-gradient-soft) padding-box,
+    linear-gradient(var(--surface-card), var(--surface-card)) padding-box,
+    var(--ms-gradient) border-box;
+}
+
+/* The circuit motif as a flat repeating pattern, where a drawn field is too
+   much — the foot of a rail, the back of a banner. */
+.circuit-pattern {
+  background-image:
+    radial-gradient(circle at 8px 8px, rgb(255 255 255 / 0.35) 1.5px, transparent 2px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.12) 1px, transparent 1px),
+    linear-gradient(0deg, rgb(255 255 255 / 0.12) 1px, transparent 1px);
+  background-size: 48px 48px, 48px 48px, 48px 48px;
+  background-position: 0 0, 8px 8px, 8px 8px;
+  mask-image: linear-gradient(to top, rgb(0 0 0 / 0.9), transparent 85%);
+  -webkit-mask-image: linear-gradient(to top, rgb(0 0 0 / 0.9), transparent 85%);
+}
+.circuit-pattern-light {
+  background-image:
+    radial-gradient(circle at 8px 8px, rgb(11 63 168 / 0.2) 1.5px, transparent 2px),
+    linear-gradient(90deg, rgb(20 196 193 / 0.14) 1px, transparent 1px),
+    linear-gradient(0deg, rgb(20 196 193 / 0.14) 1px, transparent 1px);
+  background-size: 40px 40px, 40px 40px, 40px 40px;
+  background-position: 0 0, 8px 8px, 8px 8px;
+  mask-image: linear-gradient(to top, rgb(0 0 0 / 0.8), transparent 90%);
+  -webkit-mask-image: linear-gradient(to top, rgb(0 0 0 / 0.8), transparent 90%);
+}
+
+/* ---------------------------------------------------------------------------
+   Material Symbols
+   --------------------------------------------------------------------------- */
+
+.msym {
+  font-family: "Material Symbols Outlined", sans-serif;
+  font-weight: normal;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+  -webkit-font-feature-settings: "liga";
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+
+  /* An icon occupies exactly one em, whatever happens to the font.
+     ---------------------------------------------------------------
+     Without this, an icon is however wide the text inside it is — and the text
+     inside it is a *word*. `<Icon name="arrow_forward" />` renders the literal
+     characters "arrow_forward" until the Material Symbols font arrives, and
+     `display=block` only holds that back for about three seconds before the
+     browser gives up and paints the fallback. On a slow connection, or when
+     Google is unreachable, or on the third second of a cold load, every button
+     in the application stretches around a word and every border goes with it:
+     measured at 390px wide, one 18px icon was 115 pixels across and the page
+     scrolled sideways.
+
+     A one-em box with the overflow clipped makes that impossible rather than
+     unlikely. Material Symbols glyphs are drawn on a one-em square, so the real
+     icon fits exactly and nothing about the loaded state changes; only the
+     failure changes, from a broken layout to a blank square that fills in a
+     moment later. */
+  width: 1em;
+  height: 1em;
+  overflow: hidden;
+  /* The glyph is centred in its em box; without this the clipped fallback text
+     would sit on the baseline and push the line height around. */
+  text-align: center;
+  vertical-align: middle;
+}
+.msym-fill {
+  font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24;
+}
+
+/* ---------------------------------------------------------------------------
+   Form fields — floating labels
+   --------------------------------------------------------------------------- */
+
+.field-shell {
+  position: relative;
+}
+.field-shell > :is(input, select, textarea),
+.field-shell > * > :is(input, select, textarea) {
+  padding-top: 1.55rem;
+  padding-bottom: 0.5rem;
+  min-height: 3.25rem;
+}
+.field-shell > textarea,
+.field-shell > * > textarea {
+  padding-top: 1.75rem;
+}
+.field-label {
+  position: absolute;
+  left: 0.9rem;
+  top: 50%;
+  transform: translateY(-50%);
+  margin: 0;
+  pointer-events: none;
+  color: var(--text-faint);
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1;
+  transition:
+    top 0.2s var(--ease-out-soft),
+    transform 0.2s var(--ease-out-soft),
+    font-size 0.2s var(--ease-out-soft),
+    color 0.2s ease;
+}
+.field-shell:has(textarea) .field-label {
+  top: 1.15rem;
+  transform: none;
+}
+.field-shell:has(:focus) .field-label,
+/* Named explicitly: a bare `:not(:placeholder-shown)` also matches the label
+   and the reveal button, which is true for every field and would leave the
+   label permanently raised — floating that never floats. */
+.field-shell:has(:is(input, textarea):not(:placeholder-shown)) .field-label,
+.field-shell:has(select) .field-label,
+.field-shell:has(input[type="date"]) .field-label,
+.field-shell:has(input[type="time"]) .field-label,
+.field-shell:has(input[type="datetime-local"]) .field-label,
+.field-shell:has(input[type="file"]) .field-label {
+  top: 0.55rem;
+  transform: none;
+  font-family: var(--font-mono-face), ui-monospace, monospace;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ms-blue-700);
+}
+.dark .field-shell:has(:focus) .field-label,
+.dark .field-shell:has(:is(input, textarea):not(:placeholder-shown)) .field-label,
+.dark .field-shell:has(select) .field-label {
+  color: var(--brand-primary);
+}
+.field-invalid .field-label,
+.field-invalid .field-shell:has(:focus) .field-label {
+  color: var(--status-critical);
+}
+.field-shell :is(input, textarea)::placeholder {
+  color: transparent;
+  transition: color 0.2s ease 0.1s;
+}
+.field-shell:has(:focus) :is(input, textarea)::placeholder {
+  color: var(--text-faint);
+}
+
+/* Focus: a brand ring, drawn with box-shadow so it follows the radius. */
+.input-base {
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background-color 0.2s ease;
+}
+.input-base:focus {
+  outline: none;
+  border-color: var(--ms-teal-300);
+  box-shadow: var(--ring-focus);
+}
+.field-invalid .input-base {
+  border-color: var(--status-critical);
+}
+.field-invalid .input-base:focus {
+  box-shadow: 0 0 0 3px rgb(229 72 77 / 0.22);
+}
+
+@keyframes shake {
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(2px); }
+  30%, 50%, 70% { transform: translateX(-3px); }
+  40%, 60% { transform: translateX(3px); }
+}
+.field-invalid .field-shell,
+.shake {
+  animation: shake 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+/* Checkbox: the tick draws itself in. */
+@keyframes draw-check {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.check-mark {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+}
+input:checked + .check-box .check-mark {
+  animation: draw-check 0.25s ease-out 0.05s forwards;
+}
+
+.select-chevron {
+  transition: transform 0.2s var(--ease-out-soft);
+}
+select:focus ~ .select-chevron {
+  transform: translateY(-50%) rotate(180deg);
+}
+
+/* ---------------------------------------------------------------------------
+   Buttons
+   --------------------------------------------------------------------------- */
+
+.btn-gradient {
+  background-image: var(--ms-gradient);
+  background-size: 150% 150%;
+  background-position: 0% 0%;
+  box-shadow:
+    0 2px 6px rgb(11 63 168 / 0.25),
+    0 8px 20px -8px rgb(20 196 193 / 0.5);
+  transition:
+    transform 0.2s var(--ease-out-soft),
+    box-shadow 0.25s ease,
+    background-position 0.45s ease,
+    opacity 0.2s ease;
+}
+.btn-gradient:hover:not(:disabled) {
+  transform: scale(1.03);
+  background-position: 100% 100%;
+  box-shadow:
+    0 4px 12px rgb(11 63 168 / 0.32),
+    0 14px 30px -8px rgb(20 196 193 / 0.6);
+}
+.btn-gradient:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* A diagonal shine that sweeps across on hover. */
+.btn-shine {
+  position: relative;
+  overflow: hidden;
+}
+.btn-shine::after {
+  content: "";
+  position: absolute;
+  top: -60%;
+  bottom: -60%;
+  left: -30%;
+  width: 28%;
+  transform: rotate(18deg) translateX(-260%);
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.35), transparent);
+  transition: transform 0.65s var(--ease-out-soft);
+  pointer-events: none;
+}
+.btn-shine:hover::after {
+  transform: rotate(18deg) translateX(420%);
+}
+
+.btn-outline {
+  color: var(--ms-blue-700);
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(var(--surface-card), var(--surface-card)) padding-box,
+    var(--ms-gradient) border-box;
+  transition:
+    transform 0.2s var(--ease-out-soft),
+    box-shadow 0.25s ease,
+    background 0.25s ease;
+}
+.btn-outline:hover:not(:disabled) {
+  transform: scale(1.02);
+  background:
+    var(--ms-gradient-soft) padding-box,
+    var(--ms-gradient) border-box;
+  box-shadow: var(--shadow-card);
+}
+.btn-outline:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.dark .btn-outline {
+  color: var(--brand-accent);
+}
+
+/* The loading blip: three bars taking turns, an EKG in miniature. */
+@keyframes ekg-bar {
+  0%, 100% { transform: scaleY(0.35); opacity: 0.6; }
+  50% { transform: scaleY(1); opacity: 1; }
+}
+.ekg-bars {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 1rem;
+}
+.ekg-bars > span {
+  display: block;
+  width: 3px;
+  height: 100%;
+  border-radius: 2px;
+  background: currentColor;
+  transform-origin: center;
+  animation: ekg-bar 0.9s ease-in-out infinite;
+}
+.ekg-bars > span:nth-child(2) { animation-delay: 0.15s; }
+.ekg-bars > span:nth-child(3) { animation-delay: 0.3s; }
+
+/* ---------------------------------------------------------------------------
+   The pulse and the nodes
+   --------------------------------------------------------------------------- */
+
+@keyframes ecg-draw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+.ecg-draw-once {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: ecg-draw 2.4s var(--ease-out-soft) forwards;
+}
+.ecg-draw-loop {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: ecg-draw 2.4s linear infinite;
+}
+/* An empty state's flat line, which draws itself once and rests. */
+.ecg-beat {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: ecg-draw 1.6s var(--ease-out-soft) forwards;
+}
+@keyframes circuit-node {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+.circuit-node {
+  animation: circuit-node 4.5s ease-in-out infinite;
+}
+
+/* ---------------------------------------------------------------------------
+   Motion vocabulary
+   --------------------------------------------------------------------------- */
+
+@keyframes breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.animate-breathe {
+  animation: breathe 2.4s ease-in-out infinite;
+}
+
+.reveal-start {
+  opacity: 0;
+  transform: translateY(22px);
+  transition:
+    opacity 0.7s var(--ease-out-soft),
+    transform 0.7s var(--ease-out-soft);
+  will-change: opacity, transform;
+}
+.reveal-in {
+  opacity: 1;
+  transform: none;
+}
+
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+.page-enter {
+  animation: page-enter 0.35s var(--ease-out-soft) backwards;
+}
+
+/* `backwards`, not `both`: once the entrance ends the element must own its
+   transform again, or a hover lift on a staggered card silently does nothing. */
+.stagger > * {
+  animation: page-enter 0.55s var(--ease-out-soft) backwards;
+}
+.stagger > :nth-child(1) { animation-delay: 0ms; }
+.stagger > :nth-child(2) { animation-delay: 60ms; }
+.stagger > :nth-child(3) { animation-delay: 120ms; }
+.stagger > :nth-child(4) { animation-delay: 180ms; }
+.stagger > :nth-child(5) { animation-delay: 240ms; }
+.stagger > :nth-child(6) { animation-delay: 300ms; }
+.stagger > :nth-child(7) { animation-delay: 360ms; }
+.stagger > :nth-child(8) { animation-delay: 420ms; }
+.stagger > :nth-child(n + 9) { animation-delay: 480ms; }
+
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+.pop-in {
+  animation: pop-in 0.32s var(--ease-out-soft) backwards;
+}
+
+@keyframes drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(2rem, -1.5rem, 0) scale(1.08); }
+}
+.animate-drift { animation: drift 14s ease-in-out infinite; }
+.animate-drift-late { animation: drift 18s ease-in-out infinite reverse; }
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.animate-float { animation: float 3.6s ease-in-out infinite; }
+.animate-float-slow { animation: float 6s ease-in-out infinite; }
+
+@keyframes wave {
+  0%, 100% { transform: rotate(0deg); }
+  20% { transform: rotate(14deg); }
+  40% { transform: rotate(-8deg); }
+  60% { transform: rotate(14deg); }
+  80% { transform: rotate(-4deg); }
+}
+.animate-wave {
+  display: inline-block;
+  transform-origin: 70% 70%;
+  animation: wave 2.2s ease-in-out 0.4s 2;
+}
+
+@keyframes icon-bounce {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  35% { transform: translateY(-4px) rotate(-6deg); }
+  70% { transform: translateY(0) rotate(4deg); }
+}
+.group:hover .icon-bounce { animation: icon-bounce 0.5s var(--ease-out-soft); }
+
+@keyframes icon-wiggle {
+  0%, 100% { transform: scale(1) rotate(0); }
+  30% { transform: scale(1.15) rotate(-8deg); }
+  60% { transform: scale(1.1) rotate(6deg); }
+}
+.group:hover .icon-wiggle { animation: icon-wiggle 0.45s var(--ease-out-soft); }
+
+@keyframes ring {
+  0%, 100% { transform: rotate(0); }
+  15% { transform: rotate(14deg); }
+  30% { transform: rotate(-12deg); }
+  45% { transform: rotate(8deg); }
+  60% { transform: rotate(-4deg); }
+}
+.group:hover .icon-ring {
+  transform-origin: 50% 10%;
+  animation: ring 0.7s var(--ease-out-soft);
+}
+
+@keyframes pulse-dot {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(229 72 77 / 0.55); }
+  70% { box-shadow: 0 0 0 6px rgb(229 72 77 / 0); }
+}
+.pulse-dot { animation: pulse-dot 1.8s ease-out infinite; }
+
+@keyframes pulse-dot-brand {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(20 196 193 / 0.6); }
+  70% { box-shadow: 0 0 0 6px rgb(20 196 193 / 0); }
+}
+.pulse-dot-brand { animation: pulse-dot-brand 1.8s ease-out infinite; }
+
+@keyframes halo {
+  0% { box-shadow: 0 0 0 0 rgb(20 196 193 / 0.55); }
+  100% { box-shadow: 0 0 0 18px rgb(20 196 193 / 0); }
+}
+.animate-halo { animation: halo 2s ease-out infinite; }
+
+@keyframes ecg-dash {
+  to { stroke-dashoffset: -640; }
+}
+/* The trace across a dashboard hero. It runs once and rests.
+   ------------------------------------------------------------
+   It used to loop for ever, and an SVG `stroke-dashoffset` animation is not
+   compositable — the browser repaints the path on every frame, permanently, on
+   three of the busiest pages in the application. While somebody scrolls, that
+   repaint competes with the scroll for the same frame, which is most of why
+   those dashboards felt heavy. It draws once now, which is the only part
+   anybody was ever going to watch. */
+.animate-ecg {
+  stroke-dasharray: 320 320;
+  stroke-dashoffset: 320;
+  animation: ecg-dash 2.6s var(--ease-out-soft, ease-out) forwards;
+}
+
+@keyframes ecg-sweep {
+  to { stroke-dashoffset: -260; }
+}
+.ecg-sweep {
+  stroke-dasharray: 48 212;
+  stroke-dashoffset: 0;
+  animation: ecg-sweep 1.5s linear infinite;
+}
+
+@keyframes wave-scroll {
+  to { transform: translateX(-50%); }
+}
+.wave-live { animation: wave-scroll 2.4s linear infinite; }
+
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+.skeleton {
+  border-radius: var(--ms-radius-sm);
+  background: linear-gradient(
+    90deg,
+    var(--surface-sunken) 25%,
+    var(--surface-raised) 37%,
+    var(--surface-sunken) 63%
+  );
+  background-size: 400% 100%;
+  animation: shimmer 1.7s ease-in-out infinite;
+}
+
+@keyframes heartbeat-dot {
+  0%, 60%, 100% { transform: scale(1); opacity: 0.35; }
+  15% { transform: scale(1.35); opacity: 1; }
+  30% { transform: scale(1); opacity: 0.6; }
+  45% { transform: scale(1.2); opacity: 1; }
+}
+.typing-dot { animation: heartbeat-dot 1.4s ease-in-out infinite; }
+.typing-dot:nth-child(2) { animation-delay: 0.18s; }
+.typing-dot:nth-child(3) { animation-delay: 0.36s; }
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+.stream-cursor::after {
+  content: "▍";
+  margin-left: 1px;
+  color: var(--brand-accent-bright);
+  animation: blink 0.9s steps(2) infinite;
+}
+
+@keyframes mic-idle {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(11 63 168 / 0.25); }
+  50% { box-shadow: 0 0 0 6px rgb(11 63 168 / 0); }
+}
+.mic-idle { animation: mic-idle 2.6s ease-in-out infinite; }
+
+@keyframes ripple {
+  from { transform: scale(1); opacity: 0.5; }
+  to { transform: scale(2.4); opacity: 0; }
+}
+.listening-ring::before,
+.listening-ring::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 2px solid var(--status-critical);
+  animation: ripple 1.6s ease-out infinite;
+  z-index: -1;
+}
+.listening-ring::after { animation-delay: 0.55s; }
+
+@keyframes voice-bar {
+  0%, 100% { transform: scaleY(0.25); }
+  50% { transform: scaleY(1); }
+}
+.voice-bars {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 1.5rem;
+}
+.voice-bars > span {
+  display: block;
+  width: 3px;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--ms-gradient);
+  transform-origin: center;
+  animation: voice-bar 0.9s ease-in-out infinite;
+}
+.voice-bars > span:nth-child(2) { animation-delay: 0.1s; animation-duration: 1.1s; }
+.voice-bars > span:nth-child(3) { animation-delay: 0.2s; animation-duration: 0.8s; }
+.voice-bars > span:nth-child(4) { animation-delay: 0.3s; animation-duration: 1s; }
+.voice-bars > span:nth-child(5) { animation-delay: 0.15s; animation-duration: 0.95s; }
+.voice-bars > span:nth-child(6) { animation-delay: 0.05s; animation-duration: 1.15s; }
+.voice-bars > span:nth-child(7) { animation-delay: 0.25s; animation-duration: 0.85s; }
+
+@keyframes scan {
+  0% { top: 0; }
+  100% { top: calc(100% - 3px); }
+}
+.scan-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--ms-gradient);
+  box-shadow: 0 0 14px 3px rgb(20 196 193 / 0.6);
+  animation: scan 1.8s ease-in-out infinite alternate;
+}
+
+@keyframes draw-stroke {
+  to { stroke-dashoffset: 0; }
+}
+.draw-stroke {
+  stroke-dasharray: 60;
+  stroke-dashoffset: 60;
+  animation: draw-stroke 0.5s ease-out 0.15s forwards;
+}
+@keyframes pop-scale {
+  0% { transform: scale(0.6); opacity: 0; }
+  60% { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); }
+}
+.pop-scale { animation: pop-scale 0.45s var(--ease-out-soft) backwards; }
+
+@keyframes edge-pulse {
+  0%, 100% { box-shadow: inset 4px 0 0 var(--status-critical); }
+  50% { box-shadow: inset 4px 0 0 rgb(229 72 77 / 0.35); }
+}
+.edge-pulse { animation: edge-pulse 1.6s ease-in-out infinite; }
+
+@keyframes glow-critical {
+  0%, 100% { box-shadow: 0 0 0 1px rgb(229 72 77 / 0.35); }
+  50% { box-shadow: 0 0 0 1px rgb(229 72 77 / 0.7), 0 0 18px rgb(229 72 77 / 0.25); }
+}
+.glow-critical { animation: glow-critical 1.8s ease-in-out infinite; }
+
+.hover-lift {
+  transition:
+    transform 0.3s var(--ease-out-soft),
+    box-shadow 0.3s var(--ease-out-soft);
+}
+.hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-overlay);
+}
+.hover-lift-sm {
+  transition:
+    transform 0.25s var(--ease-out-soft),
+    box-shadow 0.25s var(--ease-out-soft),
+    border-color 0.25s ease;
+}
+.hover-lift-sm:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-overlay);
+}
+
+.tilt {
+  transform-style: preserve-3d;
+  transition:
+    transform 0.25s var(--ease-out-soft),
+    box-shadow 0.3s var(--ease-out-soft);
+  will-change: transform;
+}
+
+.card-thread {
+  position: relative;
+  overflow: hidden;
+}
+.card-thread::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--ms-gradient);
+}
+
+.blob-corner::after {
+  content: "";
+  position: absolute;
+  right: -2.5rem;
+  top: -2.5rem;
+  width: 8rem;
+  height: 8rem;
+  border-radius: 9999px;
+  background: var(--ms-gradient-soft);
+  filter: blur(6px);
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Tables and timelines
+   --------------------------------------------------------------------------- */
+
+.table-modern {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.875rem;
+}
+.table-modern thead th {
+  background: var(--surface-sunken);
+  color: var(--text-faint);
+  font-family: var(--font-mono-face), ui-monospace, monospace;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.75rem 1rem;
+  text-align: left;
+  white-space: nowrap;
+}
+.table-modern thead th:first-child {
+  border-top-left-radius: var(--ms-radius-sm);
+  border-bottom-left-radius: var(--ms-radius-sm);
+}
+.table-modern thead th:last-child {
+  border-top-right-radius: var(--ms-radius-sm);
+  border-bottom-right-radius: var(--ms-radius-sm);
+}
+.table-modern tbody td {
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+.table-modern tbody tr {
+  transition: background-color 0.2s ease;
+}
+.table-modern tbody tr:hover {
+  background-image: var(--ms-gradient-soft);
+}
+.table-modern tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.timeline {
+  position: relative;
+  padding-left: 2rem;
+}
+.timeline::before {
+  content: "";
+  position: absolute;
+  left: 0.55rem;
+  top: 0.75rem;
+  bottom: 0.75rem;
+  width: 2px;
+  background: linear-gradient(to bottom, var(--ms-blue-700), var(--ms-teal-300));
+  opacity: 0.5;
+  border-radius: 2px;
+}
+/**
+ * An item is its own positioning context — it has to be, for a node to sit
+ * beside its own row rather than beside the list. But that moves the node's
+ * origin from the list's left edge to the item's, which is already the
+ * `padding-left` in: without stepping back out, every node lands on top of the
+ * first word of its heading.
+ */
+.timeline > li {
+  position: relative;
+}
+.timeline > li > .timeline-node {
+  left: -2rem;
+}
+
+.timeline-node {
+  position: absolute;
+  left: 0;
+  top: 0.55rem;
+  width: 1.2rem;
+  height: 1.2rem;
+  border-radius: 9999px;
+  background: var(--surface-card);
+  border: 2px solid var(--brand-primary);
+  box-shadow: 0 0 0 4px var(--surface-canvas);
+}
+.timeline-node.is-accent { border-color: var(--brand-accent-bright); }
+.timeline-node.is-critical { border-color: var(--status-critical); }
+
+/* Assistant markdown. */
+.prose-chat p + p,
+.prose-chat p + ul,
+.prose-chat ul + p { margin-top: 0.6em; }
+.prose-chat ul { list-style: disc; padding-left: 1.3rem; }
+.prose-chat li + li { margin-top: 0.3em; }
+.prose-chat strong { font-weight: 650; color: var(--text-strong); }
+
+/* Nobody should have motion forced on them, least of all someone reading a
+   vital sign. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .tilt { transform: none !important; }
+  .ecg-draw-once,
+  .ecg-draw-loop,
+  .ecg-beat { stroke-dashoffset: 0 !important; }
+}
+
+/* ---------------------------------------------------------------------------
+   Printing an invoice
+
+   `window.print()` used to hand the printer the whole administrator's screen:
+   the shell, the navigation, every other invoice in the table and the shadow of
+   the panel around the one that was open. What came out was three pages of
+   application with a bill somewhere inside it — not something anyone could give
+   a patient.
+
+   The visibility trick rather than display:none on ancestors: the open invoice
+   lives inside a table cell, and hiding its ancestors would take the invoice
+   with it. Making everything invisible and then turning the invoice back on
+   leaves the layout intact and prints one thing.
+   --------------------------------------------------------------------------- */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .invoice-print,
+  .invoice-print *,
+  .record-print,
+  .record-print * {
+    visibility: visible;
+  }
+
+  .invoice-print,
+  .record-print {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    padding: 0;
+    background: #fff;
+    color: #000;
+  }
+
+  /* The row expands under an animated height with overflow hidden, which on
+     paper means a long invoice is cut off at the fold instead of continuing. */
+  .invoice-print,
+  .invoice-print *,
+  .record-print,
+  .record-print * {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Controls are not part of a bill. */
+  .no-print {
+    display: none !important;
+  }
+
+  /* A printed bill needs a letterhead the screen does not: on screen the row
+     above already says whose invoice this is, and on paper there is no row. */
+  .print-only {
+    display: block !important;
+  }
+
+  @page {
+    margin: 16mm;
+  }
+}
+
+/* Hidden on screen; the print block above turns it on. */
+.print-only {
+  display: none;
+}
+
+/* ---------------------------------------------------------------------------
+   In-page section navigation
+
+   Two sticky bars can be above a section: the shell's header, and the section
+   row itself. Both publish their height at runtime — the header's is not a
+   constant, because the inactivity warning lives inside it and comes and goes.
+   Anything that scrolls a heading into view has to clear both, or the heading
+   somebody just asked for arrives underneath the thing they clicked.
+   --------------------------------------------------------------------------- */
+html {
+  scroll-padding-top: calc(var(--topbar-h, 64px) + var(--section-nav-h, 0px) + 16px);
+}
+
+.scroll-section {
+  scroll-margin-top: calc(var(--topbar-h, 64px) + var(--section-nav-h, 0px) + 16px);
+}
+
+/* The section row scrolls sideways on a phone. The scrollbar is suppressed
+   because the edge fades already say the row continues, and a horizontal
+   scrollbar under a 36px control is most of a 36px control. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   The landing story's heartbeat
+
+   The one thing on that page that runs on a clock rather than on the scroll.
+   A pulse that stops when you stop scrolling is not a pulse — it is a slider —
+   and act one's whole sentence is that something is alive.
+
+   Sixty a minute, which is a two-second cycle. The rings leave on a stagger so
+   the beat has a shape rather than a flash.
+   --------------------------------------------------------------------------- */
+@keyframes story-beat {
+  0%, 62%, 100% { transform: scale(1); }
+  8% { transform: scale(1.22); }
+  20% { transform: scale(1); }
+  30% { transform: scale(1.1); }
+}
+
+@keyframes story-ring {
+  0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0.65; }
+  70%, 100% { transform: translate(-50%, -50%) scale(3.4); opacity: 0; }
+}
+
+.story-beat {
+  animation: story-beat 2s ease-in-out infinite;
+}
+
+.story-ring {
+  animation: story-ring 2s ease-out infinite;
+}
+
+.story-ring-late {
+  animation-delay: 0.35s;
+}
+
+/* Somebody who has asked for less motion gets a still, lit point rather than a
+   beating one — the shape survives, the movement does not. */
+@media (prefers-reduced-motion: reduce) {
+  .story-beat,
+  .story-ring {
+    animation: none;
+  }
+  .story-ring {
+    opacity: 0.25;
+    transform: translate(-50%, -50%) scale(2);
+  }
+}
+
+/* The scan line on the hero's document panel: one sweep, forever, over a
+   72px window. It is the only looping animation in the hero's HTML — the
+   building itself does its moving on the GPU. */
+@keyframes story-scan {
+  0%, 100% { top: 6%; }
+  50% { top: 88%; }
+}
+.story-scan {
+  animation: story-scan 2.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .story-scan { animation: none; top: 46%; }
+}
+
+/* ---------------------------------------------------------------------------
+   Landing bands: sections that keep their own light or dark, whatever the
+   site theme is doing.
+
+   The landing page alternates dark and light down its length, and that
+   alternation is the design — it is what stops eight sections of cards reading
+   as one long scroll. So the bands cannot follow the theme toggle; a reader in
+   night mode would get seven dark sections and no rhythm at all.
+
+   Rather than rewriting every component's classes with literal colours, each
+   band redeclares the *tokens*. `@theme inline` means the utilities resolve
+   `--surface-canvas`, `--text-strong` and the rest at use time, and custom
+   properties cascade — so `bg-canvas` and `text-muted` inside a band come out
+   in that band's palette without the component knowing a band exists. Which is
+   the point: the sections stay readable, and the rhythm lives in one place.
+
+   Both blocks are complete rather than partial. A band that redefined only its
+   background would leave the text colour to whatever the page outside it
+   happened to be, which is exactly the unreadable-artifact bug.
+   --------------------------------------------------------------------------- */
+.band-light {
+  --brand-primary: var(--ms-blue-700);
+  --brand-primary-hover: var(--ms-blue-500);
+  --brand-primary-active: var(--ms-blue-900);
+  --brand-primary-soft: #e6eefb;
+  --brand-primary-on: #ffffff;
+  --brand-navy-deep: var(--ms-blue-900);
+  --brand-accent: #0b7f8b;
+  --brand-accent-light: #5eead4;
+  --brand-accent-soft: #dcf6f6;
+  --ms-gradient-soft: linear-gradient(135deg, rgb(11 63 168 / 0.08), rgb(20 196 193 / 0.1));
+
+  --surface-canvas: #ffffff;
+  --surface-card: #f6f9fc;
+  --surface-sunken: #eef4fa;
+  --surface-raised: #e2ecf7;
+  --surface-glass: rgb(255 255 255 / 0.72);
+
+  --text-strong: #0e1b33;
+  --text-muted: #5c6b85;
+  --text-faint: #93a1b8;
+
+  --line: #dce6f2;
+  --line-strong: #c2d1e6;
+
+  --status-stable: #0e9f6e;
+  --status-stable-soft: #e2f7ee;
+  --status-warning: #b45309;
+  --status-warning-soft: #fef3dd;
+  --status-critical: #d13438;
+  --status-critical-soft: #fdeaea;
+  --status-info: #1173a3;
+  --status-info-soft: #e2f0fa;
+
+  --shadow-sm: 0 1px 2px rgb(10 46 122 / 0.06), 0 1px 3px rgb(10 46 122 / 0.08);
+  --shadow-card: 0 1px 2px rgb(10 46 122 / 0.06), 0 8px 24px -8px rgb(10 46 122 / 0.18);
+  --shadow-overlay: 0 2px 6px rgb(10 46 122 / 0.08), 0 16px 40px -12px rgb(10 46 122 / 0.28);
+  --shadow-float: 0 24px 56px -16px rgb(10 46 122 / 0.32);
+  --glow-a: rgb(20 98 196 / 0.12);
+  --glow-b: rgb(20 196 193 / 0.14);
+
+  background: var(--surface-canvas);
+  color: var(--text-strong);
+}
+
+.band-dark {
+  --brand-primary: #6f9dff;
+  --brand-primary-hover: #8fb6ff;
+  --brand-primary-active: var(--ms-blue-700);
+  --brand-primary-soft: #16295c;
+  --brand-primary-on: #061024;
+  --brand-navy-deep: #050d20;
+  --brand-accent: #5eead4;
+  --brand-accent-light: #8ff5e6;
+  --brand-accent-soft: #0d3742;
+  --ms-gradient-soft: linear-gradient(135deg, rgb(111 157 255 / 0.14), rgb(20 196 193 / 0.14));
+
+  --surface-canvas: #061024;
+  --surface-card: #0d1b3a;
+  --surface-sunken: #122349;
+  --surface-raised: #1a2e5c;
+  --surface-glass: rgb(13 27 58 / 0.72);
+
+  --text-strong: #eaf1fb;
+  --text-muted: #9db0cc;
+  --text-faint: #6b7f9e;
+
+  --line: #1b2c52;
+  --line-strong: #2b4272;
+
+  --status-stable: #34d399;
+  --status-stable-soft: #0b2f24;
+  --status-warning: #fbbf24;
+  --status-warning-soft: #3a2a08;
+  --status-critical: #ff8085;
+  --status-critical-soft: #451418;
+  --status-info: #7cc0ea;
+  --status-info-soft: #0c2c44;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 12px 32px -12px rgb(0 0 0 / 0.6);
+  --shadow-overlay: 0 16px 40px -12px rgb(0 0 0 / 0.7);
+  --shadow-float: 0 24px 56px -16px rgb(0 0 0 / 0.8);
+  --glow-a: rgb(11 63 168 / 0.35);
+  --glow-b: rgb(20 196 193 / 0.16);
+
+  background: var(--surface-canvas);
+  color: var(--text-strong);
+}
+
+/* The brand ramp runs deep blue, which all but disappears on a dark band.
+   Inside one it takes the light ramp instead — the same swap `.dark` makes,
+   applied per band rather than per page. */
+.band-dark .text-gradient-brand {
+  background: linear-gradient(135deg, #8fb6ff 0%, #6ad6e6 55%, #5eead4 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+/* ---------------------------------------------------------------------------
+   The landing's bar: dark always, and a dark of its own.
+
+   It floats over seven bands that alternate light and dark, so it has to read
+   as a separate layer above all of them. On the light bands that is free. On
+   the dark ones it is not: the sections sit at #061024 and the hero's sky
+   opens at #0A2A63, so a bar sharing either value would dissolve into
+   whichever it happened to be over.
+
+   #0F1D42 sits deliberately between them — lighter than the sections, darker
+   and flatter than the hero — so it separates in both directions rather than
+   only one. The hairline under it does the rest, and is bright enough to be
+   the edge even where the two tones come close.
+
+   No backdrop blur. The bar is opaque, so a blur would buy nothing visible
+   while making the browser filter a full-width strip on every scrolled frame —
+   which is the cost the section rows were already carrying and which we took
+   off them.
+   --------------------------------------------------------------------------- */
+.nav-band {
+  background: linear-gradient(180deg, #12224a 0%, #0f1d42 100%);
+  border-bottom: 1px solid rgb(126 180 255 / 0.16);
+}
+.nav-band.is-scrolled {
+  border-bottom-color: rgb(126 180 255 / 0.26);
+  box-shadow: 0 10px 30px -18px rgb(0 0 0 / 0.85);
+}

@@ -1,0 +1,258 @@
+"""SMTP transport (spec §32).
+
+Delivery only. What to say lives in ``notifications/templates.py``; who to say
+it to lives in the notification rows. This module's whole job is to get one
+message onto a mail server, and to be honest about whether it did.
+
+**Nothing here logs a credential.** The password never appears in a log line, an
+exception message, or an error returned upward. SMTP servers quote the command
+they rejected back at you, so a naive ``str(exc)`` on an authentication failure
+can echo the login exchange — every error is therefore summarised by *type*,
+never by the server's own text.
+
+**Blocking work runs off the event loop.** ``smtplib`` is synchronous, and a
+25-second SMTP timeout inside an async handler would stall every other request
+on that worker. ``asyncio.to_thread`` keeps the loop free.
+
+No third-party mailer is used. The standard library covers SMTP over STARTTLS
+with an App Password, which is exactly the deployment the spec describes, and a
+dependency that exists only to wrap ``smtplib`` is a dependency that has to be
+kept current for no benefit.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import smtplib
+import ssl
+from dataclasses import dataclass
+from email.message import EmailMessage
+from email.utils import formataddr, formatdate, make_msgid, parseaddr
+
+from app.core.config import settings
+from app.core.logging import logger
+from app.services import email_links, email_templates
+
+#: Long enough for a slow handshake, short enough that a dead server does not
+#: hold a dispatcher slot for a minute.
+TIMEOUT_SECONDS = 20
+
+
+@dataclass(frozen=True)
+class Delivery:
+    """The outcome of one send attempt.
+
+    ``retryable`` is the part that matters to the caller: a refused mailbox will
+    be refused again forever, while a connection reset probably will not be.
+    Retrying the first wastes work and delays the queue behind it; giving up on
+    the second loses a message that would have gone through.
+    """
+
+    sent: bool
+    #: A short, credential-free summary. Safe to store on the notification row.
+    detail: str = ""
+    retryable: bool = False
+
+
+def is_configured() -> tuple[bool, str]:
+    if not settings.EMAIL_ENABLED:
+        return False, "email delivery is disabled on this server (EMAIL_ENABLED=false)"
+    if not settings.SMTP_USER or not settings.SMTP_PASSWORD:
+        return False, "no SMTP credentials are configured"
+    return True, ""
+
+
+def _build(
+    to: str,
+    subject: str,
+    text_body: str,
+    html_body: str | None,
+    *,
+    unsubscribe: str | None = None,
+) -> EmailMessage:
+    """Assemble a message with a plain-text part and an optional HTML one.
+
+    Plain text is set first and is never omitted. It is what a screen reader, a
+    text-only client and a spam filter all read, and an HTML-only message is
+    both less accessible and more likely to be junked.
+
+    **The headers below are most of what decides where this lands.** A filter
+    reads them before anybody reads the words: a message with no `Message-ID`,
+    no `Date`, and no way to stop receiving it looks like something assembled
+    by a script rather than sent by a service, because usually it is.
+
+    `From` is built from the authenticated account when `SMTP_FROM` names a
+    different address. That alignment is what lets SPF and DKIM pass — a `From`
+    the sending server is not authorised for is the single fastest way into a
+    spam folder, and it is worth overriding a misconfiguration to avoid.
+    """
+    message = EmailMessage()
+
+    name, address = parseaddr(settings.SMTP_FROM)
+    sender = settings.SMTP_USER or address
+    if address and sender and address.lower() != sender.lower():
+        # Say so once rather than silently sending mail that will be junked.
+        logger.warning(
+            "smtp_from_not_aligned",
+            configured=address,
+            authenticated=sender,
+            detail="using the authenticated address so SPF and DKIM pass",
+        )
+    message["From"] = formataddr((name or "MediNova AI", sender or address))
+    message["To"] = to
+    message["Subject"] = subject
+
+    # A stable identity for this message. Some servers add one; a message that
+    # reaches a filter without it is treated as less trustworthy, and threading
+    # in the recipient's client depends on it.
+    message["Message-ID"] = make_msgid(domain=(sender or "localhost").split("@")[-1])
+    message["Date"] = formatdate(localtime=True)
+
+    # Somewhere a reply can go. A no-reply address that bounces is a negative
+    # signal and, more to the point, a person who replies to a hospital's email
+    # deserves to reach the hospital.
+    if sender:
+        message["Reply-To"] = sender
+
+    # Not a reply, and not something to auto-reply to: this stops a vacation
+    # responder looping against the mailbox.
+    message["Auto-Submitted"] = "auto-generated"
+
+    if unsubscribe:
+        # What Gmail and Yahoo have required of bulk senders since 2024, and a
+        # positive signal for everyone else. Both forms are given: the URL for
+        # one-click, and a mailto for clients that only understand that.
+        #
+        # Only on mail somebody may actually switch off. A verification code or
+        # a break-glass notice carries none of this, because offering to stop
+        # sending those would be an offer this system will not honour.
+        message["List-Unsubscribe"] = f"<{unsubscribe}>"
+        message["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
+
+    message.set_content(text_body)
+    if html_body:
+        message.add_alternative(html_body, subtype="html")
+    return message
+
+
+def _send_blocking(message: EmailMessage) -> Delivery:
+    """One synchronous send. Runs in a worker thread."""
+    context = ssl.create_default_context()
+    try:
+        if settings.SMTP_SECURE:
+            server: smtplib.SMTP = smtplib.SMTP_SSL(
+                settings.SMTP_HOST, settings.SMTP_PORT, timeout=TIMEOUT_SECONDS, context=context
+            )
+        else:
+            server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=TIMEOUT_SECONDS)
+        with server:
+            if not settings.SMTP_SECURE:
+                server.starttls(context=context)
+            server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+            server.send_message(message)
+        return Delivery(sent=True)
+
+    except smtplib.SMTPAuthenticationError:
+        # Deliberately not including the server's reply: it quotes the login
+        # exchange back, which is the most likely way a password reaches a log.
+        return Delivery(False, "authentication rejected", retryable=False)
+    except smtplib.SMTPRecipientsRefused:
+        return Delivery(False, "recipient refused", retryable=False)
+    except smtplib.SMTPSenderRefused:
+        return Delivery(False, "sender refused", retryable=False)
+    except smtplib.SMTPResponseException as exc:
+        # Must precede the OSError clause below: `smtplib.SMTPException` is a
+        # subclass of OSError, so catching OSError first would classify every
+        # response — including a permanent 5xx refusal — as retryable, and a
+        # refused message would clog the queue for hours instead of failing.
+        #
+        # 4xx is "try later" by RFC; 5xx is a refusal that will not change.
+        return Delivery(
+            False,
+            f"server returned {exc.smtp_code}",
+            retryable=400 <= exc.smtp_code < 500,
+        )
+    except (smtplib.SMTPConnectError, smtplib.SMTPServerDisconnected, TimeoutError, OSError) as exc:
+        # Transient by nature — the server was unreachable, not unwilling.
+        return Delivery(False, f"connection failed ({type(exc).__name__})", retryable=True)
+    except Exception as exc:  # pragma: no cover — defensive
+        return Delivery(False, f"unexpected error ({type(exc).__name__})", retryable=True)
+
+
+async def send_or_log_code(*, to: str, subject: str, text_body: str, code: str) -> Delivery:
+    """Send a one-time code, or — off production, with no transport — log it.
+
+    A verification code that cannot be delivered is an account that cannot be
+    finished. The condition is *delivery failed*, not *delivery unconfigured* —
+    a relay that is configured and refusing (a Gmail account password where an
+    app password is required, say) strands a developer exactly as completely as
+    no relay at all, and is the harder of the two to diagnose from a form that
+    simply never proceeds.
+
+    Off production only. In production a failed send stays failed: an operator
+    whose relay is rejecting mail has a problem to fix, not a code to leak into
+    a log aggregator.
+
+    The code is logged alone, without the message body: the body is branded
+    prose that says nothing, while the pairing of a code with the address it
+    was minted for is the whole secret.
+    """
+    # No unsubscribe on a code: it is the only way into the account, and
+    # offering to stop sending it is an offer nothing here will honour.
+    delivery = await send(to=to, subject=subject, text_body=text_body, allow_unsubscribe=False)
+    if not delivery.sent and not settings.is_production:
+        logger.warning(
+            "email_code_not_delivered_logged_instead",
+            to=to,
+            code=code,
+            reason=delivery.detail,
+        )
+    return delivery
+
+
+async def send(
+    *,
+    to: str,
+    subject: str,
+    text_body: str,
+    html_body: str | None = None,
+    allow_unsubscribe: bool = True,
+) -> Delivery:
+    """Deliver one message, or explain why not.
+
+    Never raises. A caller sending a notification must not have its own
+    operation fail because a mail server was busy.
+    """
+    ready, reason = is_configured()
+    if not ready:
+        return Delivery(False, reason, retryable=False)
+
+    # Minted here rather than passed in. Every caller knows the address; only
+    # this function knows it is about to become an email, and a dozen call
+    # sites each remembering to build a URL is a dozen chances to forget.
+    #
+    # `allow_unsubscribe` is false for the two kinds of message that offering
+    # to stop would be a lie about: a one-time code, which is the only way into
+    # the account, and a break-glass or security notice, which no preference
+    # switches off.
+    link = email_links.unsubscribe_url(to) if allow_unsubscribe else None
+    if link:
+        # The plain part gets it too. A filter reads both, and a reader on a
+        # text-only client is exactly the one least able to find another way to
+        # stop the mail.
+        text_body = f"{text_body}\n\nStop these emails: {link}"
+    if html_body:
+        html_body = email_templates.fill_unsubscribe(html_body, link)
+
+    message = _build(to, subject, text_body, html_body, unsubscribe=link)
+    delivery = await asyncio.to_thread(_send_blocking, message)
+
+    if delivery.sent:
+        # The recipient is logged; the subject and body are not. A subject line
+        # can carry clinical context, and logs are not inside the access-control
+        # boundary the rest of the system maintains.
+        logger.info("email_sent", to=to)
+    else:
+        logger.warning("email_failed", to=to, detail=delivery.detail, retryable=delivery.retryable)
+
+    return delivery

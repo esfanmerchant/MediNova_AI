@@ -1,0 +1,18 @@
+{
+  "name": "medinova-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MediNova AI — Smart Healthcare Management System",
+  "scripts": {
+    "dev": "npm --prefix client run dev",
+    "dev:api": "api\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --reload --port 4000 --app-dir api",
+    "build": "npm --prefix client run build",
+    "lint": "npm --prefix client run lint",
+    "typecheck": "npm --prefix client run typecheck",
+    "verify": "npm run typecheck && npm run lint && npm run test && npm run build",
+    "test": "npm --prefix client run test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "mcpServers": {
+    "supabase": {
+      "//": "Windows: npx must be launched through cmd /c, otherwise the server fails to spawn.",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--read-only",
+        "--project-ref=zvnfcqoklubcycweutmd"
+      ],
+      "env": {
+        "SUPABASE_ACCESS_TOKEN": "${SUPABASE_ACCESS_TOKEN}"
+      }
+    },
+    "stitch": {
+      "//": "Google Stitch — UI design generation. The key is read from the environment, never stored here: this file is committed, and a header is as much a secret as an env var.",
+      "type": "http",
+      "url": "https://stitch.googleapis.com/mcp",
+      "headers": {
+        "X-Goog-Api-Key": "${STITCH_API_KEY}"
+      }
+    }
+  }
+}
