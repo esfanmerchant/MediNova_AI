@@ -108,8 +108,35 @@ else:
         "pool_pre_ping": True,
     }
 
+#: Where the engine points when nothing configured a database.
+#:
+#: ``create_async_engine`` parses its URL immediately, so an unset DATABASE_URL
+#: raised right here, at import. That import is ``tests/conftest.py``'s, which
+#: meant it took down the *entire* suite rather than the tests that actually
+#: need a database — and those are already guarded by ``requires_db``, which
+#: exists precisely because this application is meant to be importable without
+#: one. It is why CI, which deliberately holds no connection string, could not
+#: collect a single API test.
+#:
+#: Nothing connects to this. Anything that tried would fail on the name.
+_UNCONFIGURED = "postgresql+asyncpg://unconfigured/none"
+
+_url = settings.async_database_url
+
+if not _url:
+    if settings.is_production:
+        # Not a fallback but a fault. An API that boots without a database is
+        # one that answers its first real request with a 500, long after the
+        # deploy that caused it looked successful.
+        raise RuntimeError(
+            "DATABASE_URL is not set. Refusing to start: the API cannot serve "
+            "anything without a database, and starting anyway would hide the "
+            "cause until the first request."
+        )
+    _url = _UNCONFIGURED
+
 engine = create_async_engine(
-    settings.async_database_url,
+    _url,
     echo=False,
     connect_args=_connect_args,
     **_pool,
