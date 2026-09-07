@@ -7,6 +7,7 @@ import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager, suppress
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -81,6 +82,30 @@ API_CSP = (
 PERMISSIONS_POLICY = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
 
 
+def _is_public_origin(origin: str) -> bool:
+    """Whether this could actually be reached from somebody's inbox.
+
+    An unsubscribe or verification link is only as good as the address it points
+    at, and in production a dead one is worse than no link at all: a reader who
+    presses it and gets nothing reports the message instead.
+
+    This used to look only for ``localhost``, which is the mistake you make on a
+    laptop. The mistake you make on a deploy is different — a value nobody
+    filled in. A placeholder left in an environment variable is not localhost,
+    passed the old check silently, and produced links reading
+    ``PASTE_CLIENT_URL_HERE/verify-email?token=…`` in real mail. The application
+    otherwise looked completely healthy, because nothing else needs this.
+
+    So the question asked here is the useful one: is this a URL at all, and is
+    its host one the outside world could resolve?
+    """
+    parsed = urlsplit(origin)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return False
+    host = parsed.hostname.lower()
+    return host not in ("localhost", "127.0.0.1", "::1") and not host.endswith(".local")
+
+
 async def _ensure_storage_buckets() -> None:
     """Make sure every bucket the application writes to exists, and is private.
 
@@ -125,13 +150,14 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
         await _ensure_storage_buckets()
     if not settings.ai_configured:
         logger.warning("ai_not_configured", detail="chatbot and symptom analysis disabled")
-    # An unsubscribe link is only as good as the address it points at. In
-    # production a localhost one is a dead link in real mail — which is worse
-    # than no link, because a reader who presses it and gets nothing reports
-    # the message instead.
-    if settings.is_production and "localhost" in settings.CLIENT_ORIGIN:
+    # Loud, because nothing else in the application will notice. Every other
+    # part of a deployment with a bad CLIENT_ORIGIN looks perfectly healthy —
+    # sign-in works, pages load — and the damage is confined to links in mail
+    # nobody here will ever open.
+    if settings.is_production and not _is_public_origin(settings.CLIENT_ORIGIN):
         logger.error(
-            "client_origin_is_localhost",
+            "client_origin_is_not_a_public_url",
+            value=settings.CLIENT_ORIGIN,
             hint="set CLIENT_ORIGIN to the public URL; email links point at it",
         )
     if not settings.push_enabled:
