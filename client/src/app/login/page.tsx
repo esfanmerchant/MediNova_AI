@@ -22,7 +22,7 @@ import { AuthPanel } from "@/components/AuthPanel";
 import { Icon } from "@/components/Icon";
 import { AUTH_LINK, AuthHeading, AuthNotice, MarkBadge, PasswordField } from "@/components/auth/parts";
 import { Segmented } from "@/components/forms";
-import { Button, Field, Input, Loading, cx } from "@/components/ui";
+import { Button, Checkbox, Field, Input, Loading, cx } from "@/components/ui";
 import { ApiError, auth, type DeviceClass } from "@/lib/api";
 import { useTr } from "@/lib/lang";
 import { homePathFor, useSession } from "@/lib/session";
@@ -66,11 +66,12 @@ function LoginForm() {
   // opens, so an existing terminal session keeps its two minutes until then —
   // one more sign-out, and no more after that.
   //
-  // There is no picker: every sign-in through this form claims a personal
-  // device. The server still tiers by class — a shared terminal gets two
-  // minutes — but nothing here ever asks for that tier, so in practice every
-  // session opened from the login page is a personal one.
-  const deviceClass: DeviceClass = "PERSONAL";
+  // Personal unless somebody says otherwise, and the checkbox below is the
+  // otherwise. It defaults to unticked because most sign-ins are somebody's
+  // own phone, and a default that logs a patient out every two minutes is the
+  // one people complain about rather than the one they are protected by.
+  const [shared, setShared] = useState(false);
+  const deviceClass: DeviceClass = shared ? "SHARED_TERMINAL" : "PERSONAL";
 
   const reason = params.get("reason");
   const reasons: Record<string, string> = {
@@ -302,6 +303,33 @@ function LoginForm() {
             </Link>
           </p>
         </div>
+
+        {/* The one thing the server cannot work out for itself.
+            ------------------------------------------------------
+            A reception desk and a doctor's own phone send identical requests,
+            and the difference between them is the whole reason the session
+            rules are tiered: the next person to touch a ward terminal is a
+            stranger, and the next person to touch a phone is its owner. Only
+            the person signing in knows which they are at.
+
+            Ticked, the session ends after two minutes of inactivity instead of
+            lasting a week — so it is worded as the fact ("this is a shared
+            computer") with the consequence under it, not as a setting. */}
+        <Checkbox
+          checked={shared}
+          onChange={(event) => setShared(event.target.checked)}
+          label={
+            <span>
+              {tr("This is a shared computer", "Yeh mushtarka computer hai")}
+              <span className="mt-0.5 block text-[13px] text-muted">
+                {tr(
+                  "Signs out after two minutes of inactivity.",
+                  "Do minute ghair-faal rehne par khud sign out ho jayega.",
+                )}
+              </span>
+            </span>
+          }
+        />
 
 
         <Button type="submit" size="lg" className="btn-shine w-full" loading={submitting}>
