@@ -107,6 +107,17 @@ ignore = [
 asyncio_mode = "auto"
 testpaths = ["tests"]
 filterwarnings = ["ignore::DeprecationWarning"]
+# Several test modules import each other through `tests.` — shared fixtures from
+# `tests.conftest`, and the route inventory in `tests.test_access_control_review`
+# that two other files check against. `tests` has no `__init__.py`, so it is
+# importable only when this directory is on the path.
+#
+# `python -m pytest` puts it there as a side effect of `-m`, which hid this for
+# as long as that was the only way anybody ran the suite. Bare `pytest` — what
+# CI runs, and what anybody cloning this repository would type — does not, and
+# collection failed before a single test executed. Saying it here makes the
+# suite independent of how it was invoked.
+pythonpath = ["."]
 
 [tool.mypy]
 python_version = "3.13"
