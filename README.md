@@ -22,11 +22,9 @@ append-only audit trail.
 | Client | Next.js App Router · React · TypeScript · Tailwind, in `client/` |
 | Data | Supabase Postgres (asyncpg over the transaction pooler) |
 | Auth | Custom: httpOnly cookie JWT + server-side session rows, scrypt hashing |
-| Storage | Supabase Storage, private buckets with short-lived signed URLs |
+| Stor age | Supabase Storage, private buckets with short-lived signed URLs |
 | OCR | Gemini vision (with consent) · PaddleOCR PP-OCRv5 locally otherwise |
-| AI | Google Gemini — vision extraction, chatbot, symptom triage |
-| Tests | pytest + httpx TestClient · Vitest + Testing Library |
-| Security | Clinical free text sealed at rest · CSP on both halves · hash-chained audit log |
+| Aurity | Clinical free text sealed at rest · CSP on both halves · hash-chained audit log |
 
 Supabase supplies the database and file storage. It does **not** supply
 authentication: Supabase Auth has no idle-timeout concept, and R8 requires the

@@ -233,11 +233,15 @@ export function TimeOffCard() {
                       <p className="text-sm text-muted">{entry.reason}</p>
                     )}
                   </div>
-                  <Badge tone={phaseBadge[phase].tone}>{phaseBadge[phase].text}</Badge>
-                  <Button variant="ghost" className="ml-auto" onClick={() => void remove(entry.id)}>
-                    <Icon name="delete" className="text-[20px]" />
-                    Remove
-                  </Button>
+                  {/* Both on their own line below `sm`, rather than beside a
+                      date they would otherwise squeeze into two. */}
+                  <div className="flex w-full items-center justify-end gap-2 sm:ml-auto sm:w-auto">
+                    <Badge tone={phaseBadge[phase].tone}>{phaseBadge[phase].text}</Badge>
+                    <Button variant="ghost" onClick={() => void remove(entry.id)}>
+                      <Icon name="delete" className="text-[20px]" />
+                      Remove
+                    </Button>
+                  </div>
                 </li>
               );
             })}

@@ -314,6 +314,28 @@ h3 {
 .dark .glass {
   border-color: rgb(255 255 255 / 0.1);
 }
+
+/* On a phone, glass stops being glass.
+ *
+ * The effect needs room to work: 72% opacity over a blurred backdrop reads as
+ * frosted when there is space between a panel and what is behind it. On a phone
+ * a panel covers most of the screen, so what is behind it is dense text at full
+ * contrast — and the two sets of words land on top of each other. A heading
+ * showing through a notification is not a material, it is a legibility bug.
+ *
+ * `backdrop-filter` goes with it, and not only for reading. Blurring everything
+ * behind a full-width panel is one of the more expensive things a mobile GPU
+ * can be asked to do, on the devices least able to do it.
+ *
+ * Both themes come out right because the replacement is the same token every
+ * ordinary card already uses. */
+@media (max-width: 639px) {
+  .glass {
+    background: var(--surface-card);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
 .glass-dark {
   background: rgb(255 255 255 / 0.1);
   border: 1px solid rgb(255 255 255 / 0.2);

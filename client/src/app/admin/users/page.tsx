@@ -116,7 +116,15 @@ function Person({ row, onChanged }: { row: Row; onChanged: () => void }) {
         !active && "opacity-80",
       )}
     >
-      <div className="flex flex-wrap items-center gap-3">
+      {/* On a phone the actions take their own line, and take it by rule
+          rather than by running out of room.
+          -------------------------------------------------------------
+          Wrapping got there eventually, but only after the name had been
+          squeezed into a column narrow enough to break "Esfan Mehmood
+          Merchant" across three lines while two buttons sat beside it. Giving
+          the actions the full width below `sm` hands the whole row back to the
+          name, which is the part somebody is reading. */}
+      <div className="flex flex-wrap items-start gap-3 sm:items-center">
         <Avatar name={row.name} />
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-2">
@@ -136,11 +144,11 @@ function Person({ row, onChanged }: { row: Row; onChanged: () => void }) {
             revoke your own session mid-click and, with one administrator left,
             lock the hospital out of its own admin portal. */}
         {isSelf ? (
-          <span className="mono-caps text-[11px] text-faint">
+          <span className="mono-caps w-full text-[11px] text-faint sm:w-auto">
             {tr("This is you", "Yeh aap hain")}
           </span>
         ) : (
-          <div className="flex flex-wrap items-center gap-1">
+          <div className="flex w-full flex-wrap items-center justify-end gap-1 sm:w-auto">
             {active ? (
               <Button variant="ghost" onClick={() => setSuspending((open) => !open)}>
                 {tr("Suspend", "Mo'attal karein")}
