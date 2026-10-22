@@ -48,6 +48,9 @@ function TwoFactorForm() {
   const challengeId = params.get("challenge") ?? "";
   const method = (params.get("method") === "TOTP" ? "TOTP" : "EMAIL") as TwoFactorMethod;
   const shared = params.get("shared") === "1";
+  // Which sign-in sent somebody here, so "back" returns to the same door. Only
+  // the two known values — never a path taken from the address bar.
+  const back = params.get("portal") === "admin" ? "/admin" : "/login";
 
   const [code, setCode] = useState("");
   const [backup, setBackup] = useState(false);
@@ -82,7 +85,7 @@ function TwoFactorForm() {
           )}
         />
         <Link
-          href="/login"
+          href={back}
           className="btn-gradient btn-shine flex min-h-14 w-full items-center justify-center gap-2 rounded-xl px-6 text-lg font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
           {tr("Back to sign in", "Login par wapas")}
@@ -263,7 +266,7 @@ function TwoFactorForm() {
       </div>
 
       <p className="mt-6 text-center text-sm text-muted">
-        <Link href="/login" className={AUTH_LINK}>
+        <Link href={back} className={AUTH_LINK}>
           {tr("Back to sign in", "Login par wapas")}
         </Link>
       </p>

@@ -132,7 +132,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setUser(null);
       setSession(null);
       setSecondsRemaining(null);
-      router.replace(reason ? `/login?reason=${reason}` : "/login");
+      // Back to the door they came in by. An administrator signed out of the
+      // console — or timed out of it — gets the console's own sign-in, since
+      // the public one no longer offers them a way in.
+      const door = /^\/admin(\/|$)/.test(window.location.pathname) ? "/admin" : "/login";
+      router.replace(reason ? `${door}?reason=${reason}` : door);
     },
     [router],
   );

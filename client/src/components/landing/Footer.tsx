@@ -36,7 +36,6 @@ export function Footer() {
       links: [
         { label: tr("Patients", "Mareez"), href: "/login" },
         { label: tr("Doctors", "Doctors"), href: "/login" },
-        { label: tr("Administrators", "Intezamia"), href: "/login" },
       ],
     },
     {
