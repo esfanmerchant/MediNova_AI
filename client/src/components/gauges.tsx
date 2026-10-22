@@ -15,13 +15,15 @@
  * answer.
  */
 
-import { motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { Icon } from "@/components/Icon";
+import { CountUp } from "@/components/motion";
 import { Badge, PillGroup, cx } from "@/components/ui";
 import type { Vital, VitalThreshold, VitalType } from "@/lib/api";
 import { useTr } from "@/lib/lang";
+import { EASE, TRANSITION, useCalmMotion } from "@/lib/motion";
 
 // ---------------------------------------------------------------------------
 // Shared vocabulary
@@ -162,7 +164,7 @@ export function VitalGauge({
   className?: string;
 }) {
   const tr = useTr();
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useCalmMotion();
   const state = proximity(value, type, min, max);
   const color = arcColor(state);
 
@@ -263,7 +265,15 @@ export function VitalGauge({
                 <Icon name={VITAL_ICON[type]} filled className="text-[16px]" />
               </span>
               <span className="mt-1.5 font-display text-[26px] font-bold tabular-nums text-strong">
-                {formatValue(value)}
+                {/* Counts as the arc sweeps, and rolls to each new reading.
+                    In whole numbers when the reading is whole, so a pulse of 72
+                    never passes through 35.6 on the way. */}
+                <CountUp
+                  value={value}
+                  format={(latest) =>
+                    Number.isInteger(value) ? String(Math.round(latest)) : latest.toFixed(1)
+                  }
+                />
               </span>
               <span className="mt-1 text-[11px] font-semibold text-muted">{unit}</span>
             </div>
@@ -370,6 +380,7 @@ export function VitalChart({
   className?: string;
 }) {
   const tr = useTr();
+  const calm = useCalmMotion();
   const gradientId = useId();
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [hover, setHover] = useState<number | null>(null);
@@ -557,38 +568,66 @@ export function VitalChart({
                 </g>
               ))}
 
-            {area && <path d={area} fill={`url(#${gradientId})`} />}
-            <path
+            {/* Keyed by what is drawn, so choosing another vital or another
+                range draws the line again rather than snapping it into place.
+                The area comes up underneath once the line is on its way. */}
+            {area && (
+              <motion.path
+                key={`area-${type}-${range}`}
+                d={area}
+                fill={`url(#${gradientId})`}
+                initial={calm ? false : { opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ ...TRANSITION.slow, delay: 0.35 }}
+              />
+            )}
+            <motion.path
+              key={`line-${type}-${range}`}
               d={line}
               fill="none"
               stroke="var(--brand-primary)"
               strokeWidth={2.5}
               strokeLinecap="round"
               strokeLinejoin="round"
+              initial={calm ? false : { pathLength: 0 }}
+              animate={{ pathLength: 1 }}
+              transition={{ duration: 1, ease: EASE }}
             />
 
-            {active && (
-              <line
-                x1={active.x}
-                x2={active.x}
-                y1={CHART.t}
-                y2={baseline}
-                stroke="var(--text-faint)"
-                strokeWidth={1}
-                strokeDasharray="3 4"
-              />
-            )}
+            {/* The guide follows the cursor sideways on a transform; it fades
+                in when the pointer arrives and out when it leaves. */}
+            <AnimatePresence>
+              {active && (
+                <motion.line
+                  key="guide"
+                  x1={0}
+                  x2={0}
+                  y1={CHART.t}
+                  y2={baseline}
+                  stroke="var(--text-faint)"
+                  strokeWidth={1}
+                  strokeDasharray="3 4"
+                  initial={{ opacity: 0, x: active.x }}
+                  animate={{ opacity: 1, x: active.x }}
+                  exit={{ opacity: 0 }}
+                  transition={{ opacity: TRANSITION.fast, x: { duration: 0.12, ease: EASE } }}
+                />
+              )}
+            </AnimatePresence>
 
             {points.map((point, index) => (
               <circle
-                key={point.at + index}
+                key={`${type}-${range}-${point.at}-${index}`}
                 cx={point.x}
                 cy={point.y}
-                r={hover === index ? 6 : 3.5}
+                r={3.5}
                 fill={point.flagged ? "var(--status-critical)" : "var(--surface-card)"}
                 stroke={point.flagged ? "var(--status-critical)" : "var(--brand-primary)"}
                 strokeWidth={2}
-                style={{ transition: "r 0.15s ease" }}
+                // Each reading's dot lands as the line reaches it; the one under
+                // the cursor grows, on a transform rather than its radius.
+                className={cx("chart-dot", hover === index && "is-active")}
+                style={{ animationDelay: `${(0.15 + (index / Math.max(points.length - 1, 1)) * 0.85).toFixed(3)}s` }}
               />
             ))}
 
@@ -606,28 +645,41 @@ export function VitalChart({
               ))}
           </svg>
 
-          {active && (
-            <div
-              role="tooltip"
-              className="glass pointer-events-none absolute z-10 rounded-xl px-3 py-2 text-xs"
-              style={{
-                left: `${(active.x / CHART.w) * 100}%`,
-                top: `${(active.y / CHART.h) * 100}%`,
-                transform: "translate(-50%, calc(-100% - 12px))",
-                transition: "left 0.12s ease, top 0.12s ease",
-              }}
-            >
-              <p
-                className={cx(
-                  "font-display text-base font-bold tabular-nums",
-                  active.flagged ? "text-critical" : "text-strong",
-                )}
+          <AnimatePresence>
+            {active && (
+              <motion.div
+                key="tip"
+                role="tooltip"
+                className="pointer-events-none absolute z-10"
+                style={{
+                  left: `${(active.x / CHART.w) * 100}%`,
+                  top: `${(active.y / CHART.h) * 100}%`,
+                  transition: "left 0.12s ease, top 0.12s ease",
+                }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={TRANSITION.fast}
               >
-                {formatValue(active.value)} <span className="text-xs font-semibold text-muted">{unit}</span>
-              </p>
-              <p className="whitespace-nowrap tabular-nums text-muted">{formatStamp(active.at, "7d")}</p>
-            </div>
-          )}
+                {/* The offset lives on the inner box, so the fade's own
+                    transform never fights the one that lifts it off the point. */}
+                <div
+                  className="glass rounded-xl px-3 py-2 text-xs"
+                  style={{ transform: "translate(-50%, calc(-100% - 12px))" }}
+                >
+                  <p
+                    className={cx(
+                      "font-display text-base font-bold tabular-nums",
+                      active.flagged ? "text-critical" : "text-strong",
+                    )}
+                  >
+                    {formatValue(active.value)} <span className="text-xs font-semibold text-muted">{unit}</span>
+                  </p>
+                  <p className="whitespace-nowrap tabular-nums text-muted">{formatStamp(active.at, "7d")}</p>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       )}
     </div>

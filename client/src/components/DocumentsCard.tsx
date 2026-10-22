@@ -9,7 +9,7 @@
  * copied out of the address bar stops working shortly after (conflict C8).
  */
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
 import { Fragment, useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 
 import { Icon } from "@/components/Icon";
@@ -34,6 +34,7 @@ import {
   type DocumentType,
   type MedicalDocument,
 } from "@/lib/api";
+import { SPRING, TRANSITION, useCalmMotion } from "@/lib/motion";
 import { useTr } from "@/lib/lang";
 import { useAsync } from "@/lib/useAsync";
 
@@ -115,6 +116,7 @@ export function DocumentsCard({
   description?: string;
 }) {
   const tr = useTr();
+  const calm = useCalmMotion();
   const [refresh, setRefresh] = useState(0);
   const reload = useCallback(() => setRefresh((n) => n + 1), []);
   const list = useAsync(() => documents.list({ patientId, limit: 100 }), [patientId, refresh]);
@@ -199,94 +201,110 @@ export function DocumentsCard({
             }
           />
         ) : (
-          <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {list.data.data.map((document) => (
-              <Fragment key={document.id}>
-                <li className="group hover-lift-sm pop-in flex flex-col gap-4 rounded-2xl border border-line bg-card p-5 shadow-card">
-                  <div className="flex items-start gap-3">
-                    <span
-                      aria-hidden
-                      className="bg-gradient-soft grid h-12 w-12 shrink-0 place-items-center rounded-xl text-primary"
-                    >
-                      <Icon name={iconFor(document.mimeType)} filled className="icon-wiggle text-[24px]" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p
-                        className="truncate font-display text-base font-bold text-strong"
-                        title={document.title || document.fileName}
-                      >
-                        {document.title || document.fileName}
-                      </p>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
-                        <Badge tone="info">{TYPE_LABELS[document.documentType]}</Badge>
-                        <span className="tabular-nums">{formatDate(document.createdAt)}</span>
-                        <span aria-hidden>·</span>
-                        <span className="tabular-nums">{formatSize(document.fileSize)}</span>
-                      </div>
-                      {document.uploadedBy && (
-                        <p className="mt-1 text-xs text-faint">
-                          {tr(`Uploaded by ${document.uploadedBy}`, `${document.uploadedBy} ne upload ki`)}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="mt-auto flex flex-wrap gap-2">
-                    <Button
-                      variant="secondary"
-                      disabled={opening === document.id}
-                      loading={opening === document.id}
-                      onClick={() => void open(document)}
-                    >
-                      <Icon name="visibility" className="text-[20px]" />
-                      {opening === document.id ? tr("Opening…", "Khul rahi hai…") : tr("Open", "Kholein")}
-                    </Button>
-                    {READABLE.has(document.mimeType) && (
-                      <Button
-                        variant="ghost"
-                        aria-expanded={reviewing?.id === document.id}
-                        onClick={() =>
-                          setReviewing((current) =>
-                            current?.id === document.id ? null : document,
-                          )
-                        }
-                      >
-                        <Icon name="document_scanner" className="text-[20px]" />
-                        {reviewing?.id === document.id
-                          ? tr("Hide details", "Tafseel chhupayein")
-                          : tr("Read details", "Tafseel parhein")}
-                      </Button>
-                    )}
-                    {canRemove && (
-                      <Button variant="ghost" onClick={() => void remove(document)}>
-                        <Icon name="delete" className="text-[20px]" />
-                        {tr("Remove", "Hatayein")}
-                      </Button>
-                    )}
-                  </div>
-                </li>
-
-                <AnimatePresence initial={false}>
-                  {reviewing?.id === document.id && (
+          // A document that arrives grows into its place and one that is removed
+          // shrinks out of it, while the rest of the grid slides over to close
+          // the gap. The card itself is one level in, so its own hover lift
+          // still owns its transform while the cell is being moved.
+          <LayoutGroup>
+            <ul className="stagger grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <AnimatePresence initial={false}>
+                {list.data.data.map((document) => (
+                  <Fragment key={document.id}>
                     <motion.li
-                      key={`${document.id}-review`}
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: "auto", opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.3, ease: "easeOut" }}
-                      className="col-span-full overflow-hidden"
+                      layout={calm ? false : "position"}
+                      initial={calm ? { opacity: 0 } : { opacity: 0, scale: 0.94 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={calm ? { opacity: 0 } : { opacity: 0, scale: 0.94 }}
+                      transition={calm ? TRANSITION.fast : { ...TRANSITION.base, layout: SPRING }}
                     >
-                      <OcrReview
-                        documentId={document.id}
-                        fileName={document.fileName}
-                        canConfirm={canConfirmOcr}
-                      />
+                      <div className="group hover-lift-sm flex h-full flex-col gap-4 rounded-2xl border border-line bg-card p-5 shadow-card">
+                        <div className="flex items-start gap-3">
+                          <span
+                            aria-hidden
+                            className="bg-gradient-soft grid h-12 w-12 shrink-0 place-items-center rounded-xl text-primary"
+                          >
+                            <Icon name={iconFor(document.mimeType)} filled className="icon-wiggle text-[24px]" />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p
+                              className="truncate font-display text-base font-bold text-strong"
+                              title={document.title || document.fileName}
+                            >
+                              {document.title || document.fileName}
+                            </p>
+                            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+                              <Badge tone="info">{TYPE_LABELS[document.documentType]}</Badge>
+                              <span className="tabular-nums">{formatDate(document.createdAt)}</span>
+                              <span aria-hidden>·</span>
+                              <span className="tabular-nums">{formatSize(document.fileSize)}</span>
+                            </div>
+                            {document.uploadedBy && (
+                              <p className="mt-1 text-xs text-faint">
+                                {tr(`Uploaded by ${document.uploadedBy}`, `${document.uploadedBy} ne upload ki`)}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="mt-auto flex flex-wrap gap-2">
+                          <Button
+                            variant="secondary"
+                            disabled={opening === document.id}
+                            loading={opening === document.id}
+                            onClick={() => void open(document)}
+                          >
+                            <Icon name="visibility" className="text-[20px]" />
+                            {opening === document.id ? tr("Opening…", "Khul rahi hai…") : tr("Open", "Kholein")}
+                          </Button>
+                          {READABLE.has(document.mimeType) && (
+                            <Button
+                              variant="ghost"
+                              aria-expanded={reviewing?.id === document.id}
+                              onClick={() =>
+                                setReviewing((current) =>
+                                  current?.id === document.id ? null : document,
+                                )
+                              }
+                            >
+                              <Icon name="document_scanner" className="text-[20px]" />
+                              {reviewing?.id === document.id
+                                ? tr("Hide details", "Tafseel chhupayein")
+                                : tr("Read details", "Tafseel parhein")}
+                            </Button>
+                          )}
+                          {canRemove && (
+                            <Button variant="ghost" onClick={() => void remove(document)}>
+                              <Icon name="delete" className="text-[20px]" />
+                              {tr("Remove", "Hatayein")}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
                     </motion.li>
-                  )}
-                </AnimatePresence>
-              </Fragment>
-            ))}
-          </ul>
+
+                    <AnimatePresence initial={false}>
+                      {reviewing?.id === document.id && (
+                        <motion.li
+                          key={`${document.id}-review`}
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={TRANSITION.base}
+                          className="col-span-full overflow-hidden"
+                        >
+                          <OcrReview
+                            documentId={document.id}
+                            fileName={document.fileName}
+                            canConfirm={canConfirmOcr}
+                          />
+                        </motion.li>
+                      )}
+                    </AnimatePresence>
+                  </Fragment>
+                ))}
+              </AnimatePresence>
+            </ul>
+          </LayoutGroup>
         ))}
 
       <AnimatePresence>
@@ -317,6 +335,7 @@ function Lightbox({
   onClose: () => void;
 }) {
   const tr = useTr();
+  const calm = useCalmMotion();
   const kind = previewKind(document.mimeType);
   const name = document.title || document.fileName;
 
@@ -339,15 +358,15 @@ function Lightbox({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.2 }}
+      transition={TRANSITION.base}
       onClick={onClose}
       className="fixed inset-0 z-50 flex items-center justify-center bg-navy-deep/70 p-4 backdrop-blur-sm"
     >
       <motion.div
-        initial={{ scale: 0.92, opacity: 0, y: 12 }}
-        animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ scale: 0.96, opacity: 0, y: 8 }}
-        transition={{ duration: 0.25, ease: "easeOut" }}
+        initial={calm ? { opacity: 0 } : { scale: 0.95, opacity: 0, y: 10 }}
+        animate={calm ? { opacity: 1 } : { scale: 1, opacity: 1, y: 0 }}
+        exit={calm ? { opacity: 0 } : { scale: 0.95, opacity: 0, y: 10 }}
+        transition={calm ? TRANSITION.fast : { ...SPRING, opacity: TRANSITION.base }}
         onClick={(event) => event.stopPropagation()}
         className="glass flex max-h-full w-full max-w-4xl flex-col overflow-hidden rounded-2xl"
       >

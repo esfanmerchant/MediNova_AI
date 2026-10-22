@@ -179,7 +179,7 @@ export default function TransactionsPage() {
 
   return (
     <AppShell role="ADMIN">
-      <div id="main" className="page-enter space-y-6">
+      <div id="main" className="space-y-6">
         <PageHeader
           eyebrow={tr("Administration", "Intezamia")}
           title={tr("Transactions", "Transactions")}

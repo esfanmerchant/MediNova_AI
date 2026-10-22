@@ -21,9 +21,10 @@
 import { useMemo, useState } from "react";
 
 import { Icon } from "@/components/Icon";
+import { CountUp, Progress } from "@/components/motion";
 import { Card, EmptyState, cx } from "@/components/ui";
 import { medicationReminders, type MedicationDoseToday } from "@/lib/api";
-import { useTr } from "@/lib/lang";
+import { useLang, useTr } from "@/lib/lang";
 import { useAsync } from "@/lib/useAsync";
 
 /** Minutes past midnight, now, in the browser's own clock. */
@@ -34,6 +35,7 @@ function nowMinutes(): number {
 
 export function MedicationToday() {
   const tr = useTr();
+  const lang = useLang();
   // Refreshed on return rather than on a timer: the list changes when the
   // person acts on it, and a poll would fight a half-pressed checkbox.
   const server = useAsync(() => medicationReminders.today(), [], { live: "on-return" });
@@ -84,25 +86,35 @@ export function MedicationToday() {
   const taken = doses.filter((d) => d.taken).length;
   const now = nowMinutes();
 
+  // The count rolls to its new value as a box is ticked, so the sentence and
+  // the bar under it move together with the finger that changed them.
+  const count = <CountUp value={taken} />;
+
   return (
     <Card
       title={tr("Today's medicines", "Aaj ki dawaiyan")}
-      description={tr(
-        `${taken} of ${doses.length} taken. The list starts again at midnight.`,
-        `${doses.length} mein se ${taken} li gayin. Yeh fehrist raat 12 baje se dobara shuru hoti hai.`,
-      )}
+      description={
+        lang === "ur" ? (
+          <>
+            {doses.length} mein se {count} li gayin. Yeh fehrist raat 12 baje se dobara shuru hoti hai.
+          </>
+        ) : (
+          <>
+            {count} of {doses.length} taken. The list starts again at midnight.
+          </>
+        )
+      }
       icon="pill"
       flush
     >
       {/* A progress rail rather than a number alone: the point of a checklist
           is seeing how much of it is left without counting. */}
       <div className="px-6 pb-1 pt-1">
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-sunken">
-          <div
-            className="bg-gradient-brand h-full rounded-full transition-[width] duration-500"
-            style={{ width: `${Math.round((taken / doses.length) * 100)}%` }}
-          />
-        </div>
+        <Progress
+          value={taken / doses.length}
+          className="h-1.5 w-full rounded-full bg-sunken"
+          barClassName="bg-gradient-brand"
+        />
       </div>
 
       <ul className="divide-y divide-line">
@@ -129,20 +141,22 @@ export function MedicationToday() {
                 <span
                   aria-hidden
                   className={cx(
-                    "mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md border-2 transition-colors",
+                    "mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md border-2 transition-[background-color,border-color,transform] duration-200 active:scale-90",
                     dose.taken
                       ? "border-primary bg-primary text-primary-on"
                       : "border-line-strong",
                   )}
                 >
-                  {dose.taken && <Icon name="check" className="text-[16px]" />}
+                  {dose.taken && <Icon name="check" className="pop-scale text-[16px]" />}
                 </span>
 
                 <span className="min-w-0 flex-1">
                   <span
                     className={cx(
-                      "block font-semibold text-strong",
-                      dose.taken && "line-through opacity-60",
+                      // The strike is always there and only its colour
+                      // changes, so it can fade in rather than appear.
+                      "block font-semibold text-strong line-through transition-[opacity,text-decoration-color] duration-300",
+                      dose.taken ? "opacity-60 decoration-current" : "decoration-transparent",
                     )}
                   >
                     {dose.medication}{" "}

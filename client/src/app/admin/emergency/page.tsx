@@ -17,7 +17,7 @@ export default function AdminEmergency() {
   const tr = useTr();
   return (
     <AppShell role="ADMIN">
-      <div id="main" className="page-enter">
+      <div id="main">
         <PageHeader
           eyebrow={tr("Admin portal", "Intezami portal")}
           title={tr("Emergency access", "Emergency access")}

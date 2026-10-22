@@ -54,8 +54,16 @@ const CSS = `
 :root[data-motion="reduced"] *::after {
   animation-duration: 0.01ms !important;
   animation-iteration-count: 1 !important;
+  animation-delay: 0s !important;
   transition-duration: 0.01ms !important;
   scroll-behavior: auto !important;
+}
+:root[data-motion="reduced"] .ecg-sweep-window { display: none; }
+:root[data-motion="reduced"] :is(.page-enter, .rise-in, .stagger > *, .word-mask > span,
+  .msg-in-left, .msg-in-right, .swap-in, .pop-in, .pop-scale, .tip-in, .bar-grow, .bar-grow-x,
+  .chart-dot),
+:root[data-motion="reduced"] .timeline::before {
+  animation: none !important;
 }
 `;
 

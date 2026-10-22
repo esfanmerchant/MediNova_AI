@@ -25,6 +25,7 @@
  * only ever sees, and only ever releases, a complete answer.
  */
 
+import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import {
   useCallback,
@@ -42,6 +43,8 @@ import { BookingOffer } from "@/components/BookingOffer";
 import { BookingProblem } from "@/components/BookingProblem";
 import { Icon } from "@/components/Icon";
 import { LogoMark } from "@/components/Logo";
+import { usePresenceItem } from "@/components/motion";
+import { AnimatedDrawer } from "@/components/overlays";
 import {
   Button,
   Card,
@@ -65,6 +68,7 @@ import {
   type Urgency,
 } from "@/lib/api";
 import { useTr } from "@/lib/lang";
+import { TRANSITION, prefersCalm } from "@/lib/motion";
 import { useAsync } from "@/lib/useAsync";
 import { useSpeechRecognition } from "@/lib/useSpeechRecognition";
 
@@ -222,14 +226,6 @@ function ChatMarkdown({ text }: { text: string }) {
   );
 }
 
-function prefersReducedMotion(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
-}
-
 /**
  * Reveals a validated answer a few words at a time.
  *
@@ -251,7 +247,7 @@ function StreamedText({
   onDone?: () => void;
 }) {
   const tokens = useMemo(() => text.split(/(\s+)/).filter(Boolean), [text]);
-  const instant = !animate || prefersReducedMotion() || process.env.NODE_ENV === "test";
+  const instant = !animate || prefersCalm() || process.env.NODE_ENV === "test";
   const [shown, setShown] = useState(() => (instant ? tokens.length : 0));
   const done = shown >= tokens.length;
 
@@ -495,10 +491,18 @@ export function AssistantAvatar({
   );
 }
 
-function UserMessage({ turn }: { turn: Said }) {
+/**
+ * What the patient said, arriving from their side of the thread.
+ *
+ * `arriving` is only for the bubble shown while the question is in flight.
+ * When the answer lands the same words are drawn again inside the finished
+ * turn, and sliding them in a second time would read as the message being
+ * sent twice.
+ */
+function UserMessage({ turn, arriving = false }: { turn: Said; arriving?: boolean }) {
   const tr = useTr();
   return (
-    <div className={cx("flex justify-end", turn.fresh && "pop-in")}>
+    <div className={cx("flex justify-end", arriving && "msg-in-right")}>
       <div className="max-w-[85%] space-y-2">
         {turn.imageUrl && (
           // A blob: URL from this visit; next/image cannot optimise it and
@@ -537,7 +541,7 @@ function AssistantMessage({
   onRetry?: () => void;
 }) {
   return (
-    <div className={cx("flex gap-3", turn.fresh && "pop-in")}>
+    <div className={cx("flex gap-3", turn.fresh && "msg-in-left")}>
       <AssistantAvatar className="mt-1" pulse={false} />
       <div className="min-w-0 flex-1 rounded-2xl rounded-tl-[6px] border border-line bg-card px-4 py-3.5 shadow-sm dark:bg-sunken sm:px-5">
         <AnswerBody answer={turn.answer} animate={turn.fresh} onTick={onTick} onRetry={onRetry} />
@@ -571,7 +575,7 @@ function Thinking({ withImage }: { withImage: boolean }) {
   }, [phases.length]);
 
   return (
-    <div className="pop-in flex items-center gap-3" role="status" aria-live="polite">
+    <div className="msg-in-left flex items-center gap-3" role="status" aria-live="polite">
       <AssistantAvatar />
       <div className="flex items-center gap-3 rounded-2xl rounded-tl-[6px] border border-line bg-card px-4 py-3 shadow-sm dark:bg-sunken">
         <span className="flex items-center gap-1.5" aria-hidden>
@@ -579,7 +583,10 @@ function Thinking({ withImage }: { withImage: boolean }) {
           <span className="typing-dot bg-gradient-brand h-2 w-2 rounded-full" />
           <span className="typing-dot bg-gradient-brand h-2 w-2 rounded-full" />
         </span>
-        <span className="text-sm text-muted">{tr(...phases[phase])}…</span>
+        {/* Keyed, so each new stage fades in rather than replacing the last. */}
+        <span key={phase} className="swap-in text-sm text-muted">
+          {tr(...phases[phase])}…
+        </span>
       </div>
     </div>
   );
@@ -943,12 +950,12 @@ export function AssistantChat({
             ))}
             {inFlight && (
               <li className="space-y-4">
-                <UserMessage turn={inFlight} />
+                <UserMessage turn={inFlight} arriving />
                 {busy ? (
                   <Thinking withImage={Boolean(inFlight.imageUrl)} />
                 ) : (
                   error && (
-                    <div className="pop-in flex gap-3">
+                    <div className="msg-in-left flex gap-3">
                       <AssistantAvatar className="mt-1" pulse={false} />
                       <div className="min-w-0 flex-1 rounded-2xl rounded-tl-md border border-warning/40 bg-warning-soft px-4 py-3.5">
                         <p className="flex items-center gap-2 text-sm font-semibold text-warning">
@@ -1020,13 +1027,13 @@ export function AssistantChat({
               stray tap — and they wait until the welcome screen is gone, so the
               page never offers two rows of suggestions at once. */}
           {turns.length > 0 && !question.trim() && !busy && (
-            <ul className="mb-2 flex flex-wrap gap-2">
+            <ul className="stagger mb-2 flex flex-wrap gap-2">
               {STARTERS.map(([en, ur]) => (
                 <li key={en}>
                   <button
                     type="button"
                     onClick={() => suggest(tr(en, ur))}
-                    className="group inline-flex min-h-9 items-center gap-1.5 rounded-full border border-line-strong bg-card px-3 text-[13px] font-medium text-strong transition-[background-color,border-color,transform,box-shadow] duration-200 hover:scale-[1.03] hover:border-primary/40 hover:bg-sunken hover:shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    className="group inline-flex min-h-9 items-center gap-1.5 rounded-full border border-line-strong bg-card px-3 text-[13px] font-medium text-strong transition-[background-color,border-color,transform,box-shadow] duration-200 hover:scale-[1.03] hover:border-primary/40 hover:bg-sunken hover:shadow-sm active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     <Icon
                       name="bolt"
@@ -1974,6 +1981,12 @@ function ConversationRow({
 type Mode = { kind: "chat"; sessionId: string | null } | { kind: "symptoms" };
 
 /** The assistant page's body: status gate, then the conversation workspace. */
+/** One conversation in the list: opens as it arrives, closes as it is hidden. */
+function ConversationItem({ children }: { children: ReactNode }) {
+  const presence = usePresenceItem();
+  return <motion.li {...presence}>{children}</motion.li>;
+}
+
 export function AssistantPanels({ prefill = "" }: { prefill?: string } = {}) {
   const tr = useTr();
   const status = useAsync(() => assistantApi.status(), []);
@@ -1991,6 +2004,14 @@ export function AssistantPanels({ prefill = "" }: { prefill?: string } = {}) {
   const [added, setAdded] = useState<Record<string, { turns: Turn[]; updatedAt: string }>>({});
   const [mode, setMode] = useState<Mode>({ kind: "chat", sessionId: null });
   const [drawer, setDrawer] = useState(false);
+  /**
+   * Counts the times the patient chose somewhere else to be — another
+   * conversation, a new one, the symptom check — which is what the panel
+   * cross-fades on. Not the session id: a new conversation is given its id
+   * when its first answer arrives, and fading the thread out at that moment
+   * would hide the answer it had just received.
+   */
+  const [view, setView] = useState(0);
   /**
    * Names the patient typed and rows they pushed out of the way, for this visit
    * only. The API has no rename and no delete for assistant history, so neither
@@ -2073,6 +2094,7 @@ export function AssistantPanels({ prefill = "" }: { prefill?: string } = {}) {
 
   const openChat = (sessionId: string | null) => {
     setMode({ kind: "chat", sessionId });
+    setView((current) => current + 1);
     setDrawer(false);
   };
 
@@ -2092,6 +2114,7 @@ export function AssistantPanels({ prefill = "" }: { prefill?: string } = {}) {
           aria-pressed={mode.kind === "symptoms"}
           onClick={() => {
             setMode({ kind: "symptoms" });
+            setView((current) => current + 1);
             setDrawer(false);
           }}
           className={cx(
@@ -2123,19 +2146,21 @@ export function AssistantPanels({ prefill = "" }: { prefill?: string } = {}) {
           </p>
         )}
         <ul className="space-y-0.5">
-          {conversations?.map((conversation) => (
-            <li key={conversation.sessionId}>
-              <ConversationRow
-                conversation={conversation}
-                current={mode.kind === "chat" && mode.sessionId === conversation.sessionId}
-                onOpen={() => openChat(conversation.sessionId)}
-                onRename={(title) =>
-                  setRenamed((current) => ({ ...current, [conversation.sessionId]: title }))
-                }
-                onHide={() => setHidden((current) => [...current, conversation.sessionId])}
-              />
-            </li>
-          ))}
+          <AnimatePresence initial={false}>
+            {conversations?.map((conversation) => (
+              <ConversationItem key={conversation.sessionId}>
+                <ConversationRow
+                  conversation={conversation}
+                  current={mode.kind === "chat" && mode.sessionId === conversation.sessionId}
+                  onOpen={() => openChat(conversation.sessionId)}
+                  onRename={(title) =>
+                    setRenamed((current) => ({ ...current, [conversation.sessionId]: title }))
+                  }
+                  onHide={() => setHidden((current) => [...current, conversation.sessionId])}
+                />
+              </ConversationItem>
+            ))}
+          </AnimatePresence>
         </ul>
 
         {hidden.length > 0 && (
@@ -2160,18 +2185,18 @@ export function AssistantPanels({ prefill = "" }: { prefill?: string } = {}) {
       {/* Desktop sidebar */}
       <aside className="hidden w-72 shrink-0 border-r border-line/70 bg-card/70 backdrop-blur-xl lg:block">{sidebar}</aside>
 
-      {/* Mobile drawer */}
-      {drawer && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <button
-            type="button"
-            aria-label={tr("Close conversations", "Baat-cheet band karein")}
-            className="absolute inset-0 bg-black/50"
-            onClick={() => setDrawer(false)}
-          />
-          <aside className="relative h-full w-80 max-w-[85%] bg-card shadow-overlay">{sidebar}</aside>
-        </div>
-      )}
+      {/* Mobile drawer: in from the left on a spring, over a dimmed page —
+          and out the same way, rather than vanishing. */}
+      <AnimatedDrawer
+        open={drawer}
+        onClose={() => setDrawer(false)}
+        side="left"
+        width={320}
+        label={tr("Conversations", "Baat-cheet")}
+        className="max-w-[85%]"
+      >
+        {sidebar}
+      </AnimatedDrawer>
 
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-center gap-3 border-b border-line/70 bg-card/70 px-3 py-2 backdrop-blur-xl sm:px-5">
@@ -2201,21 +2226,31 @@ export function AssistantPanels({ prefill = "" }: { prefill?: string } = {}) {
         </div>
 
         <div className="min-h-0 flex-1">
-          {mode.kind === "symptoms" ? (
-            <div className="h-full overflow-y-auto p-3 sm:p-6">
-              <div className="mx-auto max-w-3xl">
-                <SymptomReview />
-              </div>
-            </div>
-          ) : (
-            <AssistantChat
-              key={mode.sessionId ?? "new"}
-              sessionId={mode.sessionId ?? undefined}
-              initialTurns={active?.turns ?? []}
-              prefill={mode.sessionId ? "" : prefill}
-              onTurn={onTurn}
-            />
-          )}
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={view}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0, transition: TRANSITION.base }}
+              exit={{ opacity: 0, transition: TRANSITION.fast }}
+              className="h-full"
+            >
+              {mode.kind === "symptoms" ? (
+                <div className="h-full overflow-y-auto p-3 sm:p-6">
+                  <div className="mx-auto max-w-3xl">
+                    <SymptomReview />
+                  </div>
+                </div>
+              ) : (
+                <AssistantChat
+                  key={mode.sessionId ?? "new"}
+                  sessionId={mode.sessionId ?? undefined}
+                  initialTurns={active?.turns ?? []}
+                  prefill={mode.sessionId ? "" : prefill}
+                  onTurn={onTurn}
+                />
+              )}
+            </motion.div>
+          </AnimatePresence>
         </div>
       </div>
     </div>

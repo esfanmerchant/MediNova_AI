@@ -10,6 +10,7 @@
  * the reader can act on.
  */
 
+import { AnimatePresence, motion } from "framer-motion";
 import { useState, type FormEvent, type ReactNode } from "react";
 
 import { Icon } from "@/components/Icon";
@@ -38,6 +39,7 @@ import {
   type TwoFactorStatus,
 } from "@/lib/api";
 import { useTr } from "@/lib/lang";
+import { SPRING, TRANSITION, useCalmMotion } from "@/lib/motion";
 import { useAsync } from "@/lib/useAsync";
 
 type Tr = (en: string, ur: string) => string;
@@ -475,12 +477,19 @@ function SessionsCard() {
   const toast = useToast();
   const state = useAsync(() => account.sessions(), []);
   const [revoking, setRevoking] = useState<string | null>(null);
+  /**
+   * Sessions signed out from here. The list drops them itself rather than
+   * reloading: a reload put the whole card back to a skeleton for a moment,
+   * when all that changed was one row — which now closes where it was.
+   */
+  const [gone, setGone] = useState<string[]>([]);
+  const calm = useCalmMotion();
 
   const revoke = async (session: ActiveSession) => {
     setRevoking(session.id);
     try {
       await account.revokeSession(session.id);
-      state.reload();
+      setGone((current) => [...current, session.id]);
       toast.show({
         tone: "success",
         title: tr("Signed that device out", "Us device ko sign out kar diya"),
@@ -509,8 +518,9 @@ function SessionsCard() {
     >
       <div className="p-6">
         <Async state={state} what={tr("Active sessions", "Chalte hue sessions")}>
-          {(sessions) =>
-            sessions.length === 0 ? (
+          {(all) => {
+            const sessions = all.filter((session) => !gone.includes(session.id));
+            return sessions.length === 0 ? (
               <EmptyState
                 icon="devices"
                 title={tr("No other sessions", "Koi doosra session nahi")}
@@ -521,56 +531,68 @@ function SessionsCard() {
               />
             ) : (
               <ul className="divide-y divide-line">
-                {sessions.map((session) => (
-                  <li key={session.id} className="flex flex-wrap items-center gap-4 py-4 first:pt-0 last:pb-0">
-                    <span
-                      aria-hidden
-                      className={cx(
-                        "grid h-11 w-11 shrink-0 place-items-center rounded-xl",
-                        session.current ? "bg-gradient-brand text-white" : "bg-sunken text-muted",
-                      )}
+                <AnimatePresence initial={false}>
+                  {sessions.map((session) => (
+                    <motion.li
+                      key={session.id}
+                      layout={calm ? false : "position"}
+                      exit={
+                        calm
+                          ? { opacity: 0 }
+                          : { opacity: 0, height: 0, paddingTop: 0, paddingBottom: 0, overflow: "hidden" }
+                      }
+                      transition={{ ...TRANSITION.base, layout: SPRING }}
+                      className="flex flex-wrap items-center gap-4 py-4 first:pt-0 last:pb-0"
                     >
-                      <Icon name={deviceIcon(session)} filled={session.current} className="text-[22px]" />
-                    </span>
-
-                    <div className="min-w-0 flex-1">
-                      <p className="flex flex-wrap items-center gap-2 text-[0.9375rem] font-semibold text-strong">
-                        {deviceName(session.userAgent, tr)}
-                        {session.current && (
-                          <Badge tone="good">
-                            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-stable" />
-                            {tr("This device", "Yehi device")}
-                          </Badge>
+                      <span
+                        aria-hidden
+                        className={cx(
+                          "grid h-11 w-11 shrink-0 place-items-center rounded-xl",
+                          session.current ? "bg-gradient-brand text-white" : "bg-sunken text-muted",
                         )}
-                      </p>
-                      <p className="mt-0.5 text-sm text-muted">
-                        <span className="mono-caps text-[0.68rem] text-faint">
-                          {tr(...DEVICE_CLASS_LABEL[session.deviceClass])}
-                        </span>
-                        {" · "}
-                        {tr("last seen", "aakhri baar")} {timeAgo(session.lastSeenAt, tr)}
-                        {session.ipAddress ? ` · ${session.ipAddress}` : ""}
-                      </p>
-                    </div>
-
-                    {session.current ? (
-                      <span className="text-sm text-faint">
-                        {tr("Sign out from the menu", "Menu se sign out karein")}
-                      </span>
-                    ) : (
-                      <Button
-                        variant="secondary"
-                        onClick={() => void revoke(session)}
-                        loading={revoking === session.id}
                       >
-                        {tr("Sign out this device", "Is device ko sign out karein")}
-                      </Button>
-                    )}
-                  </li>
-                ))}
+                        <Icon name={deviceIcon(session)} filled={session.current} className="text-[22px]" />
+                      </span>
+
+                      <div className="min-w-0 flex-1">
+                        <p className="flex flex-wrap items-center gap-2 text-[0.9375rem] font-semibold text-strong">
+                          {deviceName(session.userAgent, tr)}
+                          {session.current && (
+                            <Badge tone="good">
+                              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-stable" />
+                              {tr("This device", "Yehi device")}
+                            </Badge>
+                          )}
+                        </p>
+                        <p className="mt-0.5 text-sm text-muted">
+                          <span className="mono-caps text-[0.68rem] text-faint">
+                            {tr(...DEVICE_CLASS_LABEL[session.deviceClass])}
+                          </span>
+                          {" · "}
+                          {tr("last seen", "aakhri baar")} {timeAgo(session.lastSeenAt, tr)}
+                          {session.ipAddress ? ` · ${session.ipAddress}` : ""}
+                        </p>
+                      </div>
+
+                      {session.current ? (
+                        <span className="text-sm text-faint">
+                          {tr("Sign out from the menu", "Menu se sign out karein")}
+                        </span>
+                      ) : (
+                        <Button
+                          variant="secondary"
+                          onClick={() => void revoke(session)}
+                          loading={revoking === session.id}
+                        >
+                          {tr("Sign out this device", "Is device ko sign out karein")}
+                        </Button>
+                      )}
+                    </motion.li>
+                  ))}
+                </AnimatePresence>
               </ul>
-            )
-          }
+            );
+          }}
         </Async>
       </div>
     </Card>

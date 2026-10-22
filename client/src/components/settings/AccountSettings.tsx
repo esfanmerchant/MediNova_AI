@@ -15,7 +15,8 @@
  * work while you are already looking at the security tab.
  */
 
-import { useCallback, useSyncExternalStore } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { useCallback, useState, useSyncExternalStore } from "react";
 
 import { PageHeader } from "@/components/PageHeader";
 import { Segmented } from "@/components/forms";
@@ -25,6 +26,7 @@ import { NotificationsTab } from "@/components/settings/NotificationsTab";
 import { ProfileTab } from "@/components/settings/ProfileTab";
 import { SecurityTab } from "@/components/settings/SecurityTab";
 import { useTr } from "@/lib/lang";
+import { DURATION, EASE } from "@/lib/motion";
 import type { Role } from "@/lib/api";
 
 const TABS = ["profile", "security", "notifications", "appearance", "data"] as const;
@@ -86,6 +88,20 @@ function useTabFromHash(): [Tab, (next: Tab) => void] {
   return [tab, choose];
 }
 
+/**
+ * A panel slides in from the side of the tab that was chosen and leaves
+ * towards the other, so moving right through the row reads as moving right.
+ */
+const PANEL = {
+  enter: (direction: number) => ({ opacity: 0, x: 24 * direction }),
+  center: { opacity: 1, x: 0, transition: { duration: DURATION.base, ease: EASE } },
+  exit: (direction: number) => ({
+    opacity: 0,
+    x: -24 * direction,
+    transition: { duration: DURATION.fast, ease: EASE },
+  }),
+};
+
 export function AccountSettings({ role }: { role: Role }) {
   const tr = useTr();
   const [fragment, choose] = useTabFromHash();
@@ -94,6 +110,13 @@ export function AccountSettings({ role }: { role: Role }) {
   // empty panel. The fragment is public, so it cannot be trusted to name a tab
   // this account has.
   const tab = available.includes(fragment) ? fragment : "profile";
+  // Which way the last choice went along the row. Set where the choice is
+  // made; a tab reached from a link elsewhere simply keeps the last direction.
+  const [direction, setDirection] = useState(1);
+  const pick = (next: Tab) => {
+    setDirection(available.indexOf(next) >= available.indexOf(tab) ? 1 : -1);
+    choose(next);
+  };
 
   const labels: Record<Tab, [string, string]> = {
     profile: ["Profile", "Profile"],
@@ -126,7 +149,7 @@ export function AccountSettings({ role }: { role: Role }) {
         <Segmented
           label={tr("Settings sections", "Settings ke hisse")}
           value={tab}
-          onChange={choose}
+          onChange={pick}
           size="sm"
           className="w-max min-w-full"
           options={available.map((value) => ({
@@ -137,15 +160,26 @@ export function AccountSettings({ role }: { role: Role }) {
         />
       </div>
 
-      {/* Keyed on the tab so the panel replays its entrance: the content
+      {/* Keyed on the tab so the panel makes an entrance: the content
           changing under a stationary heading is otherwise easy to miss. */}
-      <div key={tab} role="tabpanel" aria-label={tr(...labels[tab])} className="pop-in">
-        {tab === "profile" && <ProfileTab role={role} />}
-        {tab === "security" && <SecurityTab />}
-        {tab === "notifications" && <NotificationsTab role={role} />}
-        {tab === "appearance" && <AppearanceTab />}
-        {tab === "data" && <DataTab />}
-      </div>
+      <AnimatePresence mode="wait" initial={false} custom={direction}>
+        <motion.div
+          key={tab}
+          custom={direction}
+          variants={PANEL}
+          initial="enter"
+          animate="center"
+          exit="exit"
+          role="tabpanel"
+          aria-label={tr(...labels[tab])}
+        >
+          {tab === "profile" && <ProfileTab role={role} />}
+          {tab === "security" && <SecurityTab />}
+          {tab === "notifications" && <NotificationsTab role={role} />}
+          {tab === "appearance" && <AppearanceTab />}
+          {tab === "data" && <DataTab />}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }

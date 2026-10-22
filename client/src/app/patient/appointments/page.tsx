@@ -53,6 +53,7 @@ import {
   type AvailabilityDay,
 } from "@/lib/api";
 import { useTr } from "@/lib/lang";
+import { DURATION, EASE, TRANSITION } from "@/lib/motion";
 import { useAsync, PAGE_REFRESH_MS } from "@/lib/useAsync";
 
 type Mode = { kind: "idle" } | { kind: "book" } | { kind: "move"; appointment: Appointment };
@@ -99,7 +100,7 @@ export default function PatientAppointments() {
 
   return (
     <AppShell role="PATIENT">
-      <div id="main" className="page-enter">
+      <div id="main">
         <PageHeader
           eyebrow={tr("Patient portal", "Mareez ka portal")}
           title={tr("Appointments", "Appointments")}
@@ -130,7 +131,7 @@ export default function PatientAppointments() {
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.25, ease: "easeOut" }}
+              transition={TRANSITION.base}
               className="mt-6"
             >
               <div
@@ -162,19 +163,55 @@ export default function PatientAppointments() {
           )}
         </AnimatePresence>
 
-        {mode.kind !== "idle" && (
-          <div className="pop-in mt-6">
-            <Booking
-              moving={mode.kind === "move" ? mode.appointment : null}
-              onDone={() => {
-                setCelebration(mode.kind === "move" ? "moved" : "booked");
-                setMode({ kind: "idle" });
-                reloadAll();
-              }}
-              onCancel={() => setMode({ kind: "idle" })}
-            />
-          </div>
-        )}
+        {/* The booking panel and the lists hand over to each other: one fades
+            out, then the other comes in — the lists re-entering in order when
+            a booking is done, with the new visit already among them. */}
+        <AnimatePresence mode="wait" initial={false}>
+          {mode.kind !== "idle" && (
+            <motion.div
+              key="booking"
+              initial={{ opacity: 0, y: 16, scale: 0.99 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -8, transition: TRANSITION.fast }}
+              transition={TRANSITION.base}
+              className="mt-6"
+            >
+              <Booking
+                moving={mode.kind === "move" ? mode.appointment : null}
+                onDone={() => {
+                  setCelebration(mode.kind === "move" ? "moved" : "booked");
+                  setMode({ kind: "idle" });
+                  reloadAll();
+                }}
+                onCancel={() => setMode({ kind: "idle" })}
+              />
+            </motion.div>
+          )}
+
+          {list.data && mode.kind === "idle" && (
+            <motion.div
+              key="lists"
+              exit={{ opacity: 0, transition: TRANSITION.fast }}
+              className="mt-6 space-y-6"
+            >
+              <AppointmentSections
+                awaiting={awaiting}
+                upcoming={upcoming}
+                past={past}
+                hasHistory={hasHistory}
+                onMove={(appointment) => {
+                  setCelebration(null);
+                  setMode({ kind: "move", appointment });
+                }}
+                onBook={() => {
+                  setCelebration(null);
+                  setMode({ kind: "book" });
+                }}
+                onChanged={reloadAll}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {list.loading && (
           <div role="status" aria-live="polite" className="mt-6 space-y-6">
@@ -190,121 +227,130 @@ export default function PatientAppointments() {
             <ErrorState message={list.error.message} onRetry={list.reload} />
           </div>
         )}
-
-        {list.data && mode.kind === "idle" && (
-          <div className="stagger mt-6 space-y-6">
-            <PageSectionNav mode="jump" label="Sections" sections={SECTIONS} />
-
-            <Section id="awaiting">
-{awaiting.length > 0 && (
-              <Card
-                icon="hourglass_top"
-                title={tr("Awaiting confirmation", "Tasdeeq ka intezar")}
-                description={tr(
-                  "Asked for. The doctor's clinic still has to accept these.",
-                  "Darkhwast di ja chuki hai. Doctor ke clinic ne abhi qubool karni hai.",
-                )}
-              >
-                <AppointmentList
-                  appointments={awaiting}
-                  emptyTitle=""
-                  emptyDescription=""
-                >
-                  {(appointment) => (
-                    <UpcomingRow
-                      appointment={appointment}
-                      onMove={() => {
-                        setCelebration(null);
-                        setMode({ kind: "move", appointment });
-                      }}
-                      onChanged={reloadAll}
-                    />
-                  )}
-                </AppointmentList>
-              </Card>
-            )}
-
-            
-            </Section>
-
-            <Section id="upcoming">
-<Card
-              icon="event_upcoming"
-              title={tr("Upcoming", "Aane wali")}
-              description={tr(
-                "Confirmed by the clinic. These are the ones to turn up for.",
-                "Clinic ne tasdeeq kar di hai. Inhi par jana hai.",
-              )}
-            >
-              <AppointmentList
-                appointments={upcoming}
-                emptyTitle={tr("No upcoming appointments", "Koi aane wali appointment nahi")}
-                emptyDescription={
-                  hasHistory
-                    ? tr(
-                        "Your past visits are below. Book another and it will appear here.",
-                        "Aap ki guzri hui visits neeche hain. Nayi book karein, yahan nazar aaye gi.",
-                      )
-                    : tr("Book one and it will appear here.", "Book karein, yahan nazar aaye gi.")
-                }
-              >
-                {(appointment) => (
-                  <UpcomingRow
-                    appointment={appointment}
-                    onMove={() => {
-                      setCelebration(null);
-                      setMode({ kind: "move", appointment });
-                    }}
-                    onChanged={reloadAll}
-                  />
-                )}
-              </AppointmentList>
-              {upcoming.length === 0 && (
-                <div className="-mt-6 flex justify-center pb-4">
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setCelebration(null);
-                      setMode({ kind: "book" });
-                    }}
-                  >
-                    <Icon name="calendar_add_on" className="text-[20px]" />
-                    {/* "First" only if it is. Somebody with four completed
-                        visits being invited to book their first one is the app
-                        telling them it has not been paying attention. */}
-                    {hasHistory
-                      ? tr("Book an appointment", "Appointment book karein")
-                      : tr("Book your first appointment", "Apni pehli appointment book karein")}
-                  </Button>
-                </div>
-              )}
-            </Card>
-
-            
-            </Section>
-
-            <Section id="past">
-<Card icon="history" title={tr("Past and cancelled", "Guzri hui aur cancel shuda")}>
-              <AppointmentList
-                appointments={past}
-                emptyTitle={tr("Nothing here yet", "Abhi yahan kuchh nahi")}
-              >
-                {(appointment) => (
-                  <AppointmentRow
-                    appointment={appointment}
-                    counterparty={appointment.doctorName ?? tr("Doctor", "Doctor")}
-                    detail={appointment.specialization}
-                  />
-                )}
-              </AppointmentList>
-            </Card>
-            </Section>
-
-            
-          </div>
-        )}
       </div>
     </AppShell>
+  );
+}
+
+/**
+ * The three groups a patient's appointments fall into, with the section row
+ * above them.
+ */
+function AppointmentSections({
+  awaiting,
+  upcoming,
+  past,
+  hasHistory,
+  onMove,
+  onBook,
+  onChanged,
+}: {
+  awaiting: Appointment[];
+  upcoming: Appointment[];
+  past: Appointment[];
+  hasHistory: boolean;
+  onMove: (appointment: Appointment) => void;
+  onBook: () => void;
+  onChanged: () => void;
+}) {
+  const tr = useTr();
+  return (
+    <>
+      <PageSectionNav mode="jump" label="Sections" sections={SECTIONS} />
+
+      <Section id="awaiting" reveal={0.12}>
+{awaiting.length > 0 && (
+        <Card
+          icon="hourglass_top"
+          title={tr("Awaiting confirmation", "Tasdeeq ka intezar")}
+          description={tr(
+            "Asked for. The doctor's clinic still has to accept these.",
+            "Darkhwast di ja chuki hai. Doctor ke clinic ne abhi qubool karni hai.",
+          )}
+        >
+          <AppointmentList
+            appointments={awaiting}
+            emptyTitle=""
+            emptyDescription=""
+          >
+            {(appointment) => (
+              <UpcomingRow
+                appointment={appointment}
+                onMove={() => onMove(appointment)}
+                onChanged={onChanged}
+              />
+            )}
+          </AppointmentList>
+        </Card>
+      )}
+
+      
+      </Section>
+
+      <Section id="upcoming" reveal={0.18}>
+<Card
+        icon="event_upcoming"
+        title={tr("Upcoming", "Aane wali")}
+        description={tr(
+          "Confirmed by the clinic. These are the ones to turn up for.",
+          "Clinic ne tasdeeq kar di hai. Inhi par jana hai.",
+        )}
+      >
+        <AppointmentList
+          appointments={upcoming}
+          emptyTitle={tr("No upcoming appointments", "Koi aane wali appointment nahi")}
+          emptyDescription={
+            hasHistory
+              ? tr(
+                  "Your past visits are below. Book another and it will appear here.",
+                  "Aap ki guzri hui visits neeche hain. Nayi book karein, yahan nazar aaye gi.",
+                )
+              : tr("Book one and it will appear here.", "Book karein, yahan nazar aaye gi.")
+          }
+        >
+          {(appointment) => (
+            <UpcomingRow
+              appointment={appointment}
+              onMove={() => onMove(appointment)}
+              onChanged={onChanged}
+            />
+          )}
+        </AppointmentList>
+        {upcoming.length === 0 && (
+          <div className="-mt-6 flex justify-center pb-4">
+            <Button variant="secondary" onClick={onBook}>
+              <Icon name="calendar_add_on" className="text-[20px]" />
+              {/* "First" only if it is. Somebody with four completed
+                  visits being invited to book their first one is the app
+                  telling them it has not been paying attention. */}
+              {hasHistory
+                ? tr("Book an appointment", "Appointment book karein")
+                : tr("Book your first appointment", "Apni pehli appointment book karein")}
+            </Button>
+          </div>
+        )}
+      </Card>
+
+      
+      </Section>
+
+      <Section id="past" reveal={0.24}>
+<Card icon="history" title={tr("Past and cancelled", "Guzri hui aur cancel shuda")}>
+        <AppointmentList
+          appointments={past}
+          emptyTitle={tr("Nothing here yet", "Abhi yahan kuchh nahi")}
+        >
+          {(appointment) => (
+            <AppointmentRow
+              appointment={appointment}
+              counterparty={appointment.doctorName ?? tr("Doctor", "Doctor")}
+              detail={appointment.specialization}
+            />
+          )}
+        </AppointmentList>
+      </Card>
+      </Section>
+    </>
   );
 }
 
@@ -454,8 +500,12 @@ type StepKey = "doctor" | "mode" | "date" | "time" | "confirm";
 /** Fade plus a short horizontal slide, in the direction of travel. */
 const SLIDE = {
   enter: (direction: number) => ({ opacity: 0, x: 28 * direction }),
-  center: { opacity: 1, x: 0 },
-  exit: (direction: number) => ({ opacity: 0, x: -28 * direction }),
+  center: { opacity: 1, x: 0, transition: { duration: DURATION.base, ease: EASE } },
+  exit: (direction: number) => ({
+    opacity: 0,
+    x: -28 * direction,
+    transition: { duration: DURATION.fast, ease: EASE },
+  }),
 };
 
 /** Today's date as the same "YYYY-MM-DD" shape the availability API uses. */
@@ -667,7 +717,6 @@ function Booking({
             initial="enter"
             animate="center"
             exit="exit"
-            transition={{ duration: 0.22, ease: "easeOut" }}
           >
             {step === "doctor" && (
               <StepFrame
@@ -1321,7 +1370,7 @@ function SlotGroups({
                   {free > 0 ? tr(`${free} free`, `${free} khali`) : tr("Full", "Full")}
                 </span>
               </h4>
-              <div className="mt-2.5 flex flex-wrap gap-2.5">
+              <div className="stagger mt-2.5 flex flex-wrap gap-2.5">
                 {part.slots.map((option) => {
                   const active = selected === option.startTime;
                   return (
@@ -1337,7 +1386,7 @@ function SlotGroups({
                         active
                           ? "scale-105 border border-transparent bg-gradient-brand text-white shadow-md"
                           : option.available
-                            ? "border border-line-strong bg-card text-strong hover:scale-105 hover:border-primary hover:text-primary hover:shadow-card"
+                            ? "border border-line-strong bg-card text-strong hover:scale-105 hover:border-primary hover:text-primary hover:shadow-card active:scale-[0.97]"
                             : "cursor-not-allowed border border-line bg-sunken text-faint line-through",
                       )}
                     >
@@ -1409,7 +1458,7 @@ function DayGrid({
                 active
                   ? "scale-[1.04] border-transparent bg-gradient-brand text-white shadow-md"
                   : available
-                    ? "border-line bg-card text-strong hover:-translate-y-0.5 hover:border-primary hover:shadow-card"
+                    ? "border-line bg-card text-strong hover:-translate-y-0.5 hover:border-primary hover:shadow-card active:scale-[0.97]"
                     : "cursor-not-allowed border-line bg-sunken text-faint opacity-70",
                 isToday && !active && "ring-2 ring-accent-bright ring-offset-2 ring-offset-card",
               )}

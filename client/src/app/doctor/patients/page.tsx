@@ -49,7 +49,7 @@ export default function DoctorPatients() {
 
   return (
     <AppShell role="DOCTOR">
-      <div id="main" className="page-enter">
+      <div id="main">
         <PageHeader
           eyebrow={tr("Doctor portal", "Doctor ka portal")}
           title={tr("My patients", "Mere mareez")}

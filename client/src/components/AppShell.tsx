@@ -1,10 +1,18 @@
 "use client";
 
-import { AnimatePresence, LayoutGroup, MotionConfig, motion } from "framer-motion";
+import { AnimatePresence, MotionConfig, animate, motion } from "framer-motion";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 
 import { CommandPalette, type PaletteItem } from "@/components/CommandPalette";
 import { Icon } from "@/components/Icon";
@@ -13,9 +21,11 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { CircuitNodes } from "@/components/brand/CircuitNodes";
 import { Logo } from "@/components/brand/Logo";
+import { PageTransition } from "@/components/motion";
 import { useMotionPreference, useReadingPreferences } from "@/components/settings/preferences";
 import { Avatar, Button, Loading, Unauthorized, cx } from "@/components/ui";
 import { useTr } from "@/lib/lang";
+import { SPRING, TRANSITION, prefersCalm } from "@/lib/motion";
 import { homePathFor, useSession } from "@/lib/session";
 import { doctorRequests, type Role } from "@/lib/api";
 import { useAsync } from "@/lib/useAsync";
@@ -217,7 +227,62 @@ function usePendingDoctorApplications(role: Role): number {
 }
 
 const RAIL_KEY = "medisense:rail";
-const SPRING = { type: "spring", stiffness: 420, damping: 34, mass: 0.8 } as const;
+
+/**
+ * Whether the rail is collapsed, held above any one page.
+ *
+ * Every portal page renders its own shell, so the shell — and the rail in it —
+ * is mounted afresh on each navigation. Read from storage in an effect, the
+ * remembered width arrived a frame late every time: a collapsed rail rendered
+ * open, then sprang shut, on every single click. A module-level store survives
+ * the remount, so a new page's first render already knows.
+ */
+let railCollapsed: boolean | null = null;
+const railListeners = new Set<() => void>();
+
+function readRail(): boolean {
+  if (railCollapsed === null) {
+    try {
+      railCollapsed = window.localStorage.getItem(RAIL_KEY) === "collapsed";
+    } catch {
+      // Storage blocked: the rail simply starts open.
+      railCollapsed = false;
+    }
+  }
+  return railCollapsed;
+}
+
+function setRail(next: boolean): void {
+  railCollapsed = next;
+  try {
+    window.localStorage.setItem(RAIL_KEY, next ? "collapsed" : "open");
+  } catch {
+    // Not remembered, still applied.
+  }
+  for (const listener of railListeners) listener();
+}
+
+function subscribeRail(listener: () => void): () => void {
+  railListeners.add(listener);
+  return () => {
+    railListeners.delete(listener);
+  };
+}
+
+/**
+ * Which item the rail last showed as current, and the one before it.
+ *
+ * A shared layout animation cannot carry the highlight from one page to the
+ * next here: the old page's rail is gone before the new one mounts, so there
+ * is nothing left to animate *from*. This is that memory, kept outside both —
+ * the new rail finds the row it used to mark and springs the highlight up or
+ * down from there.
+ */
+const railMemory: { href: string | null; before: string | null; at: number } = {
+  href: null,
+  before: null,
+  at: 0,
+};
 
 /** Seconds of warning the session provider gives before it signs you out. */
 const WARNING_WINDOW_SECONDS = 30;
@@ -317,8 +382,8 @@ function SessionMeter() {
       className="h-0.5 w-full bg-line/50"
     >
       <span
-        className="bg-gradient-brand block h-full transition-[width] duration-1000 ease-linear"
-        style={{ width: `${left * 100}%` }}
+        className="bg-gradient-brand block h-full w-full origin-left transition-transform duration-1000 ease-linear"
+        style={{ transform: `scaleX(${left})` }}
       />
     </div>
   );
@@ -665,6 +730,45 @@ function Rail({
 }) {
   const tr = useTr();
   const accent = ROLE_ACCENT[user.role];
+  const navRef = useRef<HTMLElement | null>(null);
+  const pillRef = useRef<HTMLSpanElement | null>(null);
+  // A section's own pages count as being in it — an order's page is still the
+  // pharmacy. Never for a role's home, which every page in the portal sits under.
+  const activeHref =
+    groups
+      .flatMap((group) => group.items)
+      .find(
+        (item) =>
+          pathname === item.href ||
+          (item.href.split("/").length > 2 && pathname.startsWith(`${item.href}/`)),
+      )?.href ?? null;
+
+  // Only the desktop rail remembers. The drawer closes on every navigation, so
+  // there is never anything to watch it slide.
+  const remembers = layoutId === "rail";
+  useLayoutEffect(() => {
+    if (!remembers) return;
+    const now = performance.now();
+    if (railMemory.href !== activeHref) {
+      railMemory.before = railMemory.href;
+      railMemory.href = activeHref;
+      railMemory.at = now;
+    }
+    // Only the mount that saw the change slides — read twice within the same
+    // moment, as Strict Mode does, it still slides; a later page under the same
+    // item, mounting long after, does not.
+    const previous = now - railMemory.at < 250 ? railMemory.before : null;
+    const pill = pillRef.current;
+    if (!pill || !previous || previous === activeHref || prefersCalm()) return;
+    const from = navRef.current?.querySelector(`[data-nav-href="${CSS.escape(previous)}"]`);
+    const to = pill.parentElement;
+    if (!from || !to) return;
+    const distance = from.getBoundingClientRect().top - to.getBoundingClientRect().top;
+    if (Math.abs(distance) < 1) return;
+    const run = animate(pill, { y: [distance, 0] }, SPRING);
+    void run.then(() => pill.style.removeProperty("transform"));
+    return () => run.stop();
+  }, [remembers, activeHref]);
 
   const collapseButton = onToggle && (
     <button
@@ -726,90 +830,113 @@ function Rail({
         </div>
       )}
 
-      <nav aria-label="Main" className="relative min-h-0 flex-1 overflow-y-auto px-3">
-        <LayoutGroup id={layoutId}>
-          {groups.map((group) => (
-            <div key={group.label[0]} className="mb-4">
+      <nav ref={navRef} aria-label="Main" className="relative min-h-0 flex-1 overflow-y-auto px-3">
+        {groups.map((group) => (
+          <div key={group.label[0]} className="mb-4">
+            <AnimatePresence initial={false} mode="popLayout">
               {!collapsed ? (
-                <p className="mono-caps mb-1.5 px-3 text-[0.68rem] text-faint">
+                <motion.p
+                  key="label"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1, transition: { ...TRANSITION.base, delay: 0.06 } }}
+                  exit={{ opacity: 0, transition: TRANSITION.fast }}
+                  className="mono-caps mb-1.5 px-3 text-[0.68rem] text-faint"
+                >
                   {tr(...group.label)}
-                </p>
+                </motion.p>
               ) : (
-                <div aria-hidden className="mx-3 mb-2 h-px bg-line" />
+                <motion.div
+                  key="rule"
+                  aria-hidden
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1, transition: TRANSITION.base }}
+                  exit={{ opacity: 0, transition: TRANSITION.fast }}
+                  className="mx-3 mb-2 h-px bg-line"
+                />
               )}
-              <ul className="space-y-0.5">
-                {group.items.map((item) => {
-                  // A section's own pages count as being in it — an order's
-                  // page is still the pharmacy. Never for a role's home, which
-                  // every page in the portal sits under.
-                  const active =
-                    pathname === item.href ||
-                    (item.href.split("/").length > 2 && pathname.startsWith(`${item.href}/`));
-                  return (
-                    <li key={item.href} className="relative">
-                      {active && (
-                        <motion.span
-                          layoutId={`${layoutId}-active`}
-                          transition={SPRING}
-                          aria-hidden
-                          className="bg-gradient-soft absolute inset-0 rounded-xl"
-                        >
-                          <span
-                            className={cx(
-                              "absolute inset-y-1.5 left-0 w-[3px] rounded-r-full",
-                              accent.bar,
-                            )}
-                          />
-                        </motion.span>
-                      )}
-                      <Link
-                        href={item.href}
-                        aria-current={active ? "page" : undefined}
-                        onClick={onNavigate}
-                        title={collapsed ? tr(...item.label) : undefined}
-                        className={cx(
-                          "group relative flex min-h-11 items-center gap-3 rounded-xl py-2.5 text-[0.9375rem] transition-[color,background-color] duration-200",
-                          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                          collapsed ? "justify-center px-0" : "px-3.5",
-                          active
-                            ? cx("font-semibold", accent.text)
-                            : "font-medium text-muted hover:bg-sunken hover:text-strong",
-                        )}
+            </AnimatePresence>
+            <ul className="space-y-0.5">
+              {group.items.map((item) => {
+                const active = item.href === activeHref;
+                return (
+                  <li key={item.href} data-nav-href={item.href} className="relative">
+                    {active && (
+                      <span
+                        ref={pillRef}
+                        aria-hidden
+                        className="bg-gradient-soft absolute inset-0 rounded-xl"
                       >
-                        <Icon name={item.icon} filled={active} className="icon-wiggle text-[20px]" />
-                        {!collapsed && <span className="truncate">{tr(...item.label)}</span>}
-                        {item.badge === "pendingDoctorApplications" && pendingApplications > 0 && (
-                          <span
-                            className={cx(
-                              "bg-gradient-brand ml-auto rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums text-white shadow-sm",
-                              collapsed &&
-                                "absolute right-1 top-1 ml-0 px-1.5 py-0 text-[10px] leading-4",
-                            )}
-                          >
-                            {pendingApplications}
-                            <span className="sr-only">
-                              {" "}
-                              {tr("awaiting review", "review ke muntazir")}
-                            </span>
-                          </span>
-                        )}
-                        {collapsed && (
-                          // Tooltip: appears beside the icon on hover and focus.
-                          <span
-                            role="presentation"
-                            className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 -translate-y-1/2 whitespace-nowrap rounded-lg bg-strong px-2.5 py-1.5 text-xs font-semibold text-card opacity-0 shadow-overlay transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+                        <span
+                          className={cx(
+                            "absolute inset-y-1.5 left-0 w-[3px] rounded-r-full",
+                            accent.bar,
+                          )}
+                        />
+                      </span>
+                    )}
+                    <Link
+                      href={item.href}
+                      aria-current={active ? "page" : undefined}
+                      onClick={onNavigate}
+                      title={collapsed ? tr(...item.label) : undefined}
+                      className={cx(
+                        "group relative flex min-h-11 items-center gap-3 rounded-xl py-2.5 text-[0.9375rem] transition-[color,background-color] duration-200",
+                        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                        collapsed ? "justify-center px-0" : "px-3.5",
+                        active
+                          ? cx("font-semibold", accent.text)
+                          : "font-medium text-muted hover:bg-sunken hover:text-strong",
+                      )}
+                    >
+                      <Icon name={item.icon} filled={active} className="icon-wiggle text-[20px]" />
+                      {/* Fades rather than blinks as the rail opens and
+                          closes. On the way out it is lifted out of the row
+                          first, so the icon settles into the middle while the
+                          word is still fading where it was. */}
+                      <AnimatePresence initial={false} mode="popLayout">
+                        {!collapsed && (
+                          <motion.span
+                            key="label"
+                            initial={{ opacity: 0, x: -6 }}
+                            animate={{ opacity: 1, x: 0, transition: { ...TRANSITION.base, delay: 0.06 } }}
+                            exit={{ opacity: 0, transition: TRANSITION.fast }}
+                            className="truncate"
                           >
                             {tr(...item.label)}
-                          </span>
+                          </motion.span>
                         )}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ))}
-        </LayoutGroup>
+                      </AnimatePresence>
+                      {item.badge === "pendingDoctorApplications" && pendingApplications > 0 && (
+                        <span
+                          className={cx(
+                            "bg-gradient-brand ml-auto rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums text-white shadow-sm",
+                            collapsed &&
+                              "absolute right-1 top-1 ml-0 px-1.5 py-0 text-[10px] leading-4",
+                          )}
+                        >
+                          {pendingApplications}
+                          <span className="sr-only">
+                            {" "}
+                            {tr("awaiting review", "review ke muntazir")}
+                          </span>
+                        </span>
+                      )}
+                      {collapsed && (
+                        // Tooltip: appears beside the icon on hover and focus.
+                        <span
+                          role="presentation"
+                          className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 -translate-y-1/2 whitespace-nowrap rounded-lg bg-strong px-2.5 py-1.5 text-xs font-semibold text-card opacity-0 shadow-overlay transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+                        >
+                          {tr(...item.label)}
+                        </span>
+                      )}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
       </nav>
 
       {/* Who is signed in, at the foot of the rail where the eye checks it
@@ -901,7 +1028,7 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
-  const [collapsed, setCollapsed] = useState(false);
+  const collapsed = useSyncExternalStore(subscribeRail, readRail, () => false);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
   useEffect(() => {
@@ -925,19 +1052,35 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
     if (awaitingApproval) router.replace("/doctor/onboarding");
   }, [awaitingApproval, router]);
 
-  // The remembered rail width. Read after mount so the server and the first
-  // client render agree; a one-frame expand is preferable to a mismatch.
+  /**
+   * The bar gains a shadow and a firmer surface once the page has scrolled
+   * under it, and loses them back at the top.
+   *
+   * Written straight onto the element rather than through state: a scroll
+   * handler that re-rendered the shell would re-render every page inside it,
+   * many times a second, to change one attribute.
+   */
   useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(RAIL_KEY);
-      if (stored === "collapsed") {
-        const frame = requestAnimationFrame(() => setCollapsed(true));
-        return () => cancelAnimationFrame(frame);
-      }
-    } catch {
-      // Storage blocked: the rail simply starts open.
-    }
-  }, []);
+    const node = topbar.current;
+    if (!node) return;
+    let frame = 0;
+    const check = () => {
+      frame = 0;
+      const scrolled = window.scrollY > 4;
+      if (scrolled !== node.hasAttribute("data-scrolled")) node.toggleAttribute("data-scrolled", scrolled);
+    };
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(check);
+    };
+    check();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(frame);
+    };
+    // The bar only exists once the session has resolved; until then there is
+    // nothing to attach to.
+  }, [loading, user]);
 
   // ⌘K / Ctrl-K, the shortcut every palette in every tool uses.
   useEffect(() => {
@@ -968,17 +1111,7 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
     [groups, tr],
   );
 
-  const toggleRail = () => {
-    setCollapsed((current) => {
-      const next = !current;
-      try {
-        window.localStorage.setItem(RAIL_KEY, next ? "collapsed" : "open");
-      } catch {
-        // Not remembered, still applied.
-      }
-      return next;
-    });
-  };
+  const toggleRail = () => setRail(!collapsed);
 
   if (loading) {
     return (
@@ -1014,13 +1147,13 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
     // A person who has asked for less motion gets it from Framer too, not only
     // from the CSS: the springs in this shell are not stylesheet transitions.
     <MotionConfig reducedMotion={motionPreference === "reduced" ? "always" : "user"}>
-      <div className="flex min-h-screen">
+      <div data-app-shell className="flex min-h-screen">
         {/* Desktop rail — sticky, so a long table never scrolls navigation out
             of reach. Its width animates rather than snapping. */}
         <motion.aside
           initial={false}
           animate={{ width: collapsed ? 84 : 264 }}
-          transition={{ type: "spring", stiffness: 300, damping: 32 }}
+          transition={SPRING}
           // `z-30`: the account card's dropdown opens out over the page, and
           // the frosted rail is its own stacking context — without this it
           // would be painted under any positioned element in the content.
@@ -1049,14 +1182,15 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
+                transition={TRANSITION.base}
                 className="absolute inset-0 bg-[#0A1128]/55 backdrop-blur-sm"
                 onClick={() => setRailOpen(false)}
               />
               <motion.aside
-                initial={{ x: -280 }}
+                initial={{ x: "-100%" }}
                 animate={{ x: 0 }}
-                exit={{ x: -280 }}
-                transition={{ type: "spring", stiffness: 380, damping: 36 }}
+                exit={{ x: "-100%" }}
+                transition={SPRING}
                 className="relative h-full w-[268px] max-w-[85%] bg-card shadow-overlay"
               >
                 <Rail
@@ -1088,7 +1222,8 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
           <div ref={topbar} className="sticky top-0 z-40">
             <InactivityWarning />
 
-            <header className="glass safe-topbar flex items-center gap-3 rounded-none border-x-0 border-t-0 border-b border-line/80 px-4 !shadow-none sm:px-6">
+            <header className="glass safe-topbar relative flex items-center gap-3 rounded-none border-x-0 border-t-0 border-b border-line/80 px-4 !shadow-none sm:px-6">
+              <span aria-hidden className="topbar-fill" />
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 <button
                   type="button"
@@ -1167,10 +1302,11 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
             </header>
 
             <SessionMeter />
+            <span aria-hidden className="topbar-shadow" />
           </div>
 
           <main id="main" className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 sm:px-8 sm:py-8">
-            {children}
+            <PageTransition>{children}</PageTransition>
           </main>
         </div>
 

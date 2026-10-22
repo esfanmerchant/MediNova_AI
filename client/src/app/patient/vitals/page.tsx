@@ -31,7 +31,7 @@ export default function PatientVitals() {
 
   return (
     <AppShell role="PATIENT">
-      <div id="main" className="page-enter">
+      <div id="main">
         <PageHeader
           eyebrow={tr("Patient portal", "Mareez ka portal")}
           title={tr("Vitals", "Vitals")}
@@ -62,10 +62,10 @@ export default function PatientVitals() {
             <PageSectionNav mode="jump" label="Sections" sections={SECTIONS} />
             {/* The snapshot — gauges and a trend — sits above the table, fed
                 from the same fetch, so the two never disagree. */}
-            <Section id="readings">
+            <Section id="readings" reveal={0.1}>
               <VitalsTable patientId={user.patientId} snapshot />
             </Section>
-            <Section id="thresholds">
+            <Section id="thresholds" reveal={0.2}>
               <ThresholdsPanel patientId={user.patientId} />
             </Section>
           </div>

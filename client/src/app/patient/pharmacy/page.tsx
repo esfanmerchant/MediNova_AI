@@ -19,6 +19,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
 import { PageHeader } from "@/components/PageHeader";
+import { Floating } from "@/components/overlays";
 import {
   ProductTile,
   productTitle,
@@ -74,7 +75,7 @@ export default function PharmacyStore() {
 
   return (
     <AppShell role="PATIENT">
-      <div id="main" className="page-enter pb-28">
+      <div id="main" className="pb-28">
         <PageHeader
           eyebrow={settings?.pharmacyName ?? tr("MediNova Pharmacy", "MediNova Pharmacy")}
           title={tr("Pharmacy", "Pharmacy")}
@@ -294,34 +295,36 @@ export default function PharmacyStore() {
 
         {/* The cart, always reachable, never in the way. */}
         {cart.count > 0 && (
-          <div className="safe-bottom fixed inset-x-0 bottom-16 z-30 px-4 lg:bottom-6 lg:left-auto lg:right-8 lg:w-[26rem] lg:px-0">
-            <div className="pop-in flex items-center gap-3 rounded-2xl border border-line bg-card p-3 shadow-overlay">
-              <span className="bg-gradient-brand relative grid h-11 w-11 shrink-0 place-items-center rounded-xl text-white">
-                <Icon name="shopping_bag" className="text-[22px]" />
-                <span className="absolute -right-1.5 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-critical px-1 text-[11px] font-bold tabular-nums text-white">
-                  {cart.count}
+          <Floating>
+            <div className="safe-bottom fixed inset-x-0 bottom-16 z-30 px-4 lg:bottom-6 lg:left-auto lg:right-8 lg:w-[26rem] lg:px-0">
+              <div className="pop-in flex items-center gap-3 rounded-2xl border border-line bg-card p-3 shadow-overlay">
+                <span className="bg-gradient-brand relative grid h-11 w-11 shrink-0 place-items-center rounded-xl text-white">
+                  <Icon name="shopping_bag" className="text-[22px]" />
+                  <span className="absolute -right-1.5 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-critical px-1 text-[11px] font-bold tabular-nums text-white">
+                    {cart.count}
+                  </span>
                 </span>
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-strong">
-                  {tr(`${cart.count} ${cart.count === 1 ? "item" : "items"}`, `${cart.count} ${cart.count === 1 ? "cheez" : "cheezein"}`)}
-                </p>
-                <p className="text-xs tabular-nums text-muted">
-                  {tr("About", "Taqreeban")} {rupees(cart.estimate)}
-                  {cart.items.some((item) => item.rxRequired) && (
-                    <Badge tone="warning">Rx</Badge>
-                  )}
-                </p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-strong">
+                    {tr(`${cart.count} ${cart.count === 1 ? "item" : "items"}`, `${cart.count} ${cart.count === 1 ? "cheez" : "cheezein"}`)}
+                  </p>
+                  <p className="text-xs tabular-nums text-muted">
+                    {tr("About", "Taqreeban")} {rupees(cart.estimate)}
+                    {cart.items.some((item) => item.rxRequired) && (
+                      <Badge tone="warning">Rx</Badge>
+                    )}
+                  </p>
+                </div>
+                <Link
+                  href="/patient/pharmacy/checkout"
+                  className="bg-gradient-brand inline-flex min-h-11 items-center gap-1.5 rounded-xl px-4 font-semibold text-white shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                >
+                  {tr("Checkout", "Checkout")}
+                  <Icon name="arrow_forward" className="text-[20px]" />
+                </Link>
               </div>
-              <Link
-                href="/patient/pharmacy/checkout"
-                className="bg-gradient-brand inline-flex min-h-11 items-center gap-1.5 rounded-xl px-4 font-semibold text-white shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-              >
-                {tr("Checkout", "Checkout")}
-                <Icon name="arrow_forward" className="text-[20px]" />
-              </Link>
             </div>
-          </div>
+          </Floating>
         )}
       </div>
     </AppShell>

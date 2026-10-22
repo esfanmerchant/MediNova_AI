@@ -13,7 +13,6 @@
  * will the screen I am looking at become".
  */
 
-import { useTheme } from "next-themes";
 import { useState } from "react";
 
 import { Icon } from "@/components/Icon";
@@ -30,6 +29,7 @@ import {
   type FontScale,
 } from "@/components/settings/preferences";
 import { useTr } from "@/lib/lang";
+import { useThemeSwitch } from "@/lib/theme";
 import { useHydrated } from "@/lib/useHydrated";
 
 /**
@@ -89,7 +89,7 @@ type ThemeChoice = (typeof THEMES)[number];
 
 export function AppearanceTab() {
   const tr = useTr();
-  const { theme, setTheme, resolvedTheme } = useTheme();
+  const { theme, setTheme, resolvedTheme } = useThemeSwitch();
   const fontScale = useFontScale();
   const motion = useMotionPreference();
   const live = useLiveUpdates();
@@ -142,7 +142,7 @@ export function AppearanceTab() {
                   setAnnouncement(`${tr("Theme", "Theme")}: ${tr(...themeLabel[option])}`);
                 }}
                 className={cx(
-                  "hover-lift-sm rounded-2xl p-2.5 text-left transition-[border-color,box-shadow]",
+                  "hover-lift-sm rounded-2xl p-2.5 text-left transition-[border-color,box-shadow] active:scale-[0.97]",
                   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                   selected
                     ? "border-gradient-fill shadow-glow"

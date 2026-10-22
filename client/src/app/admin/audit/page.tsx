@@ -18,7 +18,7 @@ export default function AdminAudit() {
   const tr = useTr();
   return (
     <AppShell role="ADMIN">
-      <div id="main" className="page-enter">
+      <div id="main">
         <PageHeader
           eyebrow={tr("Admin portal", "Intezami portal")}
           title={tr("Audit trail", "Audit trail")}

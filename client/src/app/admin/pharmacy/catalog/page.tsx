@@ -548,7 +548,7 @@ export default function PharmacyCatalog() {
   const tr = useTr();
   return (
     <AppShell role="ADMIN">
-      <div id="main" className="page-enter">
+      <div id="main">
         <PageHeader
           eyebrow={tr("Pharmacy", "Pharmacy")}
           title={tr("Catalog", "Catalog")}

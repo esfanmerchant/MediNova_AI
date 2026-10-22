@@ -10,11 +10,14 @@
  * showing a patient in another zone their own 04:30 would be actively wrong.
  */
 
+import { AnimatePresence, motion } from "framer-motion";
 import { Fragment } from "react";
 
 import { Icon } from "@/components/Icon";
+import { usePresenceItem } from "@/components/motion";
 import type { Appointment, AppointmentStatus } from "@/lib/api";
 import { Avatar, Badge, EmptyState, cx } from "@/components/ui";
+import { TRANSITION, useCalmMotion } from "@/lib/motion";
 import { useTr } from "@/lib/lang";
 
 const STATUS_TONE: Record<AppointmentStatus, "neutral" | "good" | "warning" | "critical" | "info"> =
@@ -127,66 +130,72 @@ export function AppointmentRow({
   actions?: React.ReactNode;
 }) {
   const tr = useTr();
+  const presence = usePresenceItem();
   const live = appointment.status === "IN_PROGRESS";
   const done = ["CANCELLED", "COMPLETED", "NO_SHOW"].includes(appointment.status);
 
+  // The list item is only the part that opens and closes; everything the row
+  // looks like lives on the block inside it. Height cannot close past padding,
+  // so the padding has to be on something that is not being closed.
   return (
-    <li
-      className={cx(
-        "group -mx-3 flex flex-wrap items-start gap-x-4 gap-y-3 rounded-xl px-3 py-4 transition-colors duration-200 hover:bg-gradient-soft",
-        done && "opacity-80 hover:opacity-100",
-      )}
-    >
-      <Avatar
-        name={counterparty}
-        ring={live ? "active" : done ? "inactive" : undefined}
-        className="mt-0.5 transition-transform duration-200 group-hover:scale-105"
-      />
-
-      <div className="min-w-0 flex-1">
-        <p className="font-semibold text-strong">{counterparty}</p>
-        {detail && <p className="text-sm text-muted">{detail}</p>}
-        {appointment.reason && (
-          <p className="mt-1 flex items-start gap-1.5 text-sm text-muted">
-            <Icon name="notes" className="mt-px shrink-0 text-[16px] text-faint" />
-            {appointment.reason}
-          </p>
+    <motion.li {...presence} className="-mx-3">
+      <div
+        className={cx(
+          "group flex flex-wrap items-start gap-x-4 gap-y-3 rounded-xl px-3 py-4 transition-colors duration-200 hover:bg-gradient-soft",
+          done && "opacity-80 hover:opacity-100",
         )}
-        {appointment.cancelReason && (
-          <p className="mt-1 flex items-start gap-1.5 text-sm text-faint">
-            <Icon name="cancel" className="mt-px shrink-0 text-[16px]" />
-            <span>
-              {tr("Cancelled:", "Mansookh:")} {appointment.cancelReason}
-            </span>
-          </p>
-        )}
-      </div>
+      >
+        <Avatar
+          name={counterparty}
+          ring={live ? "active" : done ? "inactive" : undefined}
+          className="mt-0.5 transition-transform duration-200 group-hover:scale-105"
+        />
 
-      <div className="flex flex-col items-end gap-1.5">
-        <span
-          className={cx(
-            "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-semibold tabular-nums",
-            live ? "bg-gradient-brand text-white shadow-sm" : "bg-sunken text-strong",
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold text-strong">{counterparty}</p>
+          {detail && <p className="text-sm text-muted">{detail}</p>}
+          {appointment.reason && (
+            <p className="mt-1 flex items-start gap-1.5 text-sm text-muted">
+              <Icon name="notes" className="mt-px shrink-0 text-[16px] text-faint" />
+              {appointment.reason}
+            </p>
           )}
-        >
-          <Icon name="schedule" className="text-[16px]" />
-          {formatWhen(appointment.startTime)}
-        </span>
-        <span className="inline-flex items-center gap-1 text-xs tabular-nums text-faint">
-          <Icon name="timelapse" className="text-[14px]" />
-          {appointment.durationMinutes} {tr("min", "min")}
-          {appointment.mode === "ONLINE" && (
-            <span className="ml-1 inline-flex items-center gap-0.5 rounded-full bg-info-soft px-1.5 py-px font-semibold text-info">
-              <Icon name="videocam" className="text-[13px]" />
-              {tr("Online", "Online")}
-            </span>
+          {appointment.cancelReason && (
+            <p className="mt-1 flex items-start gap-1.5 text-sm text-faint">
+              <Icon name="cancel" className="mt-px shrink-0 text-[16px]" />
+              <span>
+                {tr("Cancelled:", "Mansookh:")} {appointment.cancelReason}
+              </span>
+            </p>
           )}
-        </span>
-        <StatusBadge status={appointment.status} />
-      </div>
+        </div>
 
-      {actions && <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:self-center">{actions}</div>}
-    </li>
+        <div className="flex flex-col items-end gap-1.5">
+          <span
+            className={cx(
+              "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-semibold tabular-nums",
+              live ? "bg-gradient-brand text-white shadow-sm" : "bg-sunken text-strong",
+            )}
+          >
+            <Icon name="schedule" className="text-[16px]" />
+            {formatWhen(appointment.startTime)}
+          </span>
+          <span className="inline-flex items-center gap-1 text-xs tabular-nums text-faint">
+            <Icon name="timelapse" className="text-[14px]" />
+            {appointment.durationMinutes} {tr("min", "min")}
+            {appointment.mode === "ONLINE" && (
+              <span className="ml-1 inline-flex items-center gap-0.5 rounded-full bg-info-soft px-1.5 py-px font-semibold text-info">
+                <Icon name="videocam" className="text-[13px]" />
+                {tr("Online", "Online")}
+              </span>
+            )}
+          </span>
+          <StatusBadge status={appointment.status} />
+        </div>
+
+        {actions && <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:self-center">{actions}</div>}
+      </div>
+    </motion.li>
   );
 }
 
@@ -201,15 +210,38 @@ export function AppointmentList({
   emptyDescription?: string;
   children: (appointment: Appointment) => React.ReactNode;
 }) {
-  if (appointments.length === 0) {
-    return <EmptyState icon="event_available" title={emptyTitle} description={emptyDescription} />;
-  }
+  const calm = useCalmMotion();
+  const fade = calm ? TRANSITION.fast : TRANSITION.base;
+
+  // The list and its empty state hand over to each other rather than swapping:
+  // the last row closes, then the empty state fades in where it was.
   return (
-    <ul className="stagger divide-y divide-line">
-      {appointments.map((appointment) => (
-        <Fragment key={appointment.id}>{children(appointment)}</Fragment>
-      ))}
-    </ul>
+    <AnimatePresence mode="wait" initial={false}>
+      {appointments.length === 0 ? (
+        <motion.div
+          key="empty"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={fade}
+        >
+          <EmptyState icon="event_available" title={emptyTitle} description={emptyDescription} />
+        </motion.div>
+      ) : (
+        <motion.ul
+          key="list"
+          exit={{ opacity: 0 }}
+          transition={fade}
+          className="stagger divide-y divide-line"
+        >
+          <AnimatePresence initial={false}>
+            {appointments.map((appointment) => (
+              <Fragment key={appointment.id}>{children(appointment)}</Fragment>
+            ))}
+          </AnimatePresence>
+        </motion.ul>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -237,7 +269,7 @@ export function SlotButton({
         selected
           ? "border-transparent bg-gradient-brand text-white shadow-card scale-[1.04]"
           : available
-            ? "border-line-strong bg-card text-strong hover:scale-[1.04] hover:border-primary hover:bg-primary-soft hover:text-primary hover:shadow-card active:scale-[0.98]"
+            ? "border-line-strong bg-card text-strong hover:scale-[1.04] hover:border-primary hover:bg-primary-soft hover:text-primary hover:shadow-card active:scale-[0.97]"
             : "cursor-not-allowed border-line bg-sunken text-faint line-through",
       )}
     >

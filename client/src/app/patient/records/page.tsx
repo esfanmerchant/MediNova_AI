@@ -20,6 +20,7 @@ import {
   Section,
   type Section as SectionSpec,
 } from "@/components/layout/PageSectionNav";
+import { Stagger } from "@/components/motion";
 import { PrescriptionRow, RecordTimeline } from "@/components/records";
 import { ReminderTimes } from "@/components/ReminderTimes";
 import {
@@ -59,7 +60,7 @@ export default function PatientRecords() {
 
   return (
     <AppShell role="PATIENT">
-      <div id="main" className="page-enter">
+      <div id="main">
         <PageHeader
           eyebrow={tr("Patient portal", "Mareez ka portal")}
           title={tr("Medical history", "Medical history")}
@@ -84,8 +85,10 @@ export default function PatientRecords() {
         )}
 
         {history.data && medication.data && (
-          <div className="stagger mt-6 space-y-6">
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+          // The numbers first, then each section as it is reached: the ones
+          // already on screen take their turn, the rest wait to be scrolled to.
+          <div className="mt-6 space-y-6">
+            <Stagger at={0.1} className="grid grid-cols-2 gap-4 lg:grid-cols-3">
               <StatTile
                 label={tr("Consultations recorded", "Darj shuda consultations")}
                 value={history.data.meta.total}
@@ -102,11 +105,11 @@ export default function PatientRecords() {
                 value={stopped.length}
                 icon={<Icon name="history" />}
               />
-            </div>
+            </Stagger>
 
             <PageSectionNav mode="jump" label="Sections" sections={SECTIONS} />
 
-            <Section id="active-medication">
+            <Section id="active-medication" reveal={0.3}>
 <Card
               icon="pill"
               title={tr("Current medication", "Maujooda dawa")}
@@ -154,7 +157,7 @@ export default function PatientRecords() {
             
             </Section>
 
-            <Section id="consultations">
+            <Section id="consultations" reveal={0.38}>
 <Card
               icon="clinical_notes"
               title={tr("Consultation history", "Consultations ki tareekh")}
@@ -173,7 +176,7 @@ export default function PatientRecords() {
             
             </Section>
 
-            <Section id="reported">
+            <Section id="reported" reveal={0.44}>
 {told.length > 0 && (
               <Card
                 icon="record_voice_over"
@@ -183,7 +186,7 @@ export default function PatientRecords() {
                   "Aap ke apne alfaz, aap ke record ke saath. Yeh tashkhees nahi hai.",
                 )}
               >
-                <ul className="space-y-2">
+                <ul className="stagger space-y-2">
                   {told.map((row) => (
                     <li
                       key={row.id}
@@ -225,7 +228,7 @@ export default function PatientRecords() {
             
             </Section>
 
-            <Section id="past-medication">
+            <Section id="past-medication" reveal={0.5}>
 {stopped.length > 0 && (
               <Card
                 icon="history"

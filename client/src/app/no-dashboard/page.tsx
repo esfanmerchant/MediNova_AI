@@ -23,7 +23,7 @@ export default function NoDashboardPage() {
 
   return (
     <AppShell role="NURSE">
-      <div id="main" className="page-enter">
+      <div id="main">
         <PageHeader
           eyebrow={tr("Nursing", "Nursing")}
           title={tr("Emergency access", "Emergency access")}

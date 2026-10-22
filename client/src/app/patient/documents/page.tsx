@@ -21,7 +21,7 @@ export default function PatientDocuments() {
 
   return (
     <AppShell role="PATIENT">
-      <div id="main" className="page-enter">
+      <div id="main">
         <PageHeader
           eyebrow={tr("Patient portal", "Mareez ka portal")}
           title={tr("Documents", "Documents")}

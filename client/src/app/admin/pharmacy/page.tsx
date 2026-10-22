@@ -27,7 +27,7 @@ export default function PharmacyOverview() {
 
   return (
     <AppShell role="ADMIN">
-      <div id="main" className="page-enter">
+      <div id="main">
         <PageHeader
           eyebrow={tr("Administration", "Intezamiya")}
           title={tr("Pharmacy", "Pharmacy")}

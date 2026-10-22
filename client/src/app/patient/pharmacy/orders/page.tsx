@@ -20,7 +20,7 @@ export default function MyOrders() {
 
   return (
     <AppShell role="PATIENT">
-      <div id="main" className="page-enter">
+      <div id="main">
         <Link
           href="/patient/pharmacy"
           className="group inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-primary hover:underline"

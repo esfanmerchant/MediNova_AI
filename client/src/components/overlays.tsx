@@ -11,7 +11,7 @@
  * it appeared.
  */
 
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useAnimate } from "framer-motion";
 import {
   createContext,
   useCallback,
@@ -27,10 +27,12 @@ import { createPortal } from "react-dom";
 
 import { Icon } from "@/components/Icon";
 import { cx } from "@/components/ui";
+import { SPRING, TRANSITION, useCalmMotion } from "@/lib/motion";
 // Portals need the document, which the server does not have.
 import { useHydrated as useMounted } from "@/lib/useHydrated";
 
-const SPRING = { type: "spring", stiffness: 420, damping: 34, mass: 0.85 } as const;
+/** Springs for position and scale; opacity on a curve, so a fade never wobbles. */
+const PANEL = { ...SPRING, opacity: TRANSITION.base } as const;
 
 /**
  * Keeps Tab inside `ref` while `active`, and restores focus on unmount.
@@ -97,6 +99,190 @@ function useDismiss(open: boolean, onClose: () => void) {
 }
 
 // ---------------------------------------------------------------------------
+// Floating
+// ---------------------------------------------------------------------------
+
+/**
+ * Renders something pinned to the screen from outside the page's own tree.
+ *
+ * `position: fixed` is only fixed to the screen while no ancestor has a
+ * transform; the moment one does — a page arriving, a section rising into
+ * view — it becomes fixed to *that*, and a bar meant for the bottom of the
+ * window lands at the bottom of a 3,000px list instead. A portal puts it where
+ * no entrance can reach it.
+ */
+export function Floating({ children }: { children: ReactNode }) {
+  const mounted = useMounted();
+  if (!mounted) return null;
+  return createPortal(children, document.body);
+}
+
+// ---------------------------------------------------------------------------
+// The two motion shells
+// ---------------------------------------------------------------------------
+
+/**
+ * The scrim behind a modal or a drawer.
+ *
+ * Its blur fades in with it: the blur lives on this layer, so animating the
+ * layer's opacity brings the blur up from nothing rather than snapping it on
+ * under a dimming that is still arriving.
+ */
+function Backdrop({ onClose, label = "Close" }: { onClose: () => void; label?: string }) {
+  return (
+    <motion.button
+      type="button"
+      aria-label={label}
+      tabIndex={-1}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={TRANSITION.base}
+      onClick={onClose}
+      className="absolute inset-0 cursor-default bg-[#071129]/55 backdrop-blur-sm"
+    />
+  );
+}
+
+/**
+ * Anything centred over the page: in at 95% and 10px low, out the same way.
+ *
+ * The motion, the portal and the scrim, and nothing else — what goes inside is
+ * the caller's. `Dialog` is the usual one; the command palette is another.
+ * `trap` hands focus and Escape to the shell; a panel that manages its own
+ * keyboard (the palette does) turns it off.
+ */
+export function AnimatedModal({
+  open,
+  onClose,
+  children,
+  className,
+  labelledBy,
+  label,
+  placement = "center",
+  layer = "z-[100]",
+  trap = true,
+}: {
+  open: boolean;
+  onClose: () => void;
+  children: ReactNode;
+  /** The panel: its width, ground and radius. */
+  className?: string;
+  labelledBy?: string;
+  label?: string;
+  /** `top` sits a little below the header, for a panel that grows downwards. */
+  placement?: "center" | "top";
+  layer?: string;
+  trap?: boolean;
+}) {
+  const mounted = useMounted();
+  const calm = useCalmMotion();
+  const panel = useRef<HTMLDivElement>(null);
+  useFocusTrap(panel, open && trap);
+  useDismiss(open && trap, onClose);
+
+  if (!mounted) return null;
+
+  return createPortal(
+    <AnimatePresence>
+      {open && (
+        <div
+          className={cx(
+            "fixed inset-0 flex justify-center p-4",
+            placement === "center" ? "items-center" : "items-start pt-[12vh]",
+            layer,
+          )}
+        >
+          <Backdrop onClose={onClose} />
+          <motion.div
+            ref={panel}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={labelledBy}
+            aria-label={labelledBy ? undefined : label}
+            tabIndex={-1}
+            initial={calm ? { opacity: 0 } : { opacity: 0, scale: 0.95, y: 10 }}
+            animate={calm ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
+            exit={calm ? { opacity: 0 } : { opacity: 0, scale: 0.95, y: 10 }}
+            transition={calm ? TRANSITION.fast : PANEL}
+            className={cx("relative w-full", className)}
+          >
+            {children}
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>,
+    document.body,
+  );
+}
+
+/**
+ * A panel thrown in from the edge of the screen on a spring, over a dimmed
+ * page — for detail that belongs beside a list rather than in place of it.
+ */
+export function AnimatedDrawer({
+  open,
+  onClose,
+  children,
+  className,
+  labelledBy,
+  label,
+  side = "right",
+  width = 560,
+}: {
+  open: boolean;
+  onClose: () => void;
+  children: ReactNode;
+  className?: string;
+  labelledBy?: string;
+  label?: string;
+  side?: "right" | "left";
+  width?: number;
+}) {
+  const mounted = useMounted();
+  const calm = useCalmMotion();
+  const panel = useRef<HTMLDivElement>(null);
+  useFocusTrap(panel, open);
+  useDismiss(open, onClose);
+
+  if (!mounted) return null;
+  // A percentage of the panel's own width, so it starts fully off-screen at any
+  // width — including the 92vw it is capped to on a phone.
+  const away = side === "right" ? "100%" : "-100%";
+
+  return createPortal(
+    <AnimatePresence>
+      {open && (
+        <div className="fixed inset-0 z-[100]">
+          <Backdrop onClose={onClose} />
+          <motion.aside
+            ref={panel}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={labelledBy}
+            aria-label={labelledBy ? undefined : label}
+            tabIndex={-1}
+            initial={calm ? { opacity: 0 } : { x: away }}
+            animate={calm ? { opacity: 1 } : { x: 0 }}
+            exit={calm ? { opacity: 0 } : { x: away }}
+            transition={calm ? TRANSITION.fast : SPRING}
+            style={{ width }}
+            className={cx(
+              "absolute inset-y-0 flex max-w-[92vw] flex-col border-line bg-card shadow-float",
+              side === "right" ? "right-0 border-l" : "left-0 border-r",
+              className,
+            )}
+          >
+            {children}
+          </motion.aside>
+        </div>
+      )}
+    </AnimatePresence>,
+    document.body,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Dialog
 // ---------------------------------------------------------------------------
 
@@ -121,82 +307,52 @@ export function Dialog({
   footer?: ReactNode;
   size?: "sm" | "md" | "lg";
 }) {
-  const mounted = useMounted();
-  const reduced = useReducedMotion();
-  const panel = useRef<HTMLDivElement>(null);
   const labelId = useId();
-  useFocusTrap(panel, open);
-  useDismiss(open, onClose);
-
   const widths = { sm: "max-w-sm", md: "max-w-lg", lg: "max-w-2xl" } as const;
-  if (!mounted) return null;
 
-  return createPortal(
-    <AnimatePresence>
-      {open && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <motion.button
-            type="button"
-            aria-label="Close"
-            tabIndex={-1}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="absolute inset-0 cursor-default bg-[#071129]/55 backdrop-blur-sm"
-          />
-          <motion.div
-            ref={panel}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={labelId}
-            tabIndex={-1}
-            initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.95, y: 8 }}
-            animate={reduced ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
-            exit={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.96, y: 6 }}
-            transition={SPRING}
-            className={cx(
-              "relative max-h-[calc(100dvh-2rem)] w-full overflow-y-auto rounded-2xl border border-line bg-card shadow-float",
-              widths[size],
-            )}
-          >
-            <header className="flex items-start gap-3 border-b border-line px-6 py-5">
-              {icon && (
-                <span
-                  aria-hidden
-                  className="bg-gradient-brand grid h-11 w-11 shrink-0 place-items-center rounded-xl text-white shadow-sm"
-                >
-                  <Icon name={icon} filled className="text-[22px]" />
-                </span>
-              )}
-              <div className="min-w-0 flex-1">
-                <h2 id={labelId} className="font-display text-lg font-bold text-strong">
-                  {title}
-                </h2>
-                {description && <p className="mt-1 text-sm text-muted">{description}</p>}
-              </div>
-              <button
-                type="button"
-                aria-label="Close"
-                onClick={onClose}
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted transition-[background-color,color,transform] hover:rotate-90 hover:scale-110 hover:bg-sunken hover:text-strong focus-visible:outline-2 focus-visible:outline-primary"
-              >
-                <Icon name="close" className="text-[20px]" />
-              </button>
-            </header>
-
-            <div className="px-6 py-5">{children}</div>
-
-            {footer && (
-              <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-line px-6 py-4">
-                {footer}
-              </footer>
-            )}
-          </motion.div>
-        </div>
+  return (
+    <AnimatedModal
+      open={open}
+      onClose={onClose}
+      labelledBy={labelId}
+      className={cx(
+        "max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-line bg-card shadow-float",
+        widths[size],
       )}
-    </AnimatePresence>,
-    document.body,
+    >
+      <header className="flex items-start gap-3 border-b border-line px-6 py-5">
+        {icon && (
+          <span
+            aria-hidden
+            className="bg-gradient-brand grid h-11 w-11 shrink-0 place-items-center rounded-xl text-white shadow-sm"
+          >
+            <Icon name={icon} filled className="text-[22px]" />
+          </span>
+        )}
+        <div className="min-w-0 flex-1">
+          <h2 id={labelId} className="font-display text-lg font-bold text-strong">
+            {title}
+          </h2>
+          {description && <p className="mt-1 text-sm text-muted">{description}</p>}
+        </div>
+        <button
+          type="button"
+          aria-label="Close"
+          onClick={onClose}
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted transition-[background-color,color,transform] hover:rotate-90 hover:scale-110 hover:bg-sunken hover:text-strong focus-visible:outline-2 focus-visible:outline-primary"
+        >
+          <Icon name="close" className="text-[20px]" />
+        </button>
+      </header>
+
+      <div className="px-6 py-5">{children}</div>
+
+      {footer && (
+        <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-line px-6 py-4">
+          {footer}
+        </footer>
+      )}
+    </AnimatedModal>
   );
 }
 
@@ -224,75 +380,35 @@ export function Drawer({
   side?: "right" | "left";
   width?: number;
 }) {
-  const mounted = useMounted();
-  const reduced = useReducedMotion();
-  const panel = useRef<HTMLDivElement>(null);
   const labelId = useId();
-  useFocusTrap(panel, open);
-  useDismiss(open, onClose);
 
-  if (!mounted) return null;
-  const offset = side === "right" ? width : -width;
-
-  return createPortal(
-    <AnimatePresence>
-      {open && (
-        <div className="fixed inset-0 z-[100]">
-          <motion.button
-            type="button"
-            aria-label="Close"
-            tabIndex={-1}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="absolute inset-0 cursor-default bg-[#071129]/55 backdrop-blur-sm"
-          />
-          <motion.aside
-            ref={panel}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={labelId}
-            tabIndex={-1}
-            initial={reduced ? { opacity: 0 } : { x: offset }}
-            animate={reduced ? { opacity: 1 } : { x: 0 }}
-            exit={reduced ? { opacity: 0 } : { x: offset }}
-            transition={{ type: "spring", stiffness: 360, damping: 36 }}
-            style={{ width }}
-            className={cx(
-              "absolute inset-y-0 flex max-w-[92vw] flex-col border-line bg-card shadow-float",
-              side === "right" ? "right-0 border-l" : "left-0 border-r",
-            )}
-          >
-            <header className="flex items-start gap-3 border-b border-line px-5 py-4">
-              <div className="min-w-0 flex-1">
-                <h2 id={labelId} className="font-display text-lg font-bold text-strong">
-                  {title}
-                </h2>
-                {description && <p className="mt-0.5 text-sm text-muted">{description}</p>}
-              </div>
-              <button
-                type="button"
-                aria-label="Close"
-                onClick={onClose}
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted transition-[background-color,color,transform] hover:rotate-90 hover:bg-sunken hover:text-strong focus-visible:outline-2 focus-visible:outline-primary"
-              >
-                <Icon name="close" className="text-[20px]" />
-              </button>
-            </header>
-
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">{children}</div>
-
-            {footer && (
-              <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-line bg-card px-5 py-4">
-                {footer}
-              </footer>
-            )}
-          </motion.aside>
+  return (
+    <AnimatedDrawer open={open} onClose={onClose} labelledBy={labelId} side={side} width={width}>
+      <header className="flex items-start gap-3 border-b border-line px-5 py-4">
+        <div className="min-w-0 flex-1">
+          <h2 id={labelId} className="font-display text-lg font-bold text-strong">
+            {title}
+          </h2>
+          {description && <p className="mt-0.5 text-sm text-muted">{description}</p>}
         </div>
+        <button
+          type="button"
+          aria-label="Close"
+          onClick={onClose}
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted transition-[background-color,color,transform] hover:rotate-90 hover:bg-sunken hover:text-strong focus-visible:outline-2 focus-visible:outline-primary"
+        >
+          <Icon name="close" className="text-[20px]" />
+        </button>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">{children}</div>
+
+      {footer && (
+        <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-line bg-card px-5 py-4">
+          {footer}
+        </footer>
       )}
-    </AnimatePresence>,
-    document.body,
+    </AnimatedDrawer>
   );
 }
 
@@ -337,24 +453,136 @@ const TONES: Record<ToastTone, { icon: string; bar: string; text: string }> = {
   info: { icon: "info", bar: "bg-info", text: "text-info" },
 };
 
+/**
+ * How long a toast stays when the caller does not say.
+ *
+ * Three seconds is enough to read "Saved". It is not enough to read a sentence
+ * under it, so a body buys more time, and a warning — something that did not
+ * go the way the person meant — stays long enough to be read twice.
+ */
+function defaultDuration(tone: ToastTone, body: string | undefined): number {
+  if (tone === "warning" || tone === "critical") return 6000;
+  return body ? 5000 : 3000;
+}
+
+/**
+ * One toast, and the clock it runs on.
+ *
+ * Hovering or focusing it stops the clock — and the line that shows it running
+ * out — so a toast somebody is in the middle of reading does not leave under
+ * their eyes. It resumes with whatever was left.
+ */
+function ToastItem({
+  toast,
+  depth,
+  onDismiss,
+}: {
+  toast: Toast;
+  depth: number;
+  onDismiss: (id: number) => void;
+}) {
+  const calm = useCalmMotion();
+  const tone = TONES[toast.tone];
+  const [line, animateLine] = useAnimate<HTMLSpanElement>();
+  const clock = useRef<{
+    timer?: number;
+    left: number;
+    since: number;
+    running: boolean;
+    run?: ReturnType<typeof animateLine>;
+  }>({ left: toast.duration, since: 0, running: false });
+
+  const start = useCallback(() => {
+    const state = clock.current;
+    if (state.running) return;
+    state.running = true;
+    state.since = performance.now();
+    state.timer = window.setTimeout(() => onDismiss(toast.id), state.left);
+    if (state.run) state.run.play();
+    else if (line.current) {
+      state.run = animateLine(line.current, { scaleX: [1, 0] }, { duration: state.left / 1000, ease: "linear" });
+    }
+  }, [animateLine, line, onDismiss, toast.id]);
+
+  const pause = useCallback(() => {
+    const state = clock.current;
+    if (!state.running) return;
+    state.running = false;
+    window.clearTimeout(state.timer);
+    state.left = Math.max(400, state.left - (performance.now() - state.since));
+    state.run?.pause();
+  }, []);
+
+  useEffect(() => {
+    start();
+    const state = clock.current;
+    return () => {
+      state.running = false;
+      window.clearTimeout(state.timer);
+      state.run?.stop();
+      state.run = undefined;
+    };
+  }, [start]);
+
+  return (
+    <motion.div
+      layout
+      // From below, into place; out the way it came. Older toasts recede: the
+      // newest is at full size in front.
+      initial={calm ? { opacity: 0 } : { opacity: 0, y: 16, scale: 0.97 }}
+      animate={calm ? { opacity: 1 } : { opacity: 1, y: depth * 2, scale: 1 - depth * 0.03 }}
+      exit={calm ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.97 }}
+      transition={calm ? TRANSITION.fast : PANEL}
+      onPointerEnter={pause}
+      onPointerLeave={start}
+      onFocus={pause}
+      onBlur={start}
+      className="glass pointer-events-auto relative overflow-hidden rounded-2xl"
+    >
+      <span aria-hidden className={cx("absolute inset-y-0 left-0 w-1", tone.bar)} />
+      <div className="flex items-start gap-3 py-3 pl-5 pr-3">
+        <span aria-hidden className={cx("pop-scale mt-0.5 shrink-0", tone.text)}>
+          <Icon name={tone.icon} filled className="text-[22px]" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-strong">{toast.title}</p>
+          {toast.body && <p className="mt-0.5 text-sm text-muted">{toast.body}</p>}
+        </div>
+        <button
+          type="button"
+          aria-label="Dismiss"
+          onClick={() => onDismiss(toast.id)}
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-faint transition-colors hover:bg-sunken hover:text-strong focus-visible:outline-2 focus-visible:outline-primary"
+        >
+          <Icon name="close" className="text-[18px]" />
+        </button>
+      </div>
+      {/* How long is left, as a line that runs out. */}
+      <span
+        ref={line}
+        aria-hidden
+        className={cx("absolute bottom-0 left-0 h-0.5 w-full origin-left", tone.bar)}
+      />
+    </motion.div>
+  );
+}
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const mounted = useMounted();
-  const reduced = useReducedMotion();
   const nextId = useRef(0);
 
   const dismiss = useCallback((id: number) => {
     setToasts((current) => current.filter((toast) => toast.id !== id));
   }, []);
 
-  const show = useCallback<ToastApi["show"]>(
-    ({ tone = "success", title, body, duration = 5000 }) => {
-      const id = (nextId.current += 1);
-      setToasts((current) => [...current.slice(-2), { id, tone, title, body, duration }]);
-      window.setTimeout(() => dismiss(id), duration);
-    },
-    [dismiss],
-  );
+  const show = useCallback<ToastApi["show"]>(({ tone = "success", title, body, duration }) => {
+    const id = (nextId.current += 1);
+    setToasts((current) => [
+      ...current.slice(-2),
+      { id, tone, title, body, duration: duration ?? defaultDuration(tone, body) },
+    ]);
+  }, []);
 
   const api = useMemo(() => ({ show }), [show]);
 
@@ -368,53 +596,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             className="pointer-events-none fixed right-4 top-4 z-[110] flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2"
           >
             <AnimatePresence initial={false}>
-              {toasts.map((toast, index) => {
-                const tone = TONES[toast.tone];
-                // Older toasts recede: the newest is at full size in front.
-                const depth = toasts.length - 1 - index;
-                return (
-                  <motion.div
-                    key={toast.id}
-                    layout
-                    initial={reduced ? { opacity: 0 } : { opacity: 0, x: 40, scale: 0.95 }}
-                    animate={
-                      reduced
-                        ? { opacity: 1 }
-                        : { opacity: 1, x: 0, scale: 1 - depth * 0.03, y: depth * 2 }
-                    }
-                    exit={reduced ? { opacity: 0 } : { opacity: 0, x: 40, scale: 0.95 }}
-                    transition={SPRING}
-                    className="glass pointer-events-auto relative overflow-hidden rounded-2xl"
-                  >
-                    <span aria-hidden className={cx("absolute inset-y-0 left-0 w-1", tone.bar)} />
-                    <div className="flex items-start gap-3 py-3 pl-5 pr-3">
-                      <span aria-hidden className={cx("pop-scale mt-0.5 shrink-0", tone.text)}>
-                        <Icon name={tone.icon} filled className="text-[22px]" />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-strong">{toast.title}</p>
-                        {toast.body && <p className="mt-0.5 text-sm text-muted">{toast.body}</p>}
-                      </div>
-                      <button
-                        type="button"
-                        aria-label="Dismiss"
-                        onClick={() => dismiss(toast.id)}
-                        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-faint transition-colors hover:bg-sunken hover:text-strong focus-visible:outline-2 focus-visible:outline-primary"
-                      >
-                        <Icon name="close" className="text-[18px]" />
-                      </button>
-                    </div>
-                    {/* How long is left, as a line that runs out. */}
-                    <motion.span
-                      aria-hidden
-                      initial={{ scaleX: 1 }}
-                      animate={{ scaleX: 0 }}
-                      transition={{ duration: toast.duration / 1000, ease: "linear" }}
-                      className={cx("absolute bottom-0 left-0 h-0.5 w-full origin-left", tone.bar)}
-                    />
-                  </motion.div>
-                );
-              })}
+              {toasts.map((toast, index) => (
+                <ToastItem
+                  key={toast.id}
+                  toast={toast}
+                  depth={toasts.length - 1 - index}
+                  onDismiss={dismiss}
+                />
+              ))}
             </AnimatePresence>
           </div>,
           document.body,

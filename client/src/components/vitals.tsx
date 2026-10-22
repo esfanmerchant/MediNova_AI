@@ -483,7 +483,7 @@ function VitalsSnapshot({
               aria-pressed={active}
               onClick={() => setSelected(entry.column.type)}
               className={cx(
-                "hover-lift-sm rounded-2xl p-4 shadow-card",
+                "hover-lift-sm rounded-2xl p-4 shadow-card active:scale-[0.97]",
                 "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                 active ? "border-gradient-thick" : "border border-line bg-card",
               )}
@@ -594,7 +594,7 @@ export function VitalsTable({ patientId, snapshot = false }: { patientId: string
                     ))}
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="stagger">
                   {rows.map((reading) => (
                     <tr key={reading.id}>
                       <td className="whitespace-nowrap tabular-nums text-muted">

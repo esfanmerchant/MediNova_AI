@@ -17,7 +17,7 @@
  * hands focus back where it came from.
  */
 
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import {
   useCallback,
@@ -28,13 +28,12 @@ import {
   useState,
   type KeyboardEvent,
 } from "react";
-import { createPortal } from "react-dom";
 
 import { Icon } from "@/components/Icon";
+import { AnimatedModal } from "@/components/overlays";
 import { cx } from "@/components/ui";
 import { useTr } from "@/lib/lang";
-// A portal needs the document, which the server does not have.
-import { useHydrated } from "@/lib/useHydrated";
+import { SPRING, useCalmMotion } from "@/lib/motion";
 
 export interface PaletteItem {
   href: string;
@@ -86,7 +85,7 @@ export function fuzzyScore(query: string, text: string): number | null {
 function Palette({ onClose, items }: { onClose: () => void; items: PaletteItem[] }) {
   const tr = useTr();
   const router = useRouter();
-  const reduced = useReducedMotion();
+  const calm = useCalmMotion();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const listId = `palette-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
@@ -185,106 +184,93 @@ function Palette({ onClose, items }: { onClose: () => void; items: PaletteItem[]
   };
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-start justify-center p-4 pt-[12vh]">
-      <motion.button
-        type="button"
-        aria-label={tr("Close search", "Search band karein")}
-        tabIndex={-1}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={onClose}
-        className="absolute inset-0 cursor-default bg-[#071129]/55 backdrop-blur-sm"
-      />
+    <>
+      <div className="flex items-center gap-3 border-b border-line/70 px-4">
+        <Icon name="search" className="shrink-0 text-[22px] text-faint" />
+        <input
+          ref={field}
+          type="text"
+          role="combobox"
+          aria-expanded
+          aria-controls={listId}
+          aria-autocomplete="list"
+          aria-activedescendant={activeId}
+          aria-label={tr("Search pages", "Safhaat mein dhoondein")}
+          placeholder={tr("Go to a page…", "Kisi safhe par jayein…")}
+          value={query}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setActive(0);
+          }}
+          onKeyDown={onKeyDown}
+          className="min-h-14 w-full bg-transparent text-base text-strong outline-none placeholder:text-faint"
+        />
+        <kbd className="mono-caps hidden shrink-0 rounded-md border border-line-strong px-1.5 py-0.5 text-[10px] text-faint sm:block">
+          Esc
+        </kbd>
+      </div>
 
-      <motion.div
-        role="dialog"
-        aria-modal="true"
-        aria-label={tr("Search pages", "Safhaat mein dhoondein")}
-        initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: -10 }}
-        animate={reduced ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
-        exit={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.98, y: -6 }}
-        transition={{ type: "spring", stiffness: 420, damping: 34, mass: 0.85 }}
-        className="glass relative w-full max-w-xl overflow-hidden rounded-2xl"
-      >
-        <div className="flex items-center gap-3 border-b border-line/70 px-4">
-          <Icon name="search" className="shrink-0 text-[22px] text-faint" />
-          <input
-            ref={field}
-            type="text"
-            role="combobox"
-            aria-expanded
-            aria-controls={listId}
-            aria-autocomplete="list"
-            aria-activedescendant={activeId}
-            aria-label={tr("Search pages", "Safhaat mein dhoondein")}
-            placeholder={tr("Go to a page…", "Kisi safhe par jayein…")}
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setActive(0);
-            }}
-            onKeyDown={onKeyDown}
-            className="min-h-14 w-full bg-transparent text-base text-strong outline-none placeholder:text-faint"
-          />
-          <kbd className="mono-caps hidden shrink-0 rounded-md border border-line-strong px-1.5 py-0.5 text-[10px] text-faint sm:block">
-            Esc
-          </kbd>
-        </div>
+      {/* The count, for a reader who cannot see the list shrink. */}
+      <p role="status" className="sr-only">
+        {count === 1 ? tr("1 page", "1 safha") : `${count} ${tr("pages", "safhaat")}`}
+      </p>
 
-        {/* The count, for a reader who cannot see the list shrink. */}
-        <p role="status" className="sr-only">
-          {count === 1 ? tr("1 page", "1 safha") : `${count} ${tr("pages", "safhaat")}`}
-        </p>
+      <div id={listId} role="listbox" className="max-h-[52vh] overflow-y-auto p-2">
+        {count === 0 && (
+          <p className="px-3 py-8 text-center text-sm text-muted">
+            {tr("No page matches that.", "Is se koi safha nahi milta.")}
+          </p>
+        )}
 
-        <div id={listId} role="listbox" className="max-h-[52vh] overflow-y-auto p-2">
-          {count === 0 && (
-            <p className="px-3 py-8 text-center text-sm text-muted">
-              {tr("No page matches that.", "Is se koi safha nahi milta.")}
-            </p>
-          )}
+        {results.sections.map((section) => (
+          <div key={section.label} role="group" aria-label={section.label} className="mb-1">
+            <p className="mono-caps px-3 pb-1 pt-2 text-[0.68rem] text-faint">{section.label}</p>
+            {section.items.map(({ item, index }) => {
+              const selected = index === active;
+              return (
+                <div
+                  key={item.href}
+                  id={`${listId}-option-${index}`}
+                  role="option"
+                  aria-selected={selected}
+                  onClick={() => go(item)}
+                  onMouseMove={() => setActive(index)}
+                  className={cx(
+                    "relative flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-[0.9375rem] transition-colors",
+                    selected ? "font-semibold text-primary" : "text-muted hover:bg-sunken",
+                  )}
+                >
+                  {/* One highlight that follows the cursor from row to row,
+                      rather than a row that lights up and another that goes
+                      dark — the eye can track a thing that moves. */}
+                  {selected && (
+                    <motion.span
+                      layoutId="palette-cursor"
+                      aria-hidden
+                      transition={calm ? { duration: 0 } : SPRING}
+                      className="bg-gradient-soft absolute inset-0 rounded-xl"
+                    />
+                  )}
+                  <Icon name={item.icon} filled={selected} className="relative text-[20px]" />
+                  <span className="relative min-w-0 flex-1 truncate">{item.label}</span>
+                  {selected && <Icon name="keyboard_return" className="relative text-[18px] text-faint" />}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
 
-          {results.sections.map((section) => (
-            <div key={section.label} role="group" aria-label={section.label} className="mb-1">
-              <p className="mono-caps px-3 pb-1 pt-2 text-[0.68rem] text-faint">{section.label}</p>
-              {section.items.map(({ item, index }) => {
-                const selected = index === active;
-                return (
-                  <div
-                    key={item.href}
-                    id={`${listId}-option-${index}`}
-                    role="option"
-                    aria-selected={selected}
-                    onClick={() => go(item)}
-                    onMouseMove={() => setActive(index)}
-                    className={cx(
-                      "flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-[0.9375rem] transition-colors",
-                      selected
-                        ? "bg-gradient-soft font-semibold text-primary"
-                        : "text-muted hover:bg-sunken",
-                    )}
-                  >
-                    <Icon name={item.icon} filled={selected} className="text-[20px]" />
-                    <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                    {selected && <Icon name="keyboard_return" className="text-[18px] text-faint" />}
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-4 border-t border-line/70 px-4 py-2 text-[11px] text-faint">
-          <span className="flex items-center gap-1">
-            <Icon name="keyboard_arrow_up" className="text-[16px]" />
-            <Icon name="keyboard_arrow_down" className="text-[16px]" />
-            {tr("move", "chalayein")}
-          </span>
-          <span>↵ {tr("open", "kholein")}</span>
-          <span>esc {tr("close", "band")}</span>
-        </div>
-      </motion.div>
-    </div>
+      <div className="flex items-center gap-4 border-t border-line/70 px-4 py-2 text-[11px] text-faint">
+        <span className="flex items-center gap-1">
+          <Icon name="keyboard_arrow_up" className="text-[16px]" />
+          <Icon name="keyboard_arrow_down" className="text-[16px]" />
+          {tr("move", "chalayein")}
+        </span>
+        <span>↵ {tr("open", "kholein")}</span>
+        <span>esc {tr("close", "band")}</span>
+      </div>
+    </>
   );
 }
 
@@ -297,13 +283,20 @@ export function CommandPalette({
   onClose: () => void;
   items: PaletteItem[];
 }) {
-  const hydrated = useHydrated();
-  if (!hydrated) return null;
-
-  return createPortal(
-    <AnimatePresence>
-      {open && <Palette key="palette" onClose={onClose} items={items} />}
-    </AnimatePresence>,
-    document.body,
+  const tr = useTr();
+  return (
+    // The palette keeps its own keyboard — the field holds focus, Tab walks
+    // the list — so the shell's focus trap stays out of its way.
+    <AnimatedModal
+      open={open}
+      onClose={onClose}
+      placement="top"
+      layer="z-[120]"
+      trap={false}
+      label={tr("Search pages", "Safhaat mein dhoondein")}
+      className="glass max-w-xl overflow-hidden rounded-2xl"
+    >
+      <Palette onClose={onClose} items={items} />
+    </AnimatedModal>
   );
 }

@@ -148,7 +148,7 @@ export default function PatientChart() {
 
   return (
     <AppShell role="DOCTOR">
-      <div id="main" className="page-enter">
+      <div id="main">
         <Link
           href="/doctor/patients"
           className="group inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"

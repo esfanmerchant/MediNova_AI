@@ -249,7 +249,7 @@ export default function AdminUsers() {
 
   return (
     <AppShell role="ADMIN">
-      <div id="main" className="page-enter space-y-6">
+      <div id="main" className="space-y-6">
         <PageHeader
           eyebrow={tr("Admin portal", "Intezami portal")}
           title={tr("People", "Log")}

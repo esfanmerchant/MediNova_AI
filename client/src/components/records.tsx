@@ -16,6 +16,7 @@ import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import type { MedicalRecord, Prescription } from "@/lib/api";
 import { useTr } from "@/lib/lang";
+import { TRANSITION } from "@/lib/motion";
 import { Avatar, Badge, EmptyState, cx } from "@/components/ui";
 
 export function formatDate(iso: string): string {
@@ -133,7 +134,7 @@ export function RecordEntry({
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: "auto", opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.28, ease: "easeOut" }}
+              transition={TRANSITION.base}
               className="overflow-hidden"
             >
               <div className="border-t border-line px-5 pb-5 pt-4">

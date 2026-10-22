@@ -27,11 +27,14 @@
  * which is what a section index looks like everywhere it is done well.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { Icon } from "@/components/Icon";
+import { useRevealOnScroll, useStaggerAt } from "@/components/motion";
 import { cx } from "@/components/ui";
+import { SPRING, useCalmMotion } from "@/lib/motion";
 
 export interface Section {
   /** Element id in jump mode; the `?tab=` value in tabs mode. */
@@ -86,6 +89,8 @@ function keepInView(bar: HTMLElement | null, id: string) {
 }
 
 export function PageSectionNav({ sections, mode, activeId, onChange, label }: Props) {
+  const calm = useCalmMotion();
+  const underline = useId();
   const bar = useRef<HTMLDivElement | null>(null);
   const wrapper = useRef<HTMLDivElement | null>(null);
   const [seen, setSeen] = useState<string | null>(sections[0]?.id ?? null);
@@ -221,8 +226,11 @@ export function PageSectionNav({ sections, mode, activeId, onChange, label }: Pr
           aria-hidden
           className="from-canvas pointer-events-none absolute inset-y-0 right-0 z-10 w-4 bg-gradient-to-l to-transparent"
         />
-        <div
+        <motion.div
           ref={bar}
+          // The underline is measured inside this scroller; without this the
+          // slide would be off by however far the row has been scrolled.
+          layoutScroll
           role={mode === "tabs" ? "tablist" : undefined}
           aria-label={label}
           onKeyDown={mode === "tabs" ? onKeyDown : undefined}
@@ -269,15 +277,19 @@ export function PageSectionNav({ sections, mode, activeId, onChange, label }: Pr
                   />
                 )}
                 {active && (
-                  <span
+                  // One underline that travels to the section now current,
+                  // rather than one that vanishes and another that appears.
+                  <motion.span
+                    layoutId={underline}
                     aria-hidden
+                    transition={calm ? { duration: 0 } : SPRING}
                     className="bg-gradient-brand absolute inset-x-2 -bottom-2 h-0.5 rounded-full"
                   />
                 )}
               </button>
             );
           })}
-        </div>
+        </motion.div>
       </div>
     </div>
   );
@@ -294,13 +306,22 @@ export function Section({
   id,
   children,
   className,
+  at,
+  reveal,
 }: {
   id: string;
   children: React.ReactNode;
   className?: string;
+  /** Its children arrive one after another, starting this many seconds into the page. */
+  at?: number;
+  /** It fades up when scrolled to — not before this many seconds into the page. */
+  reveal?: number;
 }) {
+  const ref = useRef<HTMLElement | null>(null);
+  useStaggerAt(ref, at);
+  useRevealOnScroll(ref, reveal);
   return (
-    <section id={id} className={cx("scroll-section", className)}>
+    <section ref={ref} id={id} className={cx("scroll-section", at !== undefined && "stagger", className)}>
       {children}
     </section>
   );

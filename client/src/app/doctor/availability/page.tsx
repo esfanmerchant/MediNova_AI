@@ -39,7 +39,7 @@ export default function DoctorAvailabilityPage() {
 
   return (
     <AppShell role="DOCTOR">
-      <div id="main" className="page-enter space-y-6">
+      <div id="main" className="space-y-6">
         <PageHeader
           eyebrow={tr("Doctor portal", "Doctor ka portal")}
           title={tr("Availability", "Dastyabi")}

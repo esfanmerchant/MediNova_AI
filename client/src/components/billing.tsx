@@ -52,6 +52,7 @@ import {
 } from "@/lib/api";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import { useTr } from "@/lib/lang";
+import { SPRING, TRANSITION, useCalmMotion } from "@/lib/motion";
 import { useAsync } from "@/lib/useAsync";
 
 function messageOf(caught: unknown, fallback: string): string {
@@ -132,6 +133,7 @@ function Modal({
   children: ReactNode;
 }) {
   const tr = useTr();
+  const calm = useCalmMotion();
 
   useEffect(() => {
     if (!open) return;
@@ -154,7 +156,7 @@ function Modal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            transition={TRANSITION.base}
             onClick={onClose}
             className="absolute inset-0 bg-navy-deep/45 backdrop-blur-sm"
           />
@@ -163,10 +165,12 @@ function Modal({
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
-            initial={{ opacity: 0, scale: 0.95, y: 12 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 8 }}
-            transition={{ type: "spring", stiffness: 380, damping: 32, mass: 0.9 }}
+            // The same arrival as every other dialogue: up from 95% and 10px
+            // low, and back out the way it came.
+            initial={calm ? { opacity: 0 } : { opacity: 0, scale: 0.95, y: 10 }}
+            animate={calm ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
+            exit={calm ? { opacity: 0 } : { opacity: 0, scale: 0.95, y: 10 }}
+            transition={calm ? TRANSITION.fast : { ...SPRING, opacity: TRANSITION.base }}
             className="card-thread relative w-full max-w-lg rounded-2xl border border-line bg-card p-6 shadow-float"
           >
             <div className="flex items-start gap-4">
@@ -708,7 +712,7 @@ function InvoiceRow({
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: "auto", opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                transition={TRANSITION.base}
                 className="overflow-hidden"
               >
                 {/* `invoice-print` is what the print stylesheet keeps; see
@@ -923,7 +927,7 @@ export function InvoicesPanel({
                 </th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="stagger">
               {rows.map((invoice) => (
                 <InvoiceRow
                   key={invoice.id}

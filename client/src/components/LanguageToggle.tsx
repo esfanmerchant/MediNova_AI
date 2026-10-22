@@ -7,9 +7,18 @@
  * options staying visible is what tells a visitor the other language exists at
  * all. Each segment is labelled in its own language — "اردو would be wrong here;
  * the site is Roman Urdu, so the label is too.
+ *
+ * The lit ground is one element that slides from one segment to the other,
+ * rather than two that switch on and off: the movement is what says "this
+ * changed", in a control whose whole effect is that every word on the screen
+ * just did.
  */
 
+import { motion } from "framer-motion";
+import { useId, useState } from "react";
+
 import { setLang, useLang } from "@/lib/lang";
+import { SPRING, useCalmMotion } from "@/lib/motion";
 import { cx } from "@/components/ui";
 
 const OPTIONS = [
@@ -19,6 +28,13 @@ const OPTIONS = [
 
 export function LanguageToggle({ onDark = false }: { onDark?: boolean }) {
   const lang = useLang();
+  const calm = useCalmMotion();
+  // One per toggle: the header and the account menu can both be on screen,
+  // and a shared id would have the pill fly between them.
+  const pill = useId();
+  // The stored language replaces the default a moment after load; that is a
+  // correction, not a choice, so the pill only travels once it has been tapped.
+  const [touched, setTouched] = useState(false);
 
   return (
     <div
@@ -36,25 +52,39 @@ export function LanguageToggle({ onDark = false }: { onDark?: boolean }) {
             key={option.value}
             type="button"
             aria-pressed={active}
-            onClick={() => setLang(option.value)}
+            onClick={() => {
+              setTouched(true);
+              setLang(option.value);
+            }}
             className={cx(
-              "min-h-11 rounded-full px-3 transition-colors",
+              "relative min-h-11 rounded-full px-3 transition-[color,transform] duration-150 active:scale-[0.97]",
               "focus-visible:outline-2 focus-visible:outline-offset-2",
               onDark ? "focus-visible:outline-white" : "focus-visible:outline-primary",
               active
                 ? onDark
-                  ? "bg-accent-bright text-[#053B38]"
+                  ? "text-[#053B38]"
                   : // `text-primary-on`, not `text-white`. The primary colour is a
                     // deep blue on a light ground and a pale one on a dark
                     // ground, so white on it is 12:1 in one theme and 2.6:1 in
                     // the other — the token exists precisely to follow it.
-                    "bg-primary text-primary-on"
+                    "text-primary-on"
                 : onDark
                   ? "text-white/70 hover:text-white"
                   : "text-muted hover:text-strong",
             )}
           >
-            {option.label}
+            {active && (
+              <motion.span
+                layoutId={pill}
+                aria-hidden
+                transition={calm || !touched ? { duration: 0 } : SPRING}
+                className={cx(
+                  "absolute inset-0 rounded-full",
+                  onDark ? "bg-accent-bright" : "bg-primary",
+                )}
+              />
+            )}
+            <span className="relative">{option.label}</span>
           </button>
         );
       })}

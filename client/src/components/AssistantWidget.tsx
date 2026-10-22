@@ -8,12 +8,14 @@
  * safety layer, same disclaimer. Nothing here is a second assistant; it is a
  * second door to the one that exists.
  *
- * The halo around the button asks for attention once. After the panel has
- * been opened in this session it stops, because a pulse that never stops is
- * a notification that never arrives.
+ * The button floats — a slow bob of a few pixels, so it reads as something
+ * that is there to be picked up rather than part of the page. The rings that
+ * leave it ask for attention once: after the panel has been opened in this
+ * session they stop, because a pulse that never stops is a notification that
+ * never arrives.
  */
 
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -22,6 +24,7 @@ import { Icon } from "@/components/Icon";
 import { Button, ErrorState, Loading, cx } from "@/components/ui";
 import { assistant as assistantApi } from "@/lib/api";
 import { useTr } from "@/lib/lang";
+import { DURATION, SPRING, useCalmMotion } from "@/lib/motion";
 import { useAsync } from "@/lib/useAsync";
 
 const SEEN_KEY = "medisense:assistant-widget-opened";
@@ -62,7 +65,7 @@ function WidgetBody() {
 
 export function AssistantWidget() {
   const tr = useTr();
-  const reduced = useReducedMotion();
+  const reduced = useCalmMotion();
   const [open, setOpen] = useState(false);
   const [seen, setSeen] = useState(() => (typeof window !== "undefined" ? seenThisSession() : true));
 
@@ -89,7 +92,7 @@ export function AssistantWidget() {
             initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.6, y: 24, x: 24 }}
             animate={reduced ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0, x: 0 }}
             exit={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.7, y: 24, x: 24 }}
-            transition={{ type: "spring", stiffness: 380, damping: 32 }}
+            transition={SPRING}
             style={{ transformOrigin: "bottom right" }}
             className="glass safe-bottom fixed bottom-24 right-4 z-40 flex h-[min(600px,calc(100dvh-8rem))] w-[min(400px,calc(100vw-2rem))] flex-col overflow-hidden rounded-3xl sm:right-6"
           >
@@ -131,31 +134,45 @@ export function AssistantWidget() {
         )}
       </AnimatePresence>
 
-      <motion.button
-        type="button"
-        aria-expanded={open}
-        aria-label={open ? tr("Close the assistant", "Assistant band karein") : tr("Ask the MediNova AI Assistant", "MediNova AI Assistant se poochein")}
-        onClick={toggle}
-        whileHover={reduced ? undefined : { scale: 1.06 }}
-        whileTap={reduced ? undefined : { scale: 0.94 }}
+      {/* The bob is on a wrapper, not the button: a CSS animation on the
+          button's own transform would override the hover and press scales
+          Framer writes there. It rests while the panel is open — a moving
+          close button is a harder target. */}
+      <div
         className={cx(
-          "bg-gradient-brand safe-bottom fixed bottom-6 right-4 z-40 grid h-14 w-14 place-items-center rounded-full text-white shadow-float focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary sm:right-6",
-          !seen && !open && "animate-halo",
+          "safe-bottom fixed bottom-6 right-4 z-40 sm:right-6",
+          !reduced && !open && "animate-bob",
         )}
       >
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.span
-            key={open ? "close" : "open"}
-            initial={{ rotate: -90, opacity: 0 }}
-            animate={{ rotate: 0, opacity: 1 }}
-            exit={{ rotate: 90, opacity: 0 }}
-            transition={{ duration: 0.18 }}
-            className="grid place-items-center"
-          >
-            <Icon name={open ? "close" : "smart_toy"} filled className="text-[28px]" />
-          </motion.span>
-        </AnimatePresence>
-      </motion.button>
+        {!seen && !open && !reduced && (
+          <>
+            <span aria-hidden className="pulse-ring" />
+            <span aria-hidden className="pulse-ring pulse-ring-late" />
+          </>
+        )}
+        <motion.button
+          type="button"
+          aria-expanded={open}
+          aria-label={open ? tr("Close the assistant", "Assistant band karein") : tr("Ask the MediNova AI Assistant", "MediNova AI Assistant se poochein")}
+          onClick={toggle}
+          whileHover={reduced ? undefined : { scale: 1.06 }}
+          whileTap={reduced ? undefined : { scale: 0.94 }}
+          className="bg-gradient-brand relative grid h-14 w-14 place-items-center rounded-full text-white shadow-float focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
+        >
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.span
+              key={open ? "close" : "open"}
+              initial={{ rotate: -90, opacity: 0 }}
+              animate={{ rotate: 0, opacity: 1 }}
+              exit={{ rotate: 90, opacity: 0 }}
+              transition={{ duration: DURATION.fast }}
+              className="grid place-items-center"
+            >
+              <Icon name={open ? "close" : "smart_toy"} filled className="text-[28px]" />
+            </motion.span>
+          </AnimatePresence>
+        </motion.button>
+      </div>
     </>
   );
 }

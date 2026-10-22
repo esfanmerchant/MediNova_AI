@@ -33,7 +33,7 @@ export default function AdminOrder() {
 
   return (
     <AppShell role="ADMIN">
-      <div id="main" className="page-enter">
+      <div id="main">
         <Link
           href="/admin/pharmacy/orders"
           className="group inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-primary hover:underline"

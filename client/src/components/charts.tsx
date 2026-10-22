@@ -57,7 +57,7 @@ function format(value: number): string {
  */
 function Tip({ bar, currency }: { bar: Bar; currency: string }) {
   return (
-    <div className="pointer-events-none absolute -top-1 left-1/2 z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg border border-line bg-card px-2.5 py-1.5 text-xs shadow-overlay">
+    <div className="tip-in pointer-events-none absolute -top-1 left-1/2 z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg border border-line bg-card px-2.5 py-1.5 text-xs shadow-overlay">
       <span className="block font-semibold text-strong">
         {currency} {format(toNumber(bar.value))}
       </span>
@@ -120,9 +120,14 @@ export function TimeBars({
                 onFocus={() => setHovered(index)}
                 onBlur={() => setHovered((current) => (current === index ? null : current))}
                 aria-label={`${bar.label}: ${currency} ${format(value)}`}
-                style={{ height: `${height}%` }}
+                // Each bar rises from the baseline a beat after the one before
+                // it, the whole row inside a second however many there are.
+                style={{
+                  height: `${height}%`,
+                  animationDelay: `${Math.min(index * 0.05, 1).toFixed(2)}s`,
+                }}
                 className={cx(
-                  "w-full rounded-t transition-opacity duration-150",
+                  "bar-grow w-full rounded-t transition-opacity duration-150",
                   // 4px rounded top, anchored to the baseline.
                   "bg-[#1462c4] dark:bg-[#4a86d8]",
                   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
@@ -167,7 +172,7 @@ export function CategoryBars({
       <figcaption className="mb-4 text-sm text-muted">{label}</figcaption>
 
       <ul className="space-y-3">
-        {bars.map((bar) => {
+        {bars.map((bar, index) => {
           const value = toNumber(bar.value);
           return (
             <li key={bar.label}>
@@ -181,8 +186,11 @@ export function CategoryBars({
               </div>
               <div className="h-2.5 overflow-hidden rounded-full bg-sunken">
                 <div
-                  style={{ width: `${Math.max(2, (value / peak) * 100)}%` }}
-                  className="h-full rounded-full bg-[#1462c4] dark:bg-[#4a86d8]"
+                  style={{
+                    width: `${Math.max(2, (value / peak) * 100)}%`,
+                    animationDelay: `${Math.min(index * 0.05, 1).toFixed(2)}s`,
+                  }}
+                  className="bar-grow-x h-full rounded-full bg-[#1462c4] dark:bg-[#4a86d8]"
                 />
               </div>
             </li>

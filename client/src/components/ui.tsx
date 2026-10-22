@@ -17,9 +17,11 @@
  * monitoring system quietly stops working.
  */
 
+import { motion } from "framer-motion";
 import Link from "next/link";
 import {
   useEffect,
+  useId,
   useRef,
   useState,
   type MouseEvent,
@@ -27,6 +29,12 @@ import {
 } from "react";
 
 import { Icon } from "@/components/Icon";
+import { CountUp } from "@/components/motion";
+import { SPRING, pulse, useCalmMotion } from "@/lib/motion";
+
+// The count-up lives with the rest of the motion system now; re-exported so
+// nothing that imported it from here has to know it moved.
+export { CountUp };
 
 /**
  * Small confirmation marks are solid, never the ramp.
@@ -60,20 +68,42 @@ function prefersReducedMotion(): boolean {
  * distraction, movement under a button is an invitation.
  */
 function useTilt(ref: React.RefObject<HTMLElement | null>, enabled: boolean, maxDegrees = 4) {
+  // The last tilt and whether it is held down, so a press can sink the card
+  // where it is tilted rather than snapping it flat first.
+  const pose = useRef({ tilt: "", pressed: false });
+
+  const paint = () => {
+    const element = ref.current;
+    if (!element) return;
+    const { tilt, pressed } = pose.current;
+    element.style.transform = tilt ? `${tilt}${pressed ? " scale(0.97)" : ""}` : "";
+  };
+
   const onMove = (event: MouseEvent<HTMLElement>) => {
     const element = ref.current;
     if (!enabled || !element || prefersReducedMotion()) return;
     const rect = element.getBoundingClientRect();
     const x = (event.clientX - rect.left) / rect.width - 0.5;
     const y = (event.clientY - rect.top) / rect.height - 0.5;
-    element.style.transform = `perspective(900px) rotateX(${(-y * maxDegrees).toFixed(2)}deg) rotateY(${(x * maxDegrees).toFixed(2)}deg) translateY(-4px)`;
+    pose.current.tilt = `perspective(900px) rotateX(${(-y * maxDegrees).toFixed(2)}deg) rotateY(${(x * maxDegrees).toFixed(2)}deg) translateY(-4px)`;
+    paint();
   };
   const onLeave = () => {
-    const element = ref.current;
-    if (element) element.style.transform = "";
+    pose.current = { tilt: "", pressed: false };
+    paint();
+  };
+  const onDown = () => {
+    if (!enabled || !pose.current.tilt) return;
+    pose.current.pressed = true;
+    paint();
+  };
+  const onUp = () => {
+    if (!pose.current.pressed) return;
+    pose.current.pressed = false;
+    paint();
   };
 
-  return { onMove, onLeave };
+  return { onMove, onLeave, onDown, onUp };
 }
 
 export function Card({
@@ -88,7 +118,8 @@ export function Card({
   interactive = false,
 }: {
   title?: string;
-  description?: string;
+  /** Usually a sentence; a node when part of it moves, like a count. */
+  description?: ReactNode;
   action?: ReactNode;
   /** A Material Symbol name, shown in a tinted square beside the title. */
   icon?: string;
@@ -114,7 +145,9 @@ export function Card({
       ref={shell}
       onMouseMove={interactive ? tilt.onMove : undefined}
       onMouseLeave={interactive ? tilt.onLeave : undefined}
-      className={cx("rounded-2xl", shells[variant], interactive && "tilt", className)}
+      onPointerDown={interactive ? tilt.onDown : undefined}
+      onPointerUp={interactive ? tilt.onUp : undefined}
+      className={cx("rounded-2xl", shells[variant], interactive && "tilt card-hover", className)}
     >
       {(title || action) && (
         <header className="flex flex-wrap items-center gap-3 border-b border-line px-6 py-5">
@@ -136,38 +169,6 @@ export function Card({
       <div className={flush ? undefined : "p-6"}>{children}</div>
     </section>
   );
-}
-
-/**
- * A number that counts up to its value on mount and whenever it changes.
- *
- * Reduced motion, the test environment, or no window all land on the same
- * honest fallback: the final number, immediately.
- */
-export function CountUp({ value, duration = 1100 }: { value: number; duration?: number }) {
-  const instant = prefersReducedMotion() || process.env.NODE_ENV === "test";
-  const [shown, setShown] = useState(instant ? value : 0);
-  const from = useRef(0);
-
-  useEffect(() => {
-    if (instant) return;
-    const start = performance.now();
-    const origin = from.current;
-    let frame = 0;
-    const tick = (now: number) => {
-      const progress = Math.min(1, (now - start) / duration);
-      // Ease-out: the last digits settle slowly, which is what the eye reads.
-      const eased = 1 - Math.pow(1 - progress, 3);
-      const next = Math.round(origin + (value - origin) * eased);
-      setShown(next);
-      if (progress < 1) frame = requestAnimationFrame(tick);
-      else from.current = value;
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [value, duration, instant]);
-
-  return <>{instant ? value : shown}</>;
 }
 
 /**
@@ -215,6 +216,17 @@ export function StatTile({
     warning: "bg-warning-soft text-warning",
     critical: "bg-critical-soft text-critical",
   } as const;
+
+  // When the number changes under somebody's eyes — a refresh, a dose ticked
+  // off — the tile gives one small pulse, so the change is seen rather than
+  // having to be noticed. Never on arrival: arriving is not a change.
+  const tile = useRef<HTMLElement | null>(null);
+  const shown = useRef(value);
+  useEffect(() => {
+    if (shown.current === value) return;
+    shown.current = value;
+    pulse(tile.current);
+  }, [value]);
 
   const body = (
     <>
@@ -267,7 +279,7 @@ export function StatTile({
       {href && (
         <span
           aria-hidden
-          className="absolute right-5 bottom-5 text-faint opacity-0 transition-opacity group-hover:opacity-100"
+          className="absolute right-5 bottom-5 -translate-x-1 text-faint opacity-0 transition-[opacity,transform] duration-300 ease-out-soft group-hover:translate-x-0 group-hover:opacity-100"
         >
           <Icon name="arrow_forward" className="text-[20px]" />
         </span>
@@ -276,13 +288,19 @@ export function StatTile({
   );
 
   const frame = cx(
-    "blob-corner group relative flex flex-col overflow-hidden rounded-2xl border border-line bg-card p-5 shadow-card hover-lift-sm sm:p-6",
+    "blob-corner group relative flex flex-col overflow-hidden rounded-2xl border border-line bg-card p-5 shadow-card sm:p-6",
+    // A tile that leads somewhere lifts and lights its edge; one that only
+    // reports keeps the small lift it always had.
+    href ? "card-hover" : "hover-lift-sm",
     className,
   );
 
   if (href) {
     return (
       <Link
+        ref={(node) => {
+          tile.current = node;
+        }}
         href={href}
         className={cx(frame, "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary")}
       >
@@ -290,7 +308,16 @@ export function StatTile({
       </Link>
     );
   }
-  return <div className={frame}>{body}</div>;
+  return (
+    <div
+      ref={(node) => {
+        tile.current = node;
+      }}
+      className={frame}
+    >
+      {body}
+    </div>
+  );
 }
 
 /**
@@ -333,12 +360,14 @@ export function QuickAction({
       ref={shell}
       onMouseMove={tilt.onMove}
       onMouseLeave={tilt.onLeave}
+      onPointerDown={tilt.onDown}
+      onPointerUp={tilt.onUp}
       className={cx(
         // `min-w-0` is load-bearing, not tidiness. As a grid item this keeps
         // its automatic minimum size, which is its min-content width — and
         // that made a single-column grid resolve a 448px track inside a 358px
         // section on a phone, scrolling the whole page sideways.
-        "tilt group flex min-w-0 items-center gap-4 rounded-2xl border border-line bg-gradient-to-br bg-card p-5 shadow-card",
+        "tilt card-hover group flex min-w-0 items-center gap-4 rounded-2xl border border-line bg-gradient-to-br bg-card p-5 shadow-card",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
         tints[tone],
       )}
@@ -358,7 +387,9 @@ export function QuickAction({
       </span>
       <Icon
         name="arrow_forward"
-        className="ml-auto text-[20px] text-faint transition-transform group-hover:translate-x-1"
+        // `shrink-0`: in a narrow card the flex row squeezed the arrow to half
+        // its width, and its one-em box then cut the glyph in two.
+        className="ml-auto shrink-0 text-[20px] text-faint transition-[transform,color] duration-300 ease-out-soft group-hover:translate-x-1 group-hover:text-accent"
       />
     </Link>
   );
@@ -481,8 +512,8 @@ export function Button({
     primary: "btn-gradient text-white disabled:opacity-60",
     // Outlined in the gradient: for actions that report rather than commit.
     secondary: "btn-outline",
-    danger: "bg-critical text-white shadow-sm hover:opacity-90 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50",
-    ghost: "text-primary hover:bg-gradient-soft",
+    danger: "bg-critical text-white shadow-sm hover:opacity-90 hover:scale-[1.02] active:scale-[0.97] disabled:opacity-50",
+    ghost: "text-primary hover:bg-gradient-soft active:scale-[0.97]",
   } as const;
 
   // Minimum 44px height: the accessible touch-target size.
@@ -769,6 +800,8 @@ export function PillGroup<T extends string>({
   onChange: (next: T) => void;
   label: string;
 }) {
+  const calm = useCalmMotion();
+  const pill = useId();
   return (
     <div role="group" aria-label={label} className="inline-flex rounded-full border border-line bg-sunken p-0.5">
       {options.map((option) => {
@@ -782,12 +815,20 @@ export function PillGroup<T extends string>({
             className={cx(
               // Same reasoning as the tab row: a finger needs 44px, a cursor
               // does not, and the breakpoint is the closest thing to that line.
-              "min-h-11 rounded-full px-3 text-xs font-semibold transition-[background-color,color,box-shadow] duration-200 sm:min-h-8",
+              "relative min-h-11 rounded-full px-3 text-xs font-semibold transition-colors duration-200 sm:min-h-8",
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-              active ? "bg-gradient-brand text-white shadow-sm" : "text-muted hover:text-strong",
+              active ? "text-white" : "text-muted hover:text-strong",
             )}
           >
-            {option.label}
+            {active && (
+              <motion.span
+                layoutId={pill}
+                aria-hidden
+                transition={calm ? { duration: 0 } : SPRING}
+                className="bg-gradient-brand absolute inset-0 rounded-full shadow-sm"
+              />
+            )}
+            <span className="relative">{option.label}</span>
           </button>
         );
       })}

@@ -32,7 +32,7 @@ export default function AdminBilling() {
   const tr = useTr();
   return (
     <AppShell role="ADMIN">
-      <div id="main" className="page-enter">
+      <div id="main">
         <PageHeader
           eyebrow={tr("Admin portal", "Intezami portal")}
           title={tr("Billing", "Billing")}

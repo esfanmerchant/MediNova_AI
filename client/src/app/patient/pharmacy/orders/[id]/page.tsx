@@ -59,7 +59,7 @@ export default function OrderDetail() {
 
   return (
     <AppShell role="PATIENT">
-      <div id="main" className="page-enter">
+      <div id="main">
         <Link
           href="/patient/pharmacy/orders"
           className="group inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-primary hover:underline"

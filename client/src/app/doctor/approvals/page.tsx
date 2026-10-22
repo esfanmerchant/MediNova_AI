@@ -39,7 +39,7 @@ export default function MedicineApprovals() {
 
   return (
     <AppShell role="DOCTOR">
-      <div id="main" className="page-enter">
+      <div id="main">
         <PageHeader
           eyebrow={tr("Doctor portal", "Doctor ka portal")}
           title={tr("Medicine approvals", "Dawa ki manzoori")}

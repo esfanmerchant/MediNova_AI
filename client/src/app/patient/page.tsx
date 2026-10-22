@@ -10,7 +10,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { MedicationToday } from "@/components/MedicationToday";
@@ -41,6 +41,7 @@ import {
   type VitalType,
 } from "@/lib/api";
 import { useLang, useTr } from "@/lib/lang";
+import { useCalmMotion } from "@/lib/motion";
 import { useSession } from "@/lib/session";
 import { useAsync } from "@/lib/useAsync";
 
@@ -291,6 +292,52 @@ function ExplainLatestReport({ patientId }: { patientId: string }) {
   );
 }
 
+const ECG_PATH =
+  "M0 40 H140 L152 40 L160 14 L172 54 L182 40 H300 L308 30 L316 40 H440 L452 40 L460 12 L472 56 L482 40 H640";
+
+/**
+ * A lit section travelling along the hero's ECG trace, every few seconds, for
+ * as long as the card is on screen.
+ *
+ * The movement is two transforms (see `.ecg-sweep-window` in globals.css), so
+ * the trace is never repainted. Off screen it pauses: there is no reason to
+ * spend a frame on a pulse nobody is looking at.
+ */
+function PulseSweep() {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(([entry]) => {
+      node.classList.toggle("ecg-sweep-paused", !entry?.isIntersecting);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={ref} aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-14 opacity-80">
+      <div className="ecg-sweep-window">
+        <div className="ecg-sweep-trace">
+          <svg
+            viewBox="0 0 640 60"
+            preserveAspectRatio="none"
+            className="h-full w-full"
+            fill="none"
+            stroke="#FFFFFF"
+            strokeWidth="2"
+            strokeLinejoin="round"
+            style={{ filter: "drop-shadow(0 0 3px rgb(255 255 255 / 0.85))" }}
+          >
+            <path d={ECG_PATH} />
+          </svg>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function greeting(tr: (en: string, ur: string) => string): string {
   const hour = new Date().getHours();
   if (hour < 12) return tr("Good morning", "Subah bakhair");
@@ -309,6 +356,7 @@ function Welcome({
   const tr = useTr();
   const lang = useLang();
   const router = useRouter();
+  const calm = useCalmMotion();
   const [question, setQuestion] = useState("");
   const firstName = name.split(/\s+/)[0] ?? name;
 
@@ -328,7 +376,9 @@ function Welcome({
         className="[mask-image:radial-gradient(65%_70%_at_88%_12%,black,transparent)]"
       />
 
-      {/* A quiet ECG trace along the bottom edge — the building's own pulse. */}
+      {/* A quiet ECG trace along the bottom edge — the building's own pulse.
+          It draws itself once on arrival; after that a lit beat keeps running
+          along it. */}
       <svg
         aria-hidden
         viewBox="0 0 640 60"
@@ -339,11 +389,9 @@ function Welcome({
         strokeWidth="1.5"
         strokeLinejoin="round"
       >
-        <path
-          className="animate-ecg"
-          d="M0 40 H140 L152 40 L160 14 L172 54 L182 40 H300 L308 30 L316 40 H440 L452 40 L460 12 L472 56 L482 40 H640"
-        />
+        <path className="animate-ecg" d={ECG_PATH} />
       </svg>
+      {!calm && <PulseSweep />}
 
       <div className="relative grid gap-6 lg:grid-cols-[1.3fr_1fr] lg:items-center">
         <div>
@@ -426,11 +474,15 @@ export default function PatientDashboard() {
         />
 
 
-        <Section id="welcome">
+        {/* The page arrives in the order it is read: the greeting, the four
+            doors, the four numbers, then the lists — each group waiting for
+            its turn on the page's clock, or arriving at once if its data took
+            longer than its turn. */}
+        <Section id="welcome" at={0.08}>
           {user && <Welcome name={user.name} next={next} />}
         </Section>
 
-        <Section id="quick-actions" className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Section id="quick-actions" at={0.16} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <QuickAction
             href="/patient/appointments"
             icon="calendar_add_on"
@@ -474,7 +526,8 @@ export default function PatientDashboard() {
           <>
             <Section
               id="at-a-glance"
-              className="stagger grid grid-cols-2 gap-4 lg:grid-cols-4"
+              at={0.4}
+              className="grid grid-cols-2 gap-4 lg:grid-cols-4"
             >
               <StatTile
                 label={tr("Upcoming appointments", "Aane wali appointments")}
@@ -503,15 +556,15 @@ export default function PatientDashboard() {
               />
             </Section>
 
-            <Section id="snapshot">
+            <Section id="snapshot" reveal={0.62}>
               {user?.patientId && <HealthSnapshot patientId={user.patientId} />}
             </Section>
-            <Section id="latest-report">
+            <Section id="latest-report" reveal={0.68}>
               {user?.patientId && <ExplainLatestReport patientId={user.patientId} />}
             </Section>
 
             <div className="grid gap-6 lg:grid-cols-2">
-              <Section id="appointments">
+              <Section id="appointments" reveal={0.72}>
               <Card
                 icon="event_upcoming"
                 variant={data.upcomingAppointments.length > 0 ? "featured" : "default"}
@@ -581,7 +634,7 @@ export default function PatientDashboard() {
                   What is prescribed, and the times each medicine is taken at,
                   live on the record page beside the prescription they belong
                   to. This page is what to do now. */}
-              <Section id="medication">
+              <Section id="medication" reveal={0.8}>
                 <MedicationToday />
               </Section>
             </div>
