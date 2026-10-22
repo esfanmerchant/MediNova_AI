@@ -62,6 +62,9 @@ const LABELS: Record<string, [string, string]> = {
   withdrawals: ["withdrawals", "withdrawals"],
   documentsUploaded: ["documents they uploaded", "un ke upload kiye documents"],
   emergencyAccessUsed: ["emergency accesses they used", "un ke liye gaye emergency access"],
+  medicineOrders: ["unpaid medicine orders", "bina ada shuda dawa ke orders"],
+  paidMedicineOrders: ["paid medicine orders, with the address removed", "ada shuda dawa ke orders, pata hata kar"],
+  medicineApprovals: ["medicine approvals they gave", "un ki di hui dawa ki manzooriyan"],
 };
 
 function Counts({

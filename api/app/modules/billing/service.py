@@ -48,7 +48,16 @@ from app.core.config import settings
 from app.core.errors import bad_request, conflict
 from app.core.logging import logger
 from app.db.base import new_id, utcnow
-from app.db.enums import FeeMode, InvoiceStatus, NotificationType, Role
+from app.db.enums import (
+    AppointmentMode,
+    AppointmentStatus,
+    FeeMode,
+    InvoiceKind,
+    InvoiceStatus,
+    NotificationType,
+    PaymentStatus,
+    Role,
+)
 from app.db.models import (
     Appointment,
     BillingSettings,
@@ -95,16 +104,19 @@ async def next_invoice_number(db: AsyncSession) -> str:
     return f"INV-{utcnow().year}-{value:06d}"
 
 
-def build_line_items(*, doctor_name: str, specialization: str, fee: Decimal) -> list[dict[str, Any]]:
+def build_line_items(
+    *, doctor_name: str, specialization: str, fee: Decimal, online: bool = False
+) -> list[dict[str, Any]]:
     """What the patient is being charged for, in their own terms.
 
     Stored on the invoice rather than derived on read: the doctor's fee can
     change, and an invoice must always say what was actually charged at the time
     (conflict C4).
     """
+    kind = "Online consultation" if online else "Consultation"
     return [
         {
-            "description": f"Consultation — {doctor_name} ({specialization})",
+            "description": f"{kind} — {doctor_name} ({specialization})",
             "quantity": 1,
             "unitPrice": str(_money(fee)),
             "amount": str(_money(fee)),
@@ -218,10 +230,20 @@ async def existing_for_appointment(db: AsyncSession, appointment_id: str) -> Inv
 async def generate_for_appointment(
     db: AsyncSession, appointment: Appointment
 ) -> tuple[Invoice, bool]:
-    """Create the invoice for a completed consultation.
+    """Create the invoice for a consultation.
 
     Returns ``(invoice, created)``. ``created`` is False when one already
     existed, which is the normal outcome of a retry and is not an error.
+
+    **When** differs by kind. A clinic visit is billed as it completes, as it
+    always was. An online consultation is billed when the doctor confirms it,
+    because it is paid for before it happens — the call does not open until it
+    is. Billing at confirmation rather than at booking means a request the
+    doctor declines never needed paying, and so never needs a refund.
+
+    An online bill is due at the consultation's start and carries no late fee.
+    There is nothing to be late *for*: a consultation that was not paid for by
+    its time simply does not happen, and the bill is voided rather than chased.
 
     The insert runs inside a SAVEPOINT so that losing the unique-index race
     costs only the savepoint. Without it the ``IntegrityError`` would poison the
@@ -243,9 +265,17 @@ async def generate_for_appointment(
         raise bad_request("The consultation has no doctor to bill for.")
 
     record, doctor_name = doctor
+    online = appointment.mode == AppointmentMode.ONLINE
+    # An online fee only when the doctor set one. Empty means the clinic fee
+    # applies, which is what most doctors charge for both.
+    fee = (
+        record.online_fee
+        if online and record.online_fee is not None
+        else record.consultation_fee
+    )
     rates = await load_settings(db)
     charges = totals(
-        record.consultation_fee,
+        fee,
         platform_fee=rates.platform_fee,
         platform_fee_mode=rates.platform_fee_mode,
         tax_percent=rates.tax_percent,
@@ -268,8 +298,10 @@ async def generate_for_appointment(
         # Resolved to rupees here and locked, so a percentage late charge is a
         # share of *this* bill rather than of whatever the total happens to be
         # when somebody finally looks at it.
-        late_fee=apply_fee(
-            charges.total, value=rates.late_fee, mode=rates.late_fee_mode
+        late_fee=(
+            Decimal("0")
+            if online
+            else apply_fee(charges.total, value=rates.late_fee, mode=rates.late_fee_mode)
         ),
         currency=settings.INVOICE_CURRENCY,
         # Issued, not draft: the patient is notified about it in the next step,
@@ -277,11 +309,23 @@ async def generate_for_appointment(
         # than not notifying them.
         status=InvoiceStatus.ISSUED,
         line_items=build_line_items(
-            doctor_name=doctor_name, specialization=record.specialization, fee=record.consultation_fee
+            doctor_name=doctor_name,
+            specialization=record.specialization,
+            fee=fee,
+            online=online,
         ),
         issued_at=utcnow(),
-        due_at=utcnow() + timedelta(days=PAYMENT_TERMS_DAYS),
+        due_at=(
+            max(appointment.start_time, utcnow())
+            if online
+            else utcnow() + timedelta(days=PAYMENT_TERMS_DAYS)
+        ),
     )
+    if online and invoice.total_amount <= 0:
+        # A doctor who consults online for free. Nothing to transfer, so
+        # nothing to wait for — an unpayable zero bill would keep the room shut.
+        invoice.status = InvoiceStatus.PAID
+        invoice.paid_at = utcnow()
 
     try:
         async with db.begin_nested():
@@ -414,6 +458,8 @@ async def credit_note(db: AsyncSession, original: Invoice, reason: str) -> Invoi
         total_amount=-original.total_amount,
         currency=original.currency,
         status=InvoiceStatus.ISSUED,
+        # A refund belongs to the business that took the money.
+        kind=original.kind,
         line_items=[
             {
                 "description": f"Credit note against {original.invoice_number} — {reason}",
@@ -593,6 +639,7 @@ def serialize(invoice: Invoice, *, awaiting_review: bool = False) -> dict[str, A
         "id": invoice.id,
         "patientId": invoice.patient_id,
         "appointmentId": invoice.appointment_id,
+        "kind": str(invoice.kind),
         "invoiceNumber": invoice.invoice_number,
         # Decimal is rendered as a string, not a float: 0.1 + 0.2 is not 0.3 in
         # binary floating point, and a currency amount must survive the trip.
@@ -714,17 +761,22 @@ async def _credit_the_doctor(db: AsyncSession, invoice: Invoice) -> None:
 
     row = (
         await db.execute(
-            select(Appointment.doctor_id, User.name, User.email, Patient.id)
+            select(Appointment.doctor_id, Appointment.status, User.name, User.email)
             .join(Doctor, Doctor.id == Appointment.doctor_id)
             .join(User, User.id == Doctor.user_id)
-            .join(Patient, Patient.id == Appointment.patient_id)
             .where(Appointment.id == invoice.appointment_id)
         )
     ).first()
     if row is None:
         return
 
-    doctor_id, doctor_name, doctor_email, _ = row
+    doctor_id, status, doctor_name, doctor_email = row
+    if status != AppointmentStatus.COMPLETED:
+        # Paid for, not yet earned. An online consultation is paid before it
+        # takes place, and crediting the doctor then would pay them for a call
+        # that might still be cancelled — and refunded. ``credit_if_earned``
+        # runs again when the consultation completes.
+        return
 
     patient_name = (
         await db.execute(
@@ -768,6 +820,147 @@ async def _credit_the_doctor(db: AsyncSession, invoice: Invoice) -> None:
     )
 
 
+async def credit_if_earned(db: AsyncSession, invoice: Invoice) -> None:
+    """Credit the doctor for a consultation that has both happened and been paid.
+
+    Called when a consultation completes. A clinic visit is billed at that
+    moment and is never paid yet, so this does nothing for one; an online
+    consultation was paid beforehand, and this is the moment its doctor has
+    earned it. Safe to call twice — the ledger refuses a second earning per
+    invoice.
+    """
+    if invoice.status == InvoiceStatus.PAID:
+        await _credit_the_doctor(db, invoice)
+
+
+async def notify_admins(
+    db: AsyncSession,
+    *,
+    title: str,
+    body: str,
+    link: str,
+    metadata: dict[str, Any] | None = None,
+    notification_type: NotificationType = NotificationType.INVOICE_ISSUED,
+) -> None:
+    """Put something in front of every administrator."""
+    admin_ids = (
+        (await db.execute(select(User.id).where(User.role == Role.ADMIN))).scalars().all()
+    )
+    for admin_id in admin_ids:
+        await notify(
+            db,
+            user_id=admin_id,
+            notification_type=notification_type,
+            title=title,
+            body=body,
+            link=link,
+            metadata=metadata,
+        )
+
+
+async def follow_reschedule(
+    db: AsyncSession, original: Appointment, replacement: Appointment
+) -> Invoice | None:
+    """Move a consultation's bill onto the time it was moved to.
+
+    Only an online consultation has a bill this early, and rescheduling it is
+    the same consultation at a different time — not a second one to pay for.
+    Without this the patient who had already paid would be billed again when
+    the doctor confirmed the new time, because the old bill would still point
+    at the cancelled appointment.
+
+    The amount, the number and the lines are untouched. What moves is the link,
+    and an unpaid bill's due date, which is the consultation's start.
+    """
+    invoice = await existing_for_appointment(db, original.id)
+    if invoice is None or invoice.status in (InvoiceStatus.VOID, InvoiceStatus.REFUNDED):
+        return None
+    invoice.appointment_id = replacement.id
+    if invoice.status == InvoiceStatus.ISSUED and replacement.mode == AppointmentMode.ONLINE:
+        invoice.due_at = max(replacement.start_time, utcnow())
+    await db.flush()
+    return invoice
+
+
+async def consultation_called_off(
+    db: AsyncSession, appointment: Appointment, *, reason: str, refund: bool = True
+) -> str | None:
+    """What becomes of a consultation's bill when it is not going to happen.
+
+    Returns what was done, for the audit trail: ``"voided"``, ``"refund_due"``,
+    ``"review_pending"``, or ``None`` when there was no bill.
+
+    * **Unpaid** — voided. Nothing moved, so nothing needs reversing, and a bill
+      for a call that never took place must not sit there turning overdue.
+    * **Paid** — left as it is, and the administrators are told. Returning money
+      is a transfer a person makes by hand, recorded with a credit note; voiding
+      a paid bill would leave the money unexplained.
+    * **A payment awaiting review** — left alone too. Voiding underneath it
+      would leave the reviewer unable to confirm money that really arrived.
+
+    ``refund`` is False for a no-show: the time was held for a patient who did
+    not come, so a refund is the administrator's call rather than a promise.
+    """
+    invoice = await existing_for_appointment(db, appointment.id)
+    if invoice is None or invoice.status in (InvoiceStatus.VOID, InvoiceStatus.REFUNDED):
+        return None
+
+    awaiting = (
+        await db.execute(
+            select(Payment.id)
+            .where(Payment.invoice_id == invoice.id, Payment.status == PaymentStatus.SUBMITTED)
+            .limit(1)
+        )
+    ).first() is not None
+
+    if invoice.status in (InvoiceStatus.ISSUED, InvoiceStatus.OVERDUE) and not awaiting:
+        void(invoice, reason)
+        await db.flush()
+        return "voided"
+
+    if invoice.status != InvoiceStatus.PAID:
+        await notify_admins(
+            db,
+            title=f"Cancelled with a payment in review: {invoice.invoice_number}",
+            body=(
+                "The online consultation was called off while its payment awaited "
+                "review. If you confirm the payment, refund it with a credit note."
+            ),
+            link="/admin/transactions",
+            metadata={"invoiceId": invoice.id, "appointmentId": appointment.id},
+        )
+        return "review_pending"
+
+    await notify_admins(
+        db,
+        title=f"Refund to review: {invoice.invoice_number}",
+        body=(
+            f"A paid online consultation will not take place ({reason}). "
+            f"{invoice.currency} {invoice.total_amount} was paid."
+            + (" Refund it, then record a credit note." if refund else "")
+        ),
+        link="/admin/billing",
+        metadata={"invoiceId": invoice.id, "appointmentId": appointment.id},
+    )
+    if refund:
+        patient_user = (
+            await db.execute(select(Patient.user_id).where(Patient.id == appointment.patient_id))
+        ).scalar_one_or_none()
+        await notify(
+            db,
+            user_id=patient_user,
+            notification_type=NotificationType.INVOICE_ISSUED,
+            title="Your payment will be refunded",
+            body=(
+                f"{invoice.currency} {invoice.total_amount} paid against "
+                f"{invoice.invoice_number} will be returned to the account you paid from."
+            ),
+            link="/patient/billing",
+            metadata={"invoiceId": invoice.id},
+        )
+    return "refund_due"
+
+
 async def settle(
     db: AsyncSession, invoice: Invoice, *, currency: str, amount: Decimal
 ) -> None:
@@ -786,6 +979,12 @@ async def settle(
     """
     await _credit_the_doctor(db, invoice)
     await _tell_the_patient(db, invoice, currency=currency, amount=amount, reason=None)
+    if invoice.kind == InvoiceKind.PHARMACY:
+        # Imported here because the pharmacy builds on billing, not the other
+        # way round. A paid medicine bill moves its order on to packing.
+        from app.modules.pharmacy import orders as pharmacy_orders
+
+        await pharmacy_orders.on_invoice_paid(db, invoice)
 
 
 async def payment_refused(

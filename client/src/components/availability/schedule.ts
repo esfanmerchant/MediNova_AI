@@ -15,7 +15,12 @@
  * morning list into somebody else's afternoon.
  */
 
-import { SLOT_MINUTES, type AvailabilityWindow } from "@/lib/api";
+import {
+  ONLINE_SLOT_MINUTES,
+  SLOT_MINUTES,
+  type AvailabilityWindow,
+  type WindowMode,
+} from "@/lib/api";
 
 /** `[English, Roman Urdu]`, the shape `tr()` is spread into. */
 export type Bilingual = [en: string, ur: string];
@@ -59,6 +64,13 @@ export interface DraftWindow {
   startTime: string;
   endTime: string;
   slotMinutes: number;
+  /** Clinic visits, video calls, or either. */
+  mode: WindowMode;
+}
+
+/** Whether a window offers video calls, alone or alongside clinic visits. */
+export function offersOnline(window: Pick<DraftWindow, "mode">): boolean {
+  return window.mode === "ONLINE" || window.mode === "BOTH";
 }
 
 /**
@@ -179,7 +191,8 @@ export function windowsOn(windows: DraftWindow[], dayOfWeek: number): DraftWindo
  * even one slot.
  */
 export function windowIssue(
-  window: Pick<DraftWindow, "startTime" | "endTime" | "slotMinutes">,
+  window: Pick<DraftWindow, "startTime" | "endTime" | "slotMinutes"> &
+    Partial<Pick<DraftWindow, "mode">>,
 ): Bilingual | null {
   const start = toMinutes(window.startTime);
   const end = toMinutes(window.endTime);
@@ -201,6 +214,14 @@ export function windowIssue(
     return [
       "This window is shorter than one slot, so it produces no appointments.",
       "Yeh window aik slot se bhi chhoti hai, is se koi appointment nahi banti.",
+    ];
+  }
+  // The server's fifth rule, added with online consultations: a video call is
+  // sold as a fixed half hour, so a window that offers calls uses exactly that.
+  if (window.mode && offersOnline({ mode: window.mode }) && window.slotMinutes !== ONLINE_SLOT_MINUTES) {
+    return [
+      `Online consultations are ${ONLINE_SLOT_MINUTES} minutes. Set this window's slots to ${ONLINE_SLOT_MINUTES} minutes.`,
+      `Online consultation ${ONLINE_SLOT_MINUTES} minute ki hoti hai. Is window ke slots ${ONLINE_SLOT_MINUTES} minute karein.`,
     ];
   }
   return null;
@@ -298,7 +319,14 @@ export function nextWindowFor(windows: DraftWindow[], dayOfWeek: number): DraftW
   const last = existing[existing.length - 1];
 
   if (!last) {
-    return { id: newId(), dayOfWeek, startTime: "09:00", endTime: "17:00", slotMinutes: 30 };
+    return {
+      id: newId(),
+      dayOfWeek,
+      startTime: "09:00",
+      endTime: "17:00",
+      slotMinutes: 30,
+      mode: "CLINIC",
+    };
   }
 
   const slotMinutes = isSlotLength(last.slotMinutes) ? last.slotMinutes : 30;
@@ -315,6 +343,9 @@ export function nextWindowFor(windows: DraftWindow[], dayOfWeek: number): DraftW
     startTime: formatMinutes(start),
     endTime: formatMinutes(end),
     slotMinutes,
+    // A second block on the same day keeps the first one's kind: an evening
+    // of online calls after a clinic morning is a choice made explicitly.
+    mode: last.mode,
   };
 }
 
@@ -326,6 +357,7 @@ export function standardWeek(): DraftWindow[] {
     startTime: "09:00",
     endTime: "17:00",
     slotMinutes: 30,
+    mode: "CLINIC" as WindowMode,
   }));
 }
 
@@ -366,16 +398,21 @@ export function sortWindows<T extends { dayOfWeek: number; startTime: string }>(
 
 /** Stored availability, opened into editable rows. */
 export function draftFrom(windows: readonly AvailabilityWindow[]): DraftWindow[] {
-  return sortWindows(windows.map((window) => ({ ...window, id: newId() })));
+  return sortWindows(
+    // A window saved before online consultations has no mode, and was always
+    // clinic hours — the same reading the server gives it.
+    windows.map((window) => ({ ...window, mode: window.mode ?? "CLINIC", id: newId() })),
+  );
 }
 
 /** Editable rows, stripped back to what `PATCH /doctors/me` accepts. */
 export function toPayload(windows: DraftWindow[]): AvailabilityWindow[] {
-  return sortWindows(windows).map(({ dayOfWeek, startTime, endTime, slotMinutes }) => ({
+  return sortWindows(windows).map(({ dayOfWeek, startTime, endTime, slotMinutes, mode }) => ({
     dayOfWeek,
     startTime,
     endTime,
     slotMinutes,
+    mode,
   }));
 }
 
@@ -393,7 +430,7 @@ export function sameSchedule(
   if (a.length !== b.length) return false;
   const key = (windows: readonly AvailabilityWindow[]) =>
     sortWindows([...windows])
-      .map((w) => `${w.dayOfWeek}|${w.startTime}|${w.endTime}|${w.slotMinutes}`)
+      .map((w) => `${w.dayOfWeek}|${w.startTime}|${w.endTime}|${w.slotMinutes}|${w.mode ?? "CLINIC"}`)
       .join(",");
   return key(a) === key(b);
 }

@@ -39,6 +39,7 @@ from app.db.models import (
     MedicalRecord,
     MedicationReminder,
     Patient,
+    PharmacyOrder,
     Prescription,
     ReportedSymptom,
     User,
@@ -49,6 +50,7 @@ from app.modules.appointments.schedule import iso_utc
 from app.modules.billing import service as billing
 from app.modules.billing.router import under_review
 from app.modules.documents.router import serialize as serialize_document
+from app.modules.pharmacy.orders import serialize_order
 from app.modules.records import service as records
 from app.modules.vitals.service import serialize_vital
 
@@ -69,6 +71,7 @@ LIMITS = {
     "reportedSymptoms": 1000,
     "documents": 1000,
     "invoices": 1000,
+    "medicineOrders": 1000,
 }
 
 
@@ -229,6 +232,22 @@ async def build_export(db: AsyncSession, patient: Patient, user: User) -> dict[s
     )
     waiting = await under_review(db, [invoice.id for invoice in invoices])
 
+    medicine_orders = cap(
+        "medicineOrders",
+        list(
+            (
+                await db.execute(
+                    select(PharmacyOrder)
+                    .where(PharmacyOrder.patient_id == patient.id)
+                    .order_by(PharmacyOrder.created_at.desc())
+                    .limit(LIMITS["medicineOrders"])
+                )
+            )
+            .scalars()
+            .all()
+        ),
+    )
+
     bundle: dict[str, Any] = {
         "format": FORMAT,
         "formatVersion": FORMAT_VERSION,
@@ -268,6 +287,9 @@ async def build_export(db: AsyncSession, patient: Patient, user: User) -> dict[s
             billing.serialize(invoice, awaiting_review=invoice.id in waiting)
             for invoice in invoices
         ],
+        # What they bought, where it was sent, and how each order ended. The
+        # bills for these are already in ``invoices``.
+        "medicineOrders": [serialize_order(order) for order in medicine_orders],
         # Said in the file itself, because the file outlives this conversation
         # and whoever opens it will wonder where the scans are.
         "documentsNote": (

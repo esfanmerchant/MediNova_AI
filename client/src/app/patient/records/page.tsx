@@ -9,6 +9,7 @@
  * (spec §13).
  */
 
+import Link from "next/link";
 import { useMemo } from "react";
 
 import { AppShell } from "@/components/AppShell";
@@ -113,6 +114,19 @@ export default function PatientRecords() {
                 "Always follow the instructions on the label. Never stop a medication without speaking to your doctor.",
                 "Hamesha label ki hidayat par amal karein. Doctor se baat kiye baghair koi dawa band na karein.",
               )}
+              action={
+                active.length > 0 && (
+                  // The pharmacy opens on these same prescriptions, matched
+                  // to the shelf, so ordering them is one more press.
+                  <Link
+                    href="/patient/pharmacy"
+                    className="bg-gradient-brand inline-flex min-h-11 items-center gap-1.5 rounded-xl px-4 text-sm font-semibold text-white shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  >
+                    <Icon name="local_pharmacy" className="text-[20px]" />
+                    {tr("Order these medicines", "Yeh dawaiyan mangwayein")}
+                  </Link>
+                )
+              }
             >
               {active.length === 0 ? (
                 <EmptyState

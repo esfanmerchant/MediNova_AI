@@ -64,12 +64,40 @@ PRESCRIPTION_SCHEMA: dict[str, Any] = {
             "type": "array",
             "items": {
                 "type": "object",
+                # Each field says what belongs in it, because without that the
+                # model put its reasoning there. Measured on the same synthetic
+                # prescription, 16 interleaved runs each: with no descriptions,
+                # 10 of 16 came back with text like "Amoxicillin skin/capsule
+                # formulation 500 mg ..." in the drug name or a medication
+                # missing; with these lines, 1 of 16.
                 "properties": {
-                    "medication": {"type": "string", "nullable": True},
-                    "dosage": {"type": "string", "nullable": True},
-                    "frequency": {"type": "string", "nullable": True},
-                    "duration": {"type": "string", "nullable": True},
-                    "instructions": {"type": "string", "nullable": True},
+                    "medication": {
+                        "type": "string",
+                        "nullable": True,
+                        "description": "The drug name only, as written, e.g. 'Amoxicillin'. "
+                        "No dose, form, or notes.",
+                    },
+                    "dosage": {
+                        "type": "string",
+                        "nullable": True,
+                        "description": "The strength only, as written, e.g. '500 mg'.",
+                    },
+                    "frequency": {
+                        "type": "string",
+                        "nullable": True,
+                        "description": "How often, as written, e.g. 'TID' or 'three times daily'.",
+                    },
+                    "duration": {
+                        "type": "string",
+                        "nullable": True,
+                        "description": "For how long, as written, e.g. '5 days'.",
+                    },
+                    "instructions": {
+                        "type": "string",
+                        "nullable": True,
+                        "description": "Any other direction on the line, as written, "
+                        "e.g. 'after meals'.",
+                    },
                     "sourceText": {
                         "type": "string",
                         "description": "The line exactly as written on the document.",
@@ -133,16 +161,42 @@ def _confidence_for(item: dict[str, Any]) -> float:
     return 0.92 if item.get("legible") else 0.45
 
 
+def _grounded(value: str, source: str) -> bool:
+    """Whether a value is written, character for character, on its own line.
+
+    Whitespace and case are ignored — "500mg" and "500 MG" are the same reading
+    of the same ink. Nothing else is: an expanded abbreviation, a tidied name or
+    an added word is not what the page says.
+    """
+
+    def squash(text: str) -> str:
+        return "".join(text.split()).casefold()
+
+    return bool(source.strip()) and squash(value) in squash(source)
+
+
 def _field(item: dict[str, Any], name: str, confidence: float) -> dict[str, Any]:
     """One extracted value in the shape the review screen expects.
 
     A field the model left out is not a low-confidence guess — it is absent, and
     absent always needs review. That is the same rule the local parser follows,
     so the review screen behaves identically whichever engine ran.
+
+    **A value that is not on its own source line is not trusted either.** The
+    model's first rule is to transcribe only what is visibly written, and this
+    checks it in code rather than taking it on faith: the drug name, dose and
+    frequency must appear in ``sourceText`` as written. On live runs the model
+    occasionally wrote its own reasoning into a field — "Amoxicillin
+    Registered Name or generic name visible: Amoxicillin" — and that arrived at
+    the same 0.92 as a clean read, marked as not needing review. Text that is
+    not on the line now lands as low-confidence and flagged, so a reviewer looks
+    at it rather than past it.
     """
     value = item.get(name)
     present = bool(value and str(value).strip())
     text = str(value).strip() if present else None
+    if text is not None and not _grounded(text, str(item.get("sourceText") or "")):
+        confidence = min(confidence, 0.45)
     # Shorthand is expanded for display only; `sourceText` still carries the
     # characters as written, so a reviewer compares like with like.
     if name == "frequency":
@@ -206,7 +260,12 @@ async def extract(content: bytes, mime_type: str) -> tuple[str, dict[str, Any], 
         schema=PRESCRIPTION_SCHEMA,
         image=(content, mime_type),
         system_instruction=SYSTEM_INSTRUCTION,
-        max_output_tokens=4096,
+        # The cap covers the model's reasoning as well as the JSON. A typical
+        # read thinks for ~1,400 tokens, but now and then the thinking runs long
+        # and hit 4096, cutting the answer off mid-object — a failure that had
+        # already spent the tokens and returned nothing. The cap only costs
+        # anything on the runs that need it.
+        max_output_tokens=8192,
     )
 
     payload = response.data if isinstance(response.data, dict) else {}

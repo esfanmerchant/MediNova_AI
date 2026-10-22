@@ -42,6 +42,7 @@ from app.modules.notifications import dispatcher
 from app.modules.notifications.dispatch_router import router as dispatch_router
 from app.modules.notifications.router import router as notifications_router
 from app.modules.patients.router import router as patients_router
+from app.modules.pharmacy.router import router as pharmacy_router
 from app.modules.prescriptions.reminders import router as medication_reminders_router
 from app.modules.prescriptions.router import router as prescriptions_router
 from app.modules.records.router import router as records_router
@@ -122,6 +123,7 @@ async def _ensure_storage_buckets() -> None:
         settings.SUPABASE_AVATARS_BUCKET,
         settings.SUPABASE_CREDENTIALS_BUCKET,
         settings.SUPABASE_PAYMENT_PROOFS_BUCKET,
+        settings.SUPABASE_PHARMACY_RX_BUCKET,
     )
     for bucket in buckets:
         try:
@@ -263,6 +265,7 @@ def create_app() -> FastAPI:
         notifications_router,
         dispatch_router,
         dashboard_router,
+        pharmacy_router,
     ):
         app.include_router(module_router, prefix="/api")
 
@@ -294,6 +297,7 @@ def create_app() -> FastAPI:
                         "email": settings.email_configured,
                         "ocr": settings.OCR_ENABLED,
                         "push": settings.push_enabled,
+                        "video": settings.video_configured,
                     },
                     # Whether this process holds a dedicated key for the sealed
                     # clinical columns, or fell back to SESSION_SECRET.

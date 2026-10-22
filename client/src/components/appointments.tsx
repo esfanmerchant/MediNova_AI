@@ -175,6 +175,12 @@ export function AppointmentRow({
         <span className="inline-flex items-center gap-1 text-xs tabular-nums text-faint">
           <Icon name="timelapse" className="text-[14px]" />
           {appointment.durationMinutes} {tr("min", "min")}
+          {appointment.mode === "ONLINE" && (
+            <span className="ml-1 inline-flex items-center gap-0.5 rounded-full bg-info-soft px-1.5 py-px font-semibold text-info">
+              <Icon name="videocam" className="text-[13px]" />
+              {tr("Online", "Online")}
+            </span>
+          )}
         </span>
         <StatusBadge status={appointment.status} />
       </div>

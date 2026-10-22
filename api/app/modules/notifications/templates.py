@@ -53,6 +53,10 @@ EMAILED_TYPES: frozenset[NotificationType] = frozenset(
         NotificationType.VITAL_ALERT,
         NotificationType.EMERGENCY_ACCESS,
         NotificationType.ACCOUNT_SECURITY,
+        # A parcel on its way is the one kind of news people expect by email
+        # from a shop. The bodies name the order and its stage, never a
+        # medicine — see `pharmacy.orders.tell_patient`.
+        NotificationType.PHARMACY_ORDER,
     }
 )
 
@@ -149,6 +153,10 @@ _COPY: dict[NotificationType, tuple[str, str]] = {
         "A security event on your account",
         "There has been a security-related change to your account.",
     ),
+    NotificationType.PHARMACY_ORDER: (
+        "An update on your medicine order",
+        "There is an update on a MediNova pharmacy order.",
+    ),
 }
 
 #: Types whose in-app body is scheduling or billing information rather than
@@ -161,6 +169,9 @@ _BODY_SAFE: frozenset[NotificationType] = frozenset(
         NotificationType.APPOINTMENT_CANCELLED,
         NotificationType.APPOINTMENT_RESCHEDULED,
         NotificationType.INVOICE_ISSUED,
+        # Order numbers, stages, couriers and amounts — written that way on
+        # purpose, so the email can carry them.
+        NotificationType.PHARMACY_ORDER,
     }
 )
 

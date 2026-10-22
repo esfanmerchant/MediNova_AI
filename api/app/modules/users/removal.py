@@ -33,6 +33,10 @@ nothing anywhere to explain the change. The row keeps its amount, date and
 status, and loses its patient. Unpaid and voided bills have no such claim and
 are deleted.
 
+*Paid medicine orders*, for the same reason, with the name, phone number and
+address on them scrubbed — the pharmacy's sales stay true and nobody can be
+found from them. Unpaid orders, and every prescription photo, are deleted.
+
 **What is refused.** Removing yourself, removing the last administrator who
 could let anyone back in, removing a doctor with money still in flight, and
 removing a doctor patients are still booked to see. That last one is the
@@ -52,7 +56,7 @@ from app.core.config import settings
 from app.core.logging import logger
 from app.core.security import generate_opaque_token, hash_password
 from app.db.base import utcnow
-from app.db.enums import InvoiceStatus, Role, UserStatus, WithdrawalStatus
+from app.db.enums import InvoiceStatus, Role, RxRoute, RxStatus, UserStatus, WithdrawalStatus
 from app.db.models import (
     AIInteraction,
     Alert,
@@ -73,6 +77,7 @@ from app.db.models import (
     PasswordResetToken,
     Patient,
     Payment,
+    PharmacyOrder,
     Prescription,
     PushSubscription,
     RefreshToken,
@@ -86,6 +91,7 @@ from app.db.models import (
     Withdrawal,
 )
 from app.modules.appointments.service import ACTIVE_STATUSES
+from app.modules.pharmacy.orders import OPEN as OPEN_ORDERS
 from app.services import storage
 
 Mode = Literal["DELETE", "ANONYMISE"]
@@ -93,6 +99,13 @@ Mode = Literal["DELETE", "ANONYMISE"]
 #: Invoice states where money actually moved. These survive a removal without a
 #: patient; everything else is a bill nobody paid and nobody will.
 SETTLED = (InvoiceStatus.PAID, InvoiceStatus.REFUNDED)
+
+def _settled_order() -> Any:
+    """A medicine order whose bill was paid (or paid and refunded)."""
+    return PharmacyOrder.invoice_id.in_(
+        select(Invoice.id).where(Invoice.status.in_(SETTLED))
+    )
+
 
 #: The domain a removed account's email is rewritten into. `.invalid` is
 #: reserved by RFC 2606 and can never resolve, so nothing addressed here can
@@ -236,6 +249,36 @@ async def _plan_patient(db: AsyncSession, plan: RemovalPlan, patient: Patient) -
     if settled:
         plan.keeps["settledInvoices"] = settled
 
+    in_flight = await _count(
+        db,
+        PharmacyOrder,
+        PharmacyOrder.patient_id == patient.id,
+        PharmacyOrder.status.in_(OPEN_ORDERS),
+    )
+    if in_flight:
+        # Medicine reserved on a shelf or already with a rider. Deleting the
+        # order would strand the stock and the parcel; somebody has to cancel
+        # or deliver it first, and that somebody is the pharmacy.
+        plan.blockers.append(
+            f"{in_flight} medicine order(s) are still open. Cancel or deliver them first."
+        )
+    paid_orders = await _count(
+        db, PharmacyOrder, PharmacyOrder.patient_id == patient.id, _settled_order()
+    )
+    if paid_orders:
+        plan.keeps["paidMedicineOrders"] = paid_orders
+    other_orders = await _count(
+        db, PharmacyOrder, PharmacyOrder.patient_id == patient.id, ~_settled_order()
+    )
+    if other_orders:
+        plan.deletes["medicineOrders"] = other_orders
+    plan.files += await _count(
+        db,
+        PharmacyOrder,
+        PharmacyOrder.patient_id == patient.id,
+        PharmacyOrder.rx_upload_path.is_not(None),
+    )
+
     plan.files += await _count(
         db,
         MedicalDocument,
@@ -256,6 +299,15 @@ async def _plan_doctor(db: AsyncSession, plan: RemovalPlan, doctor: Doctor) -> N
         ("appointmentsSeen", Appointment, Appointment.doctor_id == doctor.id),
         ("earningsEntries", DoctorLedgerEntry, DoctorLedgerEntry.doctor_id == doctor.id),
         ("withdrawals", Withdrawal, Withdrawal.doctor_id == doctor.id),
+        # An approval is a clinical sign-off on somebody's medicine. The order
+        # keeps its approver, anonymised, for the same reason a chart keeps
+        # its author.
+        (
+            "medicineApprovals",
+            PharmacyOrder,
+            (PharmacyOrder.rx_doctor_id == doctor.id)
+            & (PharmacyOrder.rx_status == RxStatus.APPROVED),
+        ),
     ]
     for label, model, where in authored:
         found = await _count(db, model, where)
@@ -297,6 +349,19 @@ async def _plan_doctor(db: AsyncSession, plan: RemovalPlan, doctor: Doctor) -> N
         plan.blockers.append(
             f"{upcoming} upcoming appointment(s) are still booked with this doctor. "
             "Cancel or reassign them first."
+        )
+
+    waiting = await _count(
+        db,
+        PharmacyOrder,
+        PharmacyOrder.rx_doctor_id == doctor.id,
+        PharmacyOrder.rx_route == RxRoute.DOCTOR,
+        PharmacyOrder.rx_status == RxStatus.PENDING,
+    )
+    if waiting:
+        plan.blockers.append(
+            f"{waiting} patient(s) are waiting for this doctor to approve medicine. "
+            "Have them answer, or cancel those orders first."
         )
 
     scheduled = await _count(db, DoctorTimeOff, DoctorTimeOff.doctor_id == doctor.id)
@@ -408,6 +473,22 @@ async def _collect_files(db: AsyncSession, user: User, patient: Patient | None) 
             (settings.SUPABASE_PAYMENT_PROOFS_BUCKET, path) for path in proofs if path
         )
 
+        prescriptions = (
+            (
+                await db.execute(
+                    select(PharmacyOrder.rx_upload_path).where(
+                        PharmacyOrder.patient_id == patient.id,
+                        PharmacyOrder.rx_upload_path.is_not(None),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        files.extend(
+            (settings.SUPABASE_PHARMACY_RX_BUCKET, path) for path in prescriptions if path
+        )
+
     return [(bucket, path) for bucket, path in files if bucket and path]
 
 
@@ -505,6 +586,28 @@ async def _erase_patient(db: AsyncSession, patient: Patient) -> None:
     await db.execute(
         delete(DoctorPatientAssignment).where(DoctorPatientAssignment.patient_id == patient.id)
     )
+
+    # Medicine orders first, while their invoices still say which were paid.
+    # A paid one stays in the pharmacy's books without anything that could
+    # find the person it was delivered to; the rest go.
+    await db.execute(
+        delete(PharmacyOrder).where(
+            PharmacyOrder.patient_id == patient.id, ~_settled_order()
+        )
+    )
+    paid_orders = (
+        (await db.execute(select(PharmacyOrder).where(PharmacyOrder.patient_id == patient.id)))
+        .scalars()
+        .all()
+    )
+    for order in paid_orders:
+        order.recipient_name = "Removed patient"
+        order.phone = ""
+        order.address_line = ""
+        order.delivery_notes = None
+        order.rx_upload_path = None
+        order.rx_note = None
+    await db.flush()
 
     # A bill nobody paid has no claim to outlive the person it was addressed to.
     # A settled one does, and keeps its amount while losing its patient — the

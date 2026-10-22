@@ -27,9 +27,10 @@ from sqlalchemy import Select, and_, func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AuthContext
+from app.core.config import settings
 from app.core.errors import AppError, ErrorCode, bad_request, conflict, forbidden, not_found
 from app.db.base import new_id, utcnow
-from app.db.enums import AppointmentStatus, NotificationType, Role, UserStatus
+from app.db.enums import AppointmentMode, AppointmentStatus, NotificationType, Role, UserStatus
 from app.db.models import (
     Appointment,
     Doctor,
@@ -48,6 +49,7 @@ from app.modules.appointments.schedule import (
     to_clinic,
     to_utc,
 )
+from app.modules.appointments.video import new_room_name
 from app.modules.auth.rbac import Permission
 
 #: Still going to happen: the patient is expected and the appointment can still
@@ -65,6 +67,18 @@ TERMINAL_STATUSES = (
     AppointmentStatus.CANCELLED,
     AppointmentStatus.NO_SHOW,
 )
+
+
+def online_consultations_available() -> bool:
+    """Whether a patient may book a video consultation on this deployment.
+
+    Without Zoom credentials a call cannot start, and taking money for a call
+    that cannot start is the one outcome this must never produce. So in
+    production the option disappears until the keys are set. A development
+    server keeps it, so the booking and payment flow can be worked on before
+    anybody has a Zoom account.
+    """
+    return settings.video_configured or not settings.is_production
 
 
 def holds_a_slot() -> Any:
@@ -168,6 +182,7 @@ def serialize(
         ),
         "reason": appointment.reason,
         "notes": appointment.notes,
+        "mode": str(appointment.mode),
         "doctorName": doctor_name,
         "specialization": specialization,
         "patientName": patient_name,
@@ -333,17 +348,35 @@ async def _taken_slot_starts(
     return set(rows)
 
 
+def bookable_modes(slot: Slot) -> frozenset[AppointmentMode]:
+    """How a slot can actually be booked here, which may be less than offered."""
+    if online_consultations_available():
+        return slot.modes
+    return slot.modes - {AppointmentMode.ONLINE}
+
+
 async def availability(
-    db: AsyncSession, doctor_id: str, first_day: date, last_day: date
+    db: AsyncSession,
+    doctor_id: str,
+    first_day: date,
+    last_day: date,
+    mode: AppointmentMode | None = None,
 ) -> list[dict[str, Any]]:
     """The doctor's slot grid over a date range, each slot marked free or taken.
 
     Deliberately free/busy only. A caller learns that 10:00 is unavailable and
     nothing whatsoever about who holds it — which is what lets a patient browse
     for a slot without browsing another patient's care.
+
+    Each slot says how it can be booked. ``mode`` narrows the grid to slots
+    that can be booked that way, so "online slots this week" counts only those.
     """
     bookable = await load_bookable_doctor(db, doctor_id)
-    slots = slots_for_range(bookable.windows, first_day, last_day)
+    slots = [
+        slot
+        for slot in slots_for_range(bookable.windows, first_day, last_day)
+        if bookable_modes(slot) and (mode is None or mode in bookable_modes(slot))
+    ]
     if not slots:
         return []
 
@@ -360,6 +393,7 @@ async def availability(
                 "startTime": iso_utc(slot.start),
                 "endTime": iso_utc(slot.end),
                 "label": slot.label,
+                "modes": sorted(str(m) for m in bookable_modes(slot)),
                 "available": slot.start > now and slot.start not in taken and not blocked,
             }
         )
@@ -380,13 +414,18 @@ async def availability(
 
 
 async def _assert_slot_is_offered(
-    db: AsyncSession, bookable: BookableDoctor, start: datetime
+    db: AsyncSession,
+    bookable: BookableDoctor,
+    start: datetime,
+    mode: AppointmentMode = AppointmentMode.CLINIC,
 ) -> Slot:
     """Resolve a requested time to a real published slot, or refuse.
 
     Every constraint that does not depend on other bookings is checked here: the
     time is on the doctor's grid, it is in the future, it is not absurdly far
-    out, and the doctor is not away. Contention is left to the unique index.
+    out, the doctor is not away, and the slot is offered the way it is being
+    booked — a clinic hour cannot be booked as a call. Contention is left to the
+    unique index.
     """
     now = utcnow()
     if start <= now:
@@ -399,6 +438,14 @@ async def _assert_slot_is_offered(
         raise bad_request(
             "That time is not one of the doctor's appointment slots. "
             "Pick a slot from their availability."
+        )
+    if mode == AppointmentMode.ONLINE and not online_consultations_available():
+        raise conflict("Online consultations are not available yet.")
+    if mode not in slot.modes:
+        raise bad_request(
+            "That slot is for clinic visits only. Pick one marked as online."
+            if mode == AppointmentMode.ONLINE
+            else "That slot is for online consultations only."
         )
 
     for off_start, off_end in await _time_off(db, bookable.doctor.id, slot.start, slot.end):
@@ -467,6 +514,7 @@ async def create_appointment(
     slot: Slot,
     reason: str | None,
     rescheduled_from_id: str | None = None,
+    mode: AppointmentMode = AppointmentMode.CLINIC,
 ) -> Appointment:
     """Insert the row that claims the slot.
 
@@ -488,6 +536,11 @@ async def create_appointment(
         reason=reason,
         slot_key=Appointment.build_slot_key(bookable.doctor.id, slot.start),
         rescheduled_from_id=rescheduled_from_id,
+        mode=mode,
+        # Named at booking, so the room exists before anybody needs it — and a
+        # rescheduled consultation gets a fresh one rather than reusing a name
+        # that has already been handed out.
+        video_room=new_room_name() if mode == AppointmentMode.ONLINE else None,
     )
     db.add(appointment)
     await db.flush()
@@ -502,13 +555,14 @@ async def book(
     start: datetime,
     reason: str | None,
     requested_patient_id: str | None,
+    mode: AppointmentMode = AppointmentMode.CLINIC,
 ) -> Appointment:
     patient_id = await resolve_booking_patient(db, auth, requested_patient_id)
     bookable = await load_bookable_doctor(db, doctor_id)
-    slot = await _assert_slot_is_offered(db, bookable, start)
+    slot = await _assert_slot_is_offered(db, bookable, start, mode)
     await _assert_patient_is_free(db, patient_id, slot)
     return await create_appointment(
-        db, patient_id=patient_id, bookable=bookable, slot=slot, reason=reason
+        db, patient_id=patient_id, bookable=bookable, slot=slot, reason=reason, mode=mode
     )
 
 
@@ -580,7 +634,10 @@ async def reschedule_appointment(
         raise bad_request("That is the appointment's current time.")
 
     bookable = await load_bookable_doctor(db, appointment.doctor_id)
-    slot = await _assert_slot_is_offered(db, bookable, start)
+    # The same kind of consultation at a new time: moving a video call onto a
+    # clinic-only hour would quietly turn it into a visit the patient cannot
+    # make, which is presumably why they booked online.
+    slot = await _assert_slot_is_offered(db, bookable, start, appointment.mode)
     await _assert_patient_is_free(db, appointment.patient_id, slot, excluding_id=appointment.id)
 
     appointment.status = AppointmentStatus.CANCELLED
@@ -597,6 +654,7 @@ async def reschedule_appointment(
         slot=slot,
         reason=appointment.reason,
         rescheduled_from_id=appointment.id,
+        mode=appointment.mode,
     )
 
 

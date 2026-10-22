@@ -19,11 +19,19 @@ from sqlalchemy import select
 from app.api.deps import CurrentAuth, DbSession, client_ip, require_any_permission
 from app.api.responses import Page, ok, pagination
 from app.core.config import settings
-from app.core.errors import bad_request, forbidden
+from app.core.errors import bad_request, conflict, forbidden
+from app.core.ratelimit import limit
 from app.db.base import utcnow
-from app.db.enums import AppointmentStatus, AuditAction, DataSource, NotificationType, Role
+from app.db.enums import (
+    AppointmentMode,
+    AppointmentStatus,
+    AuditAction,
+    DataSource,
+    NotificationType,
+    Role,
+)
 from app.db.models import Appointment, MedicalRecord
-from app.modules.appointments import service
+from app.modules.appointments import service, video
 from app.modules.appointments.schedule import MAX_RANGE_DAYS, iso_utc, to_clinic
 from app.modules.audit.service import AuditEntry, record_audit
 from app.modules.auth.rbac import Permission
@@ -50,6 +58,10 @@ RequireAppointmentAccess = Annotated[
     ),
 ]
 
+#: A call page asks for a token on load and again on a reconnect. Far more
+#: than that is not somebody joining a consultation.
+VideoTokenRateLimit = Annotated[None, Depends(limit(times=20, seconds=60, scope="video-token"))]
+
 
 def normalize_start(value: datetime) -> datetime:
     """Normalise a submitted time to the naive-UTC form the columns hold.
@@ -75,6 +87,9 @@ class BookingRequest(BaseModel):
     #: Honoured only for administrators booking on someone's behalf; a patient's
     #: own id always comes from their session.
     patient_id: str | None = Field(default=None, alias="patientId", max_length=64)
+    #: In the clinic, or a video call. Checked against the slot: a clinic hour
+    #: cannot be booked as a call, nor the other way round.
+    mode: AppointmentMode = AppointmentMode.CLINIC
 
     _normalize_start = field_validator("start_time")(normalize_start)
 
@@ -179,6 +194,16 @@ def _when(appointment: Appointment) -> str:
     return local.strftime("%d %b %Y at %H:%M")
 
 
+def _kind(appointment: Appointment) -> str:
+    """What to call it in a message: the patient should never have to wonder
+    whether to travel."""
+    return (
+        "online consultation"
+        if appointment.mode == AppointmentMode.ONLINE
+        else "appointment"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Availability
 # ---------------------------------------------------------------------------
@@ -191,6 +216,7 @@ async def get_availability(
     doctor_id: Annotated[str, Query(alias="doctorId", min_length=1, max_length=64)],
     from_date: Annotated[date | None, Query(alias="from")] = None,
     to_date: Annotated[date | None, Query(alias="to")] = None,
+    mode: AppointmentMode | None = None,
 ) -> dict[str, Any]:
     """A doctor's slot grid, marked free or taken.
 
@@ -210,8 +236,15 @@ async def get_availability(
     # thing for a client to ask for on a Wednesday.
     first = max(first, today)
 
-    days = await service.availability(db, doctor_id, first, last)
-    return ok({"doctorId": doctor_id, "timezone": settings.CLINIC_TIMEZONE, "days": days})
+    days = await service.availability(db, doctor_id, first, last, mode)
+    return ok(
+        {
+            "doctorId": doctor_id,
+            "timezone": settings.CLINIC_TIMEZONE,
+            "onlineAvailable": service.online_consultations_available(),
+            "days": days,
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -285,19 +318,29 @@ async def book_appointment(
         start=payload.start_time,
         reason=payload.reason,
         requested_patient_id=payload.patient_id,
+        mode=payload.mode,
     )
 
-    await _audit(request, db, auth, AuditAction.APPOINTMENT_CREATED, appointment)
+    await _audit(
+        request,
+        db,
+        auth,
+        AuditAction.APPOINTMENT_CREATED,
+        appointment,
+        {"mode": str(appointment.mode)},
+    )
+    kind = _kind(appointment)
     await _notify_both(
         db,
         appointment,
         notification_type=NotificationType.APPOINTMENT_BOOKED,
-        title="Appointment requested",
+        title="Online consultation requested" if appointment.mode == AppointmentMode.ONLINE
+        else "Appointment requested",
         patient_body=(
-            f"Your appointment on {_when(appointment)} has been requested "
+            f"Your {kind} on {_when(appointment)} has been requested "
             "and is awaiting confirmation."
         ),
-        doctor_body=f"A new appointment request for {_when(appointment)} awaits your confirmation.",
+        doctor_body=f"A new {kind} request for {_when(appointment)} awaits your confirmation.",
     )
 
     row = await service.load_for(db, auth, appointment.id)
@@ -318,13 +361,17 @@ async def cancel(
     appointment: Appointment = row[0]
 
     await service.cancel_appointment(db, auth, appointment, payload.reason)
+    # An online consultation may already have a bill, and possibly a payment.
+    billed = await billing.consultation_called_off(
+        db, appointment, reason="The consultation was cancelled."
+    )
     await _audit(
         request,
         db,
         auth,
         AuditAction.APPOINTMENT_CANCELLED,
         appointment,
-        {"cancelledByRole": str(auth.role)},
+        {"cancelledByRole": str(auth.role), "invoice": billed},
     )
     await _notify_both(
         db,
@@ -361,6 +408,8 @@ async def reschedule(
     replacement = await service.reschedule_appointment(
         db, auth, original, start=payload.start_time, reason=payload.reason
     )
+    # A paid online consultation stays paid when it moves.
+    await billing.follow_reschedule(db, original, replacement)
 
     await _audit(
         request,
@@ -433,6 +482,39 @@ async def _record_the_consultation(db: DbSession, appointment: Appointment) -> N
     await db.flush()
 
 
+async def _bill_in_advance(
+    request: Request, db: DbSession, auth: CurrentAuth, appointment: Appointment
+) -> str:
+    """Issue an online consultation's invoice as the doctor confirms it.
+
+    Billed now rather than at the end: an online consultation is paid for
+    before it starts, and the call does not open until it is. Returns the
+    sentence to add to the patient's confirmation — what to pay, if anything.
+    """
+    invoice, created = await billing.generate_for_appointment(db, appointment)
+    if created:
+        await billing.announce(db, invoice)
+        await _audit(
+            request,
+            db,
+            auth,
+            AuditAction.INVOICE_CREATED,
+            appointment,
+            {
+                "invoiceId": invoice.id,
+                "invoiceNumber": invoice.invoice_number,
+                "totalAmount": str(invoice.total_amount),
+            },
+        )
+    if video.is_settled(invoice):
+        return ""
+    return (
+        f" Pay invoice {invoice.invoice_number} ({invoice.currency} "
+        f"{invoice.total_amount}) before it starts — the call opens once the "
+        "payment is confirmed."
+    )
+
+
 @router.post("/{appointment_id}/status")
 async def set_status(
     appointment_id: str,
@@ -477,14 +559,26 @@ async def set_status(
     )
 
     if payload.status == AppointmentStatus.CONFIRMED:
+        body = f"Your {_kind(appointment)} on {_when(appointment)} is confirmed."
+        if appointment.mode == AppointmentMode.ONLINE:
+            body += await _bill_in_advance(request, db, auth, appointment)
         await notify(
             db,
             user_id=await user_id_for_patient(db, appointment.patient_id),
             notification_type=NotificationType.APPOINTMENT_BOOKED,
             title="Appointment confirmed",
-            body=f"Your appointment on {_when(appointment)} is confirmed.",
+            body=body,
             link=f"/appointments/{appointment.id}",
             metadata={"appointmentId": appointment.id},
+        )
+
+    if payload.status == AppointmentStatus.NO_SHOW:
+        await billing.consultation_called_off(
+            db,
+            appointment,
+            reason="The patient did not attend.",
+            # The time was held for them; whether to refund is a person's call.
+            refund=False,
         )
 
     if payload.status == AppointmentStatus.COMPLETED:
@@ -526,6 +620,135 @@ async def set_status(
                     "totalAmount": str(invoice.total_amount),
                 },
             )
+        # An online consultation was paid for before it began; this is the
+        # moment its doctor has earned it. Nothing happens for a clinic visit,
+        # whose bill was issued a line ago and cannot be paid yet.
+        await billing.credit_if_earned(db, invoice)
 
     updated = await service.load_for(db, auth, appointment.id)
     return ok(service.serialize_row(updated))
+
+
+# ---------------------------------------------------------------------------
+# Online consultations
+# ---------------------------------------------------------------------------
+
+
+def _party(auth: CurrentAuth, appointment: Appointment) -> str | None:
+    """``host`` for the treating doctor, ``participant`` for the patient, else None."""
+    if auth.role == Role.DOCTOR and auth.doctor_id == appointment.doctor_id:
+        return "host"
+    if auth.role == Role.PATIENT and auth.patient_id == appointment.patient_id:
+        return "participant"
+    return None
+
+
+def _room(appointment: Appointment, room: video.Room, role: str | None) -> dict[str, Any]:
+    return {
+        "appointmentId": appointment.id,
+        "mode": str(appointment.mode),
+        "status": str(appointment.status),
+        "state": str(room.state),
+        "message": room.message,
+        "canJoin": room.is_open and role is not None,
+        "role": role,
+        "startTime": iso_utc(appointment.start_time),
+        "endTime": iso_utc(appointment.end_time),
+        "opensAt": iso_utc(video.opens_at(appointment)),
+        "closesAt": iso_utc(video.closes_at(appointment)),
+        "videoConfigured": settings.video_configured,
+        "invoice": (
+            billing.serialize(room.invoice, awaiting_review=room.awaiting_review)
+            if room.invoice is not None
+            else None
+        ),
+    }
+
+
+@router.get("/{appointment_id}/video")
+async def video_room(
+    appointment_id: str, auth: CurrentAuth, db: DbSession, _: RequireAppointmentAccess
+) -> dict[str, Any]:
+    """Can this consultation be joined now — and if not, what is in the way.
+
+    Answers in terms a patient can act on: pay the invoice, wait for the
+    payment check, come back at ten to. Only the two parties ever get
+    ``canJoin``; an administrator sees the state and nothing they could use.
+    """
+    row = await service.load_for(db, auth, appointment_id)
+    appointment: Appointment = row[0]
+    room = await video.room_for(db, appointment)
+    return ok(_room(appointment, room, _party(auth, appointment)))
+
+
+@router.post("/{appointment_id}/video/token")
+async def video_token(
+    appointment_id: str,
+    request: Request,
+    auth: CurrentAuth,
+    db: DbSession,
+    _: RequireAppointmentAccess,
+    __: VideoTokenRateLimit,
+) -> dict[str, Any]:
+    """A signed pass into this consultation's call.
+
+    The doctor joining is what starts the consultation: there is no front desk
+    to check a video patient in, so the appointment moves straight to *in
+    progress* the first time the doctor asks for a token.
+
+    Every token is audited. "Who was in that consultation, and when" is the
+    question the audit trail exists to answer, and a call leaves no other trace
+    here — nothing is recorded.
+    """
+    row = await service.load_for(db, auth, appointment_id)
+    appointment: Appointment = row[0]
+    _, doctor_name, _, patient_name, _ = row
+
+    role = _party(auth, appointment)
+    if role is None:
+        raise forbidden("Only the patient and the treating doctor can join this consultation.")
+
+    room = await video.room_for(db, appointment)
+    if not room.is_open:
+        raise conflict(room.message)
+
+    started = False
+    if role == "host" and appointment.status in (
+        AppointmentStatus.CONFIRMED,
+        AppointmentStatus.CHECKED_IN,
+    ):
+        appointment.status = AppointmentStatus.IN_PROGRESS
+        await db.flush()
+        started = True
+
+    call = video.sign_token(appointment, host=role == "host")
+    await _audit(
+        request,
+        db,
+        auth,
+        AuditAction.VIDEO_CONSULT_JOINED,
+        appointment,
+        {"role": role, "consultationStarted": started},
+    )
+    if started:
+        await notify(
+            db,
+            user_id=await user_id_for_patient(db, appointment.patient_id),
+            notification_type=NotificationType.APPOINTMENT_REMINDER,
+            title="Your doctor is in the consultation room",
+            body=f"{doctor_name} has joined. Open the appointment to join the call.",
+            link=f"/consult/{appointment.id}",
+            metadata={"appointmentId": appointment.id, "reminder": "joined"},
+            email=False,
+            priority=2,
+        )
+
+    return ok(
+        {
+            "token": call.token,
+            "sessionName": call.session_name,
+            "userName": doctor_name if role == "host" else patient_name,
+            "role": role,
+            "expiresAt": iso_utc(call.expires_at),
+        }
+    )

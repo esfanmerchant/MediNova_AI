@@ -36,12 +36,16 @@ from app.core.config import settings
 from app.core.logging import logger
 from app.db.base import utcnow
 from app.db.enums import (
+    AppointmentMode,
     AppointmentStatus,
+    AuditAction,
+    InvoiceKind,
     InvoiceStatus,
     NotificationChannel,
     NotificationStatus,
     NotificationType,
     PaymentStatus,
+    PharmacyOrderStatus,
 )
 from app.db.models import (
     Appointment,
@@ -51,12 +55,14 @@ from app.db.models import (
     Notification,
     Patient,
     Payment,
+    PharmacyOrder,
     Prescription,
     PushSubscription,
     User,
 )
 from app.db.session import SessionFactory
-from app.modules.appointments.schedule import clinic_timezone, to_clinic
+from app.modules.appointments import video
+from app.modules.appointments.schedule import clinic_timezone, iso_utc, to_clinic
 from app.modules.notifications import templates
 from app.modules.notifications.templates import ALWAYS_SENT
 from app.services import email as email_service
@@ -82,6 +88,16 @@ GIVE_UP_AFTER = timedelta(hours=6)
 #: gap between two passes and never be reminded about.
 REMIND_BEFORE = timedelta(hours=24)
 REMIND_WINDOW = timedelta(hours=2)
+
+#: The "your call is about to start" notice for an online consultation goes out
+#: as the room opens, so the link in it works the moment it is tapped.
+VIDEO_REMIND_BEFORE = video.OPENS_BEFORE
+
+#: Metadata values that tell the appointment notices apart. The day-before
+#: reminder and the room-opening one share a type, and each pass's "have I
+#: already said this" must not be answered by the other's message.
+VIDEO_REMINDER = "video"
+MISSED_CONSULTATION = "missed"
 
 
 async def claim_pending(db: AsyncSession, limit: int = BATCH_SIZE) -> list[Notification]:
@@ -213,6 +229,10 @@ async def due_for_reminder(db: AsyncSession) -> list[tuple[Appointment, str, str
                     Notification.notification_metadata["appointmentId"].astext.in_(
                         appointment_ids
                     ),
+                    # The day-before reminder only. A notice that the doctor
+                    # has joined, or that the room is open, is a different
+                    # message about the same appointment.
+                    Notification.notification_metadata["reminder"].astext.is_(None),
                 )
             )
         )
@@ -231,14 +251,16 @@ async def schedule_reminders() -> int:
     async with SessionFactory() as db:
         for appointment, user_id, doctor_name in await due_for_reminder(db):
             local = to_clinic(appointment.start_time)
+            online = appointment.mode == AppointmentMode.ONLINE
             await notify(
                 db,
                 user_id=user_id,
                 notification_type=NotificationType.APPOINTMENT_REMINDER,
-                title="Appointment reminder",
+                title="Online consultation reminder" if online else "Appointment reminder",
                 body=(
-                    f"You have an appointment with {doctor_name} on "
-                    f"{local.strftime('%d %b %Y at %H:%M')}."
+                    f"You have an {'online consultation' if online else 'appointment'} "
+                    f"with {doctor_name} on {local.strftime('%d %b %Y at %H:%M')}."
+                    + (" The call opens ten minutes before it starts." if online else "")
                 ),
                 link="/patient/appointments",
                 metadata={"appointmentId": appointment.id},
@@ -250,6 +272,326 @@ async def schedule_reminders() -> int:
     if created:
         logger.info("appointment_reminders_created", count=created)
     return created
+
+
+async def _sent(db: AsyncSession, appointment_ids: list[str], kind: str) -> set[str]:
+    """Which of these appointments already had this particular notice."""
+    if not appointment_ids:
+        return set()
+    return set(
+        (
+            await db.execute(
+                select(Notification.notification_metadata["appointmentId"].astext).where(
+                    Notification.notification_metadata["reminder"].astext == kind,
+                    Notification.notification_metadata["appointmentId"].astext.in_(
+                        appointment_ids
+                    ),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+async def schedule_video_reminders() -> int:
+    """Tell both sides of an online consultation that the room is opening.
+
+    Both, unlike the day-before reminder: a video call needs the doctor at a
+    screen as much as the patient, and a doctor between clinic patients is
+    exactly the person who loses track of a 10:30 call.
+
+    The patient's message depends on whether they have paid, because the room
+    will not open for an unpaid consultation and "join now" would be a link to
+    a refusal.
+    """
+    from app.modules.notifications.service import notify
+
+    now = utcnow()
+    doctor_user = User.__table__.alias("doctor_user")
+    created = 0
+    async with SessionFactory() as db:
+        rows = (
+            await db.execute(
+                select(Appointment, Patient.user_id, Doctor.user_id, doctor_user.c.name)
+                .join(Patient, Patient.id == Appointment.patient_id)
+                .join(Doctor, Doctor.id == Appointment.doctor_id)
+                .join(doctor_user, doctor_user.c.id == Doctor.user_id)
+                .where(
+                    Appointment.mode == AppointmentMode.ONLINE,
+                    Appointment.status == AppointmentStatus.CONFIRMED,
+                    Appointment.start_time > now,
+                    Appointment.start_time <= now + VIDEO_REMIND_BEFORE,
+                )
+                .limit(BATCH_SIZE)
+            )
+        ).all()
+        if not rows:
+            return 0
+
+        already = await _sent(db, [row[0].id for row in rows], VIDEO_REMINDER)
+        for appointment, patient_user, doctor_user_id, doctor_name in rows:
+            if appointment.id in already:
+                continue
+            clock = to_clinic(appointment.start_time).strftime("%H:%M")
+            invoice, _ = await video.invoice_for(db, appointment.id)
+            paid = video.is_settled(invoice)
+            link = f"/consult/{appointment.id}"
+            meta = {"appointmentId": appointment.id, "reminder": VIDEO_REMINDER}
+
+            await notify(
+                db,
+                user_id=patient_user,
+                notification_type=NotificationType.APPOINTMENT_REMINDER,
+                title="Your online consultation is starting" if paid
+                else "Pay now to join your consultation",
+                body=(
+                    f"Your call with {doctor_name} starts at {clock}. The room is open — join now."
+                    if paid
+                    else f"Your call with {doctor_name} starts at {clock}, but the invoice "
+                    "is not paid yet. The room opens once the payment is confirmed."
+                ),
+                link=link,
+                metadata=meta,
+                priority=2,
+            )
+            await notify(
+                db,
+                user_id=doctor_user_id,
+                notification_type=NotificationType.APPOINTMENT_REMINDER,
+                title="Online consultation at " + clock,
+                body=(
+                    "Your next online consultation starts at "
+                    f"{clock}. The room is open."
+                    if paid
+                    else f"Your online consultation at {clock} has not been paid for yet."
+                ),
+                link=link,
+                metadata=meta,
+                email=False,
+                priority=2,
+            )
+            created += 1
+        await db.commit()
+
+    if created:
+        logger.info("video_reminders_created", count=created)
+    return created
+
+
+async def close_lapsed_online_consultations() -> int:
+    """Settle online consultations whose room has closed without a call.
+
+    A clinic appointment nobody acts on simply sits in the list; somebody walks
+    in, or does not. An online one has a bill attached and a room with a closing
+    time, so leaving it would mean an invoice turning overdue for a call that
+    never happened. Three cases, each handled once:
+
+    * **Never confirmed** — the request lapsed. Cancelled, and both told.
+    * **Confirmed, never paid** — cancelled and its invoice voided. Nothing
+      changed hands, so nothing is owed either way.
+    * **Paid, never started** — left as it is, and the administrators are told
+      once. Somebody did not turn up, the money is the patient's until a person
+      decides otherwise, and that decision is not this loop's to make.
+    """
+    from app.modules.audit.service import AuditEntry, record_audit
+    from app.modules.billing import service as billing
+    from app.modules.notifications.service import (
+        notify,
+        user_id_for_doctor,
+        user_id_for_patient,
+    )
+
+    cutoff = utcnow() - video.CLOSES_AFTER
+    handled = 0
+    async with SessionFactory() as db:
+        rows = (
+            (
+                await db.execute(
+                    select(Appointment)
+                    .where(
+                        Appointment.mode == AppointmentMode.ONLINE,
+                        Appointment.status.in_(
+                            (AppointmentStatus.REQUESTED, AppointmentStatus.CONFIRMED)
+                        ),
+                        Appointment.end_time < cutoff,
+                    )
+                    .limit(BATCH_SIZE)
+                    .with_for_update(skip_locked=True)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not rows:
+            return 0
+
+        missed_already = await _sent(db, [a.id for a in rows], MISSED_CONSULTATION)
+        for appointment in rows:
+            invoice, awaiting = await video.invoice_for(db, appointment.id)
+            when = to_clinic(appointment.start_time).strftime("%d %b at %H:%M")
+
+            if appointment.status == AppointmentStatus.CONFIRMED and (
+                video.is_settled(invoice) or awaiting
+            ):
+                if appointment.id in missed_already:
+                    continue
+                await billing.notify_admins(
+                    db,
+                    title="A paid online consultation did not take place",
+                    body=(
+                        f"The consultation on {when} was paid for, but the call was "
+                        "never started. Check with the doctor and patient, and refund "
+                        "it with a credit note if it is owed."
+                    ),
+                    link="/admin/appointments",
+                    metadata={"appointmentId": appointment.id, "reminder": MISSED_CONSULTATION},
+                    notification_type=NotificationType.APPOINTMENT_CANCELLED,
+                )
+                handled += 1
+                continue
+
+            unconfirmed = appointment.status == AppointmentStatus.REQUESTED
+            reason = (
+                "The doctor did not confirm it in time."
+                if unconfirmed
+                else "It was not paid for before it was due to start."
+            )
+            appointment.status = AppointmentStatus.CANCELLED
+            appointment.cancelled_at = utcnow()
+            appointment.cancel_reason = reason
+            # Released like any cancellation, so ``holds_a_slot`` stays the
+            # exact complement of a cleared key.
+            appointment.slot_key = None
+            outcome = await billing.consultation_called_off(db, appointment, reason=reason)
+
+            for user_id, body, link in (
+                (
+                    await user_id_for_patient(db, appointment.patient_id),
+                    f"Your online consultation on {when} was cancelled. {reason}",
+                    "/patient/appointments",
+                ),
+                (
+                    await user_id_for_doctor(db, appointment.doctor_id),
+                    f"The online consultation on {when} was cancelled. {reason}",
+                    "/doctor/appointments",
+                ),
+            ):
+                await notify(
+                    db,
+                    user_id=user_id,
+                    notification_type=NotificationType.APPOINTMENT_CANCELLED,
+                    title="Online consultation cancelled",
+                    body=body,
+                    link=link,
+                    metadata={"appointmentId": appointment.id},
+                )
+            await record_audit(
+                db,
+                AuditEntry(
+                    action=AuditAction.APPOINTMENT_CANCELLED,
+                    patient_id=appointment.patient_id,
+                    entity_type="Appointment",
+                    entity_id=appointment.id,
+                    metadata={
+                        "doctorId": appointment.doctor_id,
+                        "startTime": iso_utc(appointment.start_time),
+                        "automatic": True,
+                        "reason": "unconfirmed" if unconfirmed else "unpaid",
+                        "invoice": outcome,
+                    },
+                ),
+            )
+            handled += 1
+        await db.commit()
+
+    if handled:
+        logger.info("lapsed_online_consultations_closed", count=handled)
+    return handled
+
+
+async def release_lapsed_pharmacy_orders() -> int:
+    """Cancel medicine orders that have waited too long, and restock their shelves.
+
+    An order holds its stock from the moment it is placed. That is right while
+    somebody is acting on it, and wrong forever after: a cart abandoned at the
+    payment step would otherwise keep the last strip of something away from the
+    next patient indefinitely. Two clocks, each the one the patient was told:
+
+    * a prescription not cleared within ``RX_WINDOW`` of the order;
+    * an online payment not made by the invoice's due date — unless a payment is
+      sitting in the review queue, which is the hospital's delay, not theirs.
+    """
+    from app.modules.audit.service import AuditEntry, record_audit
+    from app.modules.pharmacy import orders as pharmacy
+
+    now = utcnow()
+    released = 0
+    async with SessionFactory() as db:
+        rows = (
+            (
+                await db.execute(
+                    select(PharmacyOrder)
+                    .outerjoin(Invoice, Invoice.id == PharmacyOrder.invoice_id)
+                    .where(
+                        (
+                            (PharmacyOrder.status == PharmacyOrderStatus.PENDING_RX)
+                            & (PharmacyOrder.created_at < now - pharmacy.RX_WINDOW)
+                        )
+                        | (
+                            (PharmacyOrder.status == PharmacyOrderStatus.AWAITING_PAYMENT)
+                            & (Invoice.due_at < now)
+                            & ~select(Payment.id)
+                            .where(
+                                Payment.invoice_id == PharmacyOrder.invoice_id,
+                                Payment.status == PaymentStatus.SUBMITTED,
+                            )
+                            .exists()
+                        )
+                    )
+                    .limit(BATCH_SIZE)
+                    .with_for_update(of=PharmacyOrder, skip_locked=True)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for order in rows:
+            unpaid = order.status == PharmacyOrderStatus.AWAITING_PAYMENT
+            reason = (
+                "It was not paid for within two days."
+                if unpaid
+                else "The prescription was not cleared within three days."
+            )
+            outcome = await pharmacy.cancel(db, order, by=None, reason=reason)
+            await pharmacy.tell_patient(
+                db,
+                order,
+                title="Order cancelled",
+                body=f"Order {order.order_number} was cancelled. {reason} You can order again at any time.",
+            )
+            await record_audit(
+                db,
+                AuditEntry(
+                    action=AuditAction.PHARMACY_ORDER_UPDATED,
+                    patient_id=order.patient_id,
+                    entity_type="PharmacyOrder",
+                    entity_id=order.id,
+                    metadata={
+                        "orderNumber": order.order_number,
+                        "operation": "cancel",
+                        "automatic": True,
+                        "reason": "unpaid" if unpaid else "prescription_not_cleared",
+                        "invoice": outcome,
+                    },
+                ),
+            )
+            released += 1
+        await db.commit()
+
+    if released:
+        logger.info("lapsed_pharmacy_orders_released", count=released)
+    return released
 
 
 #: The two moments an unpaid invoice is worth mentioning, and the metadata key
@@ -308,10 +650,15 @@ async def schedule_invoice_reminders() -> int:
     async with SessionFactory() as db:
         rows = (
             await db.execute(
-                select(Invoice, Patient.user_id, User.name, User.email)
+                select(Invoice, Patient.user_id, User.name, User.email, Appointment.mode)
                 .join(Patient, Patient.id == Invoice.patient_id)
                 .join(User, User.id == Patient.user_id)
+                .outerjoin(Appointment, Appointment.id == Invoice.appointment_id)
                 .where(
+                    # A pharmacy order has its own timeline — it is cancelled
+                    # and its stock released if it goes unpaid — and nagging
+                    # about it as a debt would contradict that.
+                    Invoice.kind == InvoiceKind.CONSULTATION,
                     Invoice.status == InvoiceStatus.ISSUED,
                     Invoice.due_at.is_not(None),
                     # Nothing older than a week: an invoice nobody has paid in a
@@ -335,10 +682,14 @@ async def schedule_invoice_reminders() -> int:
         sent_soon = await _already_reminded(db, ids, DUE_SOON)
         sent_late = await _already_reminded(db, ids, OVERDUE)
 
-        for invoice, user_id, name, address in rows:
+        for invoice, user_id, name, address, mode in rows:
             overdue = billing.is_overdue(invoice)
             kind = OVERDUE if overdue else DUE_SOON
             if invoice.id in (sent_late if overdue else sent_soon):
+                continue
+            if overdue and mode == AppointmentMode.ONLINE:
+                # Due at the call's start, so "overdue" means the call has gone.
+                # ``close_lapsed_online_consultations`` voids it instead.
                 continue
 
             if overdue:
@@ -625,12 +976,20 @@ async def schedule_medication_reminders() -> int:
 async def run_once() -> dict[str, int]:
     """One full pass. Separate from the loop so a test can drive it directly."""
     reminders = await schedule_reminders()
+    video_calls = await schedule_video_reminders()
+    # Before the invoice pass, so a lapsed consultation's bill is voided rather
+    # than reported as overdue in the same minute.
+    lapsed = await close_lapsed_online_consultations()
+    released = await release_lapsed_pharmacy_orders()
     medication = await schedule_medication_reminders()
     invoices = await schedule_invoice_reminders()
     sent = await send_pending()
     pushed = await push_pending()
     return {
         "reminders": reminders,
+        "videoReminders": video_calls,
+        "lapsedConsultations": lapsed,
+        "lapsedOrders": released,
         "medication": medication,
         "invoices": invoices,
         "sent": sent,

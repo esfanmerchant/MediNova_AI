@@ -83,6 +83,22 @@ class Permission(StrEnum):
     #: is why it sits beside user management rather than beside chart access.
     DOCTOR_APPLICATION_REVIEW = "doctor:application:review"
 
+    # Pharmacy
+    #: The catalog: names, prices, whether a medicine needs a prescription.
+    #: Shop-window information, held by everybody who can sign in.
+    PHARMACY_BROWSE = "pharmacy:browse"
+    #: Placing, following and cancelling one's *own* medicine orders.
+    PHARMACY_ORDER_OWN = "pharmacy:order:own"
+    #: A doctor answering a patient's request to approve prescription-only
+    #: medicine. Scoped in the handlers to requests addressed to that doctor,
+    #: from patients they have a care relationship with.
+    PHARMACY_RX_APPROVE = "pharmacy:rx:approve"
+    #: Running the pharmacy: stock, prices, orders, delivery and the check of
+    #: prescriptions patients upload with an order. An uploaded prescription is
+    #: sent *to the pharmacy* to be checked — it is part of the order, not a
+    #: standing window into the patient's chart, which this does not grant.
+    PHARMACY_MANAGE = "pharmacy:manage"
+
     # Safety & compliance
     EMERGENCY_REQUEST = "emergency:request"
     EMERGENCY_REVIEW = "emergency:review"
@@ -103,6 +119,8 @@ _PATIENT: frozenset[Permission] = frozenset(
         Permission.INVOICE_READ_OWN,
         Permission.AI_CHAT,
         Permission.OCR_SUBMIT,
+        Permission.PHARMACY_BROWSE,
+        Permission.PHARMACY_ORDER_OWN,
     }
 )
 
@@ -123,6 +141,9 @@ _DOCTOR: frozenset[Permission] = frozenset(
         Permission.ALERT_READ_ASSIGNED,
         Permission.ALERT_MANAGE,
         Permission.DOCTOR_APPLICATION_SUBMIT,
+        # Browsing so a prescription can name a product the pharmacy stocks.
+        Permission.PHARMACY_BROWSE,
+        Permission.PHARMACY_RX_APPROVE,
     }
 )
 
@@ -145,6 +166,8 @@ _ADMIN: frozenset[Permission] = frozenset(
         Permission.AUDIT_READ,
         Permission.EMERGENCY_REVIEW,
         Permission.DOCUMENT_DELETE,
+        Permission.PHARMACY_BROWSE,
+        Permission.PHARMACY_MANAGE,
     }
 )
 

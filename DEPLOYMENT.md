@@ -201,6 +201,7 @@ Environment variables from `.env.example`. The ones that must not be missed:
 | `NODE_ENV` | `production` — turns on HSTS and refuses a localhost `CLIENT_ORIGIN` |
 | `SUPABASE_SERVICE_ROLE_KEY` | server-side only, never `NEXT_PUBLIC_` |
 | `SMTP_*`, `VAPID_*`, `AI_API_KEY` | email, push, assistant |
+| `ZOOM_VIDEO_SDK_KEY`, `ZOOM_VIDEO_SDK_SECRET` | online consultations; without them, online slots are not offered |
 
 ```bash
 docker build -t medinova-api ./api
@@ -215,13 +216,17 @@ database is unreachable, so a bad deploy is caught before traffic reaches it.
 ## Close the Data API
 
 Supabase exposes a REST API over the same tables at `/rest/v1`, reachable with
-the publishable key, and **row-level security is not enabled on any of the 36
-tables**. Nothing in this application uses it — the API talks to Postgres
-directly and reaches Supabase only for file storage.
+the publishable key. Nothing in this application uses it — the API talks to
+Postgres directly and reaches Supabase only for file storage.
 
-**Project Settings → API → Data API → disable**, and disable the legacy `anon`
-key while you are there. If it must stay on, enable RLS on every table and add
-no policy: no policy means no rows.
+Migration `0025_close_the_data_api` shuts it: row-level security on every table
+with no policy (no policy means no rows), and the `anon` and `authenticated`
+roles' grants revoked, including the default privileges that would hand them
+the next table a migration creates. The API connects as `postgres`, which
+bypasses row-level security, so nothing the application does changes.
+
+Belt and braces: **Project Settings → API → Data API → disable**, and disable
+the legacy `anon` key while you are there.
 
 ---
 

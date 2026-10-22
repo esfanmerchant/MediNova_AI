@@ -598,6 +598,12 @@ export interface TimeOff {
   reason: string | null;
 }
 
+/**
+ * What a weekly window offers: visits at the clinic, video calls, or either —
+ * in which case whoever books a slot first decides which it is.
+ */
+export type WindowMode = "CLINIC" | "ONLINE" | "BOTH";
+
 /** One recurring weekly window — "Tuesdays 09:00–17:00, in 30-minute slots". */
 export interface AvailabilityWindow {
   /** ISO weekday: Monday is 1, Sunday is 7. */
@@ -606,10 +612,21 @@ export interface AvailabilityWindow {
   startTime: string;
   endTime: string;
   slotMinutes: number;
+  /** Absent on windows saved before online consultations, which are clinic hours. */
+  mode?: WindowMode;
 }
 
 /** The lengths the scheduler will divide a window into. */
 export const SLOT_MINUTES = [10, 15, 20, 30, 45, 60] as const;
+
+/**
+ * How long an online consultation lasts. Every window that offers calls uses
+ * exactly this slot length — the server refuses anything else.
+ */
+export const ONLINE_SLOT_MINUTES = 30;
+
+/** Where a consultation happens. */
+export type AppointmentMode = "CLINIC" | "ONLINE";
 
 export interface DoctorProfile {
   id: string;
@@ -627,6 +644,12 @@ export interface DoctorProfile {
   qualifications: string | null;
   yearsExperience: number | null;
   consultationFee: number;
+  /** Whether a patient can book this doctor for a video call right now. */
+  offersOnline: boolean;
+  /** Set only when online consultations cost something other than a visit. */
+  onlineFee: number | null;
+  /** What an online consultation is actually billed at. */
+  effectiveOnlineFee: number;
   acceptingPatients: boolean;
   /**
    * The weeks a patient books against. Empty means no slots are generated at
@@ -679,6 +702,10 @@ export const doctors = {
     yearsExperience?: number;
     acceptingPatients?: boolean;
     availability?: AvailabilityWindow[];
+    /** What a video consultation costs, when it differs from a clinic visit. */
+    onlineFee?: number;
+    /** Back to charging the clinic fee online. */
+    clearOnlineFee?: boolean;
     // Self-service: moving clinic is an ordinary Tuesday, not a credentialing
     // event, so it does not wait on an administrator.
     clinicName?: string;
@@ -715,6 +742,8 @@ export const doctors = {
     departmentId?: string;
     /** Exact city match — the value comes from `doctors.cities()`. */
     city?: string;
+    /** Only doctors who publish online hours. */
+    onlineOnly?: boolean;
     limit?: number;
   }) =>
     apiList<{
@@ -729,6 +758,9 @@ export const doctors = {
       qualifications: string | null;
       yearsExperience: number | null;
       consultationFee: number;
+      offersOnline: boolean;
+      onlineFee: number | null;
+      effectiveOnlineFee: number;
       acceptingPatients: boolean;
       department: { id: string; name: string; code: string } | null;
       clinicName: string | null;
@@ -947,6 +979,8 @@ export interface Appointment {
   durationMinutes: number;
   reason: string | null;
   notes: string | null;
+  /** At the clinic, or a video call through MediNova. */
+  mode: AppointmentMode;
   doctorName: string | null;
   specialization: string | null;
   patientName: string | null;
@@ -963,6 +997,8 @@ export interface AvailabilitySlot {
   endTime: string;
   /** Clinic-local "HH:MM", already formatted by the server. */
   label: string;
+  /** How this slot can be booked. Empty never — a slot with no mode is not sent. */
+  modes: AppointmentMode[];
   available: boolean;
 }
 
@@ -986,14 +1022,32 @@ export const appointments = {
 
   get: (id: string) => apiRequest<Appointment>(`/appointments/${id}`),
 
-  availability: (doctorId: string, from?: string, to?: string) =>
-    apiRequest<{ doctorId: string; timezone: string; days: AvailabilityDay[] }>(
-      "/appointments/availability",
-      { query: { doctorId, from, to } },
-    ),
+  availability: (doctorId: string, from?: string, to?: string, mode?: AppointmentMode) =>
+    apiRequest<{
+      doctorId: string;
+      timezone: string;
+      /** False where video calls cannot happen, so online slots are not offered. */
+      onlineAvailable: boolean;
+      days: AvailabilityDay[];
+    }>("/appointments/availability", { query: { doctorId, from, to, mode } }),
 
-  book: (input: { doctorId: string; startTime: string; reason?: string; patientId?: string }) =>
-    apiRequest<Appointment>("/appointments", { method: "POST", body: input }),
+  book: (input: {
+    doctorId: string;
+    startTime: string;
+    reason?: string;
+    patientId?: string;
+    mode?: AppointmentMode;
+  }) => apiRequest<Appointment>("/appointments", { method: "POST", body: input }),
+
+  /** Whether an online consultation's room is open — and if not, why. */
+  video: (id: string) => apiRequest<VideoRoom>(`/appointments/${id}/video`),
+
+  /**
+   * A signed pass into this consultation's call. The doctor asking for one is
+   * what starts the consultation.
+   */
+  videoToken: (id: string) =>
+    apiRequest<VideoToken>(`/appointments/${id}/video/token`, { method: "POST" }),
 
   cancel: (id: string, reason?: string) =>
     apiRequest<Appointment>(`/appointments/${id}/cancel`, {
@@ -1015,6 +1069,44 @@ export const appointments = {
     }),
 };
 
+/** Why a consultation's room is or is not open, in the order a patient can act on. */
+export type RoomState =
+  | "OPEN"
+  | "NOT_ONLINE"
+  | "CANCELLED"
+  | "ENDED"
+  | "NOT_CONFIRMED"
+  | "UNPAID"
+  | "PAYMENT_UNDER_REVIEW"
+  | "TOO_EARLY"
+  | "NOT_CONFIGURED";
+
+export interface VideoRoom {
+  appointmentId: string;
+  mode: AppointmentMode;
+  status: AppointmentStatus;
+  state: RoomState;
+  /** Written to be shown as it is. */
+  message: string;
+  canJoin: boolean;
+  /** `host` for the treating doctor, `participant` for the patient. */
+  role: "host" | "participant" | null;
+  startTime: string;
+  endTime: string;
+  opensAt: string;
+  closesAt: string;
+  videoConfigured: boolean;
+  invoice: Invoice | null;
+}
+
+export interface VideoToken {
+  token: string;
+  sessionName: string;
+  userName: string;
+  role: "host" | "participant";
+  expiresAt: string;
+}
+
 // ---------------------------------------------------------------------------
 // Clinical records
 // ---------------------------------------------------------------------------
@@ -1033,6 +1125,8 @@ export interface Prescription {
   startDate: string | null;
   endDate: string | null;
   active: boolean;
+  /** The pharmacy product the doctor picked, when they picked one. */
+  productId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1138,6 +1232,8 @@ export const prescriptions = {
     frequency: string;
     duration: string;
     instructions?: string;
+    /** A catalog product, so the patient's order finds exactly this pack. */
+    productId?: string;
   }) => apiRequest<Prescription>("/prescriptions", { method: "POST", body: input }),
 
   update: (
@@ -1764,6 +1860,8 @@ export interface Invoice {
   id: string;
   patientId: string;
   appointmentId: string | null;
+  /** A doctor's consultation, or medicine from the pharmacy. */
+  kind: "CONSULTATION" | "PHARMACY";
   invoiceNumber: string;
   /**
    * Money arrives as a string, deliberately. 0.1 + 0.2 is not 0.3 in binary
@@ -2569,6 +2667,11 @@ export interface RevenueTotals {
   /** The platform's own income: its fee plus late charges. */
   earned: string;
   invoices: number;
+  /** Medicine sold by the platform's own pharmacy, delivery included. */
+  pharmacySales: string;
+  pharmacyOrders: number;
+  /** Fees, late charges and medicine sales — everything the platform took in. */
+  platformRevenue: string;
 }
 
 export interface RevenueSummary {
@@ -2585,6 +2688,8 @@ export interface RevenuePoint {
   platformFee: string;
   tax: string;
   toDoctors: string;
+  /** Medicine sales in this period. */
+  pharmacy: string;
   invoices: number;
 }
 
@@ -2604,4 +2709,400 @@ export const revenue = {
       points: RevenuePoint[];
       bySpeciality: Array<{ label: string; amount: string; invoices: number }>;
     }>("/invoices/revenue/series", { query: { grain } }),
+};
+
+// ---------------------------------------------------------------------------
+// Pharmacy
+// ---------------------------------------------------------------------------
+
+export type ProductForm =
+  | "TABLET"
+  | "CAPSULE"
+  | "SYRUP"
+  | "SUSPENSION"
+  | "DROPS"
+  | "INJECTION"
+  | "CREAM"
+  | "OINTMENT"
+  | "GEL"
+  | "LOTION"
+  | "INHALER"
+  | "SACHET"
+  | "SPRAY"
+  | "SOLUTION"
+  | "OTHER";
+
+export const PRODUCT_FORMS: ProductForm[] = [
+  "TABLET",
+  "CAPSULE",
+  "SYRUP",
+  "SUSPENSION",
+  "DROPS",
+  "INJECTION",
+  "CREAM",
+  "OINTMENT",
+  "GEL",
+  "LOTION",
+  "INHALER",
+  "SACHET",
+  "SPRAY",
+  "SOLUTION",
+  "OTHER",
+];
+
+/** All a patient is told about stock: whether they can have it. */
+export type StockState = "IN_STOCK" | "LOW" | "OUT";
+
+export interface Product {
+  id: string;
+  /** The brand on the pack, e.g. "Panadol". */
+  name: string;
+  /** The active ingredient, e.g. "Paracetamol". */
+  genericName: string;
+  strength: string | null;
+  form: ProductForm;
+  packSize: string;
+  category: string;
+  manufacturer: string | null;
+  description: string | null;
+  /** Rupees, as a string — see `Invoice.amount`. */
+  price: string;
+  rxRequired: boolean;
+  active: boolean;
+  stockState: StockState;
+  available: boolean;
+  /** Administrators only. */
+  stock?: number;
+  lowStockThreshold?: number;
+  costPrice?: string | null;
+  /** False for a starter-catalog estimate nobody has checked yet. */
+  priceReviewed?: boolean;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface PharmacySettings {
+  pharmacyName: string;
+  deliveryFee: string;
+  freeDeliveryAbove: string | null;
+  codEnabled: boolean;
+  codMaxAmount: string | null;
+  /** Empty means every city. */
+  cities: string[];
+  licenseNumber: string | null;
+  phone: string | null;
+  address: string | null;
+  currency: string;
+  /** How long an online order waits for its payment before it is released. */
+  paymentWindowHours: number;
+  updatedAt?: string | null;
+}
+
+export interface CartLine {
+  productId: string;
+  quantity: number;
+  /** One of the patient's own prescriptions, when they chose it. */
+  prescriptionId?: string;
+}
+
+export interface QuoteLine {
+  product: Product;
+  quantity: number;
+  unitPrice: string;
+  lineTotal: string;
+  rxRequired: boolean;
+  coveredBy: { prescriptionId: string; medication: string; dosage: string } | null;
+  needsPrescription: boolean;
+  problem: string | null;
+}
+
+export interface Quote {
+  lines: QuoteLine[];
+  subtotal: string;
+  deliveryFee: string;
+  total: string;
+  currency: string;
+  needsPrescription: boolean;
+  problems: string[];
+  codAvailable: boolean;
+  codRefusal: string | null;
+  freeDeliveryAbove: string | null;
+}
+
+export type OrderStatus =
+  | "PENDING_RX"
+  | "AWAITING_PAYMENT"
+  | "CONFIRMED"
+  | "PACKED"
+  | "DISPATCHED"
+  | "DELIVERED"
+  | "CANCELLED";
+
+export type OrderPaymentMethod = "COD" | "ONLINE";
+export type RxRoute = "PRESCRIBED" | "UPLOAD" | "DOCTOR";
+export type RxStatus = "NOT_REQUIRED" | "PENDING" | "APPROVED" | "REJECTED";
+
+export interface OrderItem {
+  id: string;
+  productId: string | null;
+  productName: string;
+  genericName: string;
+  strength: string | null;
+  form: string;
+  packSize: string;
+  unitPrice: string;
+  quantity: number;
+  lineTotal: string;
+  rxRequired: boolean;
+  coveredByPrescription: boolean;
+}
+
+export interface OrderStep {
+  key: "PLACED" | "PRESCRIPTION" | "PAID" | "CONFIRMED" | "PACKED" | "DISPATCHED" | "DELIVERED" | "CANCELLED";
+  at: string | null;
+  done: boolean;
+  failed?: boolean;
+}
+
+export interface Order {
+  id: string;
+  orderNumber: string;
+  status: OrderStatus;
+  paymentMethod: OrderPaymentMethod;
+  recipientName?: string;
+  phone?: string;
+  addressLine?: string;
+  city: string;
+  deliveryNotes?: string | null;
+  subtotal: string;
+  deliveryFee: string;
+  total: string;
+  currency: string;
+  rxStatus: RxStatus;
+  rxRoute: RxRoute | null;
+  rxNote: string | null;
+  hasRxUpload: boolean;
+  rxDoctorId: string | null;
+  rxDoctorName: string | null;
+  courier: string | null;
+  trackingNumber: string | null;
+  cancelReason: string | null;
+  refundDue: boolean;
+  canCancel: boolean;
+  createdAt: string;
+  confirmedAt: string | null;
+  dispatchedAt: string | null;
+  deliveredAt: string | null;
+  cancelledAt: string | null;
+  timeline: OrderStep[];
+  items: OrderItem[];
+  invoice: Invoice | null;
+  /** Administrators only. */
+  patientId?: string | null;
+  patientName?: string | null;
+}
+
+/** A doctor's view of a request to approve medicine. */
+export interface ApprovalRequest extends Order {
+  patient: {
+    id: string | null;
+    name: string | null;
+    allergies: string | null;
+    chronicConditions: string | null;
+    currentMedications: string[];
+  };
+}
+
+export interface MyPrescription {
+  prescriptionId: string;
+  medication: string;
+  dosage: string;
+  frequency: string;
+  duration: string;
+  doctorName: string | null;
+  prescribedAt: string;
+  /** Catalog products this prescription covers. Empty when none is stocked. */
+  products: Product[];
+}
+
+export interface PharmacyDashboard {
+  salesToday: string;
+  paidOrdersToday: number;
+  salesThisMonth: string;
+  paidOrdersThisMonth: number;
+  ordersByStatus: Partial<Record<OrderStatus, number>>;
+  openOrders: number;
+  prescriptionsToCheck: number;
+  refundsDue: number;
+  lowStockCount: number;
+  lowStock: Product[];
+  unreviewedPrices: number;
+  bestSellers: Array<{ productId: string | null; name: string; quantity: number; revenue: string }>;
+  marginThisMonth: string;
+  marginCoveragePercent: string;
+}
+
+export interface ProductInput {
+  name: string;
+  genericName: string;
+  strength?: string | null;
+  form: ProductForm;
+  packSize: string;
+  category: string;
+  manufacturer?: string | null;
+  description?: string | null;
+  price: string;
+  costPrice?: string | null;
+  lowStockThreshold?: number;
+  rxRequired: boolean;
+  active?: boolean;
+}
+
+export interface CheckoutInput {
+  items: CartLine[];
+  paymentMethod: OrderPaymentMethod;
+  recipientName: string;
+  phone: string;
+  addressLine: string;
+  city: string;
+  deliveryNotes?: string;
+  rxRoute?: "UPLOAD" | "DOCTOR";
+  rxDoctorId?: string;
+}
+
+export const pharmacy = {
+  /** Delivery terms and the shelves, for the storefront and checkout. */
+  info: () =>
+    apiRequest<{
+      settings: PharmacySettings;
+      categories: Array<{ name: string; products: number }>;
+    }>("/pharmacy/info"),
+
+  products: (query?: {
+    search?: string;
+    category?: string;
+    rxRequired?: boolean;
+    includeInactive?: boolean;
+    lowStock?: boolean;
+    unreviewedPrice?: boolean;
+    limit?: number;
+    offset?: number;
+  }) => apiList<Product>("/pharmacy/products", query),
+
+  product: (id: string) => apiRequest<Product>(`/pharmacy/products/${id}`),
+
+  myPrescriptions: () => apiRequest<MyPrescription[]>("/pharmacy/my-prescriptions"),
+
+  /** Doctors who could approve this patient's prescription-only medicine. */
+  myDoctors: () =>
+    apiRequest<Array<{ id: string; name: string; specialization: string }>>("/pharmacy/my-doctors"),
+
+  /** Prices a cart without placing it. The server is the only one doing sums. */
+  quote: (items: CartLine[], paymentMethod?: OrderPaymentMethod) =>
+    apiRequest<Quote>("/pharmacy/orders/quote", {
+      method: "POST",
+      body: { items, paymentMethod },
+    }),
+
+  place: (input: CheckoutInput) =>
+    apiRequest<Order>("/pharmacy/orders", { method: "POST", body: input }),
+
+  orders: (query?: {
+    status?: OrderStatus;
+    search?: string;
+    queue?: "rx-review" | "refunds" | "open";
+    limit?: number;
+    offset?: number;
+  }) => apiList<Order>("/pharmacy/orders", query),
+
+  order: (id: string) => apiRequest<Order>(`/pharmacy/orders/${id}`),
+
+  cancel: (id: string, reason?: string) =>
+    apiRequest<Order>(`/pharmacy/orders/${id}/cancel`, { method: "POST", body: { reason } }),
+
+  uploadPrescription: (id: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return apiMultipart<Order>(`/pharmacy/orders/${id}/prescription`, form);
+  },
+
+  /** A short-lived link to the uploaded prescription. */
+  prescriptionLink: (id: string) =>
+    apiRequest<{ url: string; expiresIn: number }>(`/pharmacy/orders/${id}/prescription`),
+
+  // --- the pharmacy's side --------------------------------------------------
+
+  reviewPrescription: (id: string, decision: "APPROVE" | "REJECT", note?: string) =>
+    apiRequest<Order>(`/pharmacy/orders/${id}/rx-review`, {
+      method: "POST",
+      body: { decision, note },
+    }),
+
+  advance: (
+    id: string,
+    status: "PACKED" | "DISPATCHED" | "DELIVERED",
+    delivery?: { courier?: string; trackingNumber?: string },
+  ) =>
+    apiRequest<Order>(`/pharmacy/orders/${id}/advance`, {
+      method: "POST",
+      body: { status, ...delivery },
+    }),
+
+  refund: (id: string, reason: string) =>
+    apiRequest<Order>(`/pharmacy/orders/${id}/refund`, { method: "POST", body: { reason } }),
+
+  dashboard: () => apiRequest<PharmacyDashboard>("/pharmacy/dashboard"),
+
+  createProduct: (input: ProductInput) =>
+    apiRequest<Product>("/pharmacy/products", { method: "POST", body: input }),
+
+  updateProduct: (id: string, input: Partial<ProductInput>) =>
+    apiRequest<Product>(`/pharmacy/products/${id}`, { method: "PATCH", body: input }),
+
+  /** Add (positive) or write off (negative) stock, with a reason. */
+  adjustStock: (id: string, change: number, reason: string) =>
+    apiRequest<Product>(`/pharmacy/products/${id}/stock`, {
+      method: "POST",
+      body: { change, reason },
+    }),
+
+  importCatalog: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return apiMultipart<{
+      created: number;
+      updated: number;
+      errors: Array<{ line: number; error: string }>;
+    }>("/pharmacy/products/import", form);
+  },
+
+  loadStarterCatalog: () =>
+    apiRequest<{ created: number }>("/pharmacy/products/starter", { method: "POST" }),
+
+  settings: () => apiRequest<PharmacySettings>("/pharmacy/settings"),
+
+  updateSettings: (
+    input: Partial<{
+      deliveryFee: string;
+      freeDeliveryAbove: string | null;
+      codEnabled: boolean;
+      codMaxAmount: string | null;
+      cities: string[];
+      pharmacyName: string;
+      licenseNumber: string | null;
+      address: string | null;
+      phone: string | null;
+    }>,
+  ) => apiRequest<PharmacySettings>("/pharmacy/settings", { method: "PUT", body: input }),
+
+  // --- a doctor's side -------------------------------------------------------
+
+  approvals: (query?: { pending?: boolean; limit?: number; offset?: number }) =>
+    apiList<ApprovalRequest>("/pharmacy/approvals", query),
+
+  decide: (id: string, decision: "APPROVE" | "REJECT", note?: string) =>
+    apiRequest<ApprovalRequest>(`/pharmacy/approvals/${id}`, {
+      method: "POST",
+      body: { decision, note },
+    }),
 };

@@ -34,6 +34,10 @@ export interface DirectoryDoctor {
   qualifications: string | null;
   yearsExperience: number | null;
   consultationFee: number;
+  /** Publishes online hours, on a deployment where calls can happen. */
+  offersOnline?: boolean;
+  /** What a video consultation is billed at. */
+  effectiveOnlineFee?: number;
   acceptingPatients: boolean;
   clinicName: string | null;
   city: string | null;
@@ -83,11 +87,12 @@ export function DoctorAbout({
   const tr = useTr();
   if (!doctor) return null;
 
-  const fee = new Intl.NumberFormat("en-PK", {
+  const money = new Intl.NumberFormat("en-PK", {
     style: "currency",
     currency: "PKR",
     maximumFractionDigits: 0,
-  }).format(doctor.consultationFee);
+  });
+  const fee = money.format(doctor.consultationFee);
 
   return (
     <Dialog
@@ -128,6 +133,12 @@ export function DoctorAbout({
               ) : (
                 <Badge tone="neutral">{tr("Not taking patients", "Naye mareez nahi le rahe")}</Badge>
               )}
+              {doctor.offersOnline && (
+                <Badge tone="info">
+                  <Icon name="videocam" className="text-[14px]" />
+                  {tr("Online consultations", "Online consultation")}
+                </Badge>
+              )}
               {doctor.department && <Badge tone="neutral">{doctor.department.name}</Badge>}
             </div>
           </div>
@@ -152,6 +163,13 @@ export function DoctorAbout({
             <span className="tabular-nums">{fee}</span>
             <span className="text-muted"> {tr("per visit", "har visit")}</span>
           </Fact>
+
+          {doctor.offersOnline && typeof doctor.effectiveOnlineFee === "number" && (
+            <Fact icon="videocam" label={tr("Online consultation", "Online consultation")}>
+              <span className="tabular-nums">{money.format(doctor.effectiveOnlineFee)}</span>
+              <span className="text-muted"> {tr("for 30 minutes", "30 minute ke liye")}</span>
+            </Fact>
+          )}
 
           {doctor.department && (
             <Fact icon="domain" label={tr("Department", "Department")}>

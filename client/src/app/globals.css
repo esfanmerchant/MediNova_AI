@@ -1537,3 +1537,61 @@ html {
   border-bottom-color: rgb(126 180 255 / 0.26);
   box-shadow: 0 10px 30px -18px rgb(0 0 0 / 0.85);
 }
+
+/* ---------------------------------------------------------------------------
+   The consultation room's video.
+
+   The Video SDK renders into `<video-player>` elements it creates, inside the
+   one `<video-player-container>` the page mounts. Both are custom elements
+   that default to inline and zero-sized, which renders nothing and raises no
+   error — so they are sized here, outside any component, where the SDK's own
+   elements can be reached.
+
+   Nothing here paints a background on the container or the players. Zoom's
+   guidance is explicit that an opaque background on either can cover the
+   video itself; the dark stage colour belongs to the wrapper behind them.
+
+   The remote picture fills the stage and is letterboxed, never cropped: a
+   doctor looking at a rash or a throat needs the whole frame. The patient's
+   own picture is a small inset, portrait on a portrait phone because that is
+   the shape the SDK sends it in.
+   --------------------------------------------------------------------------- */
+video-player-container.consult-stage {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+video-player-container.consult-stage video-player {
+  position: absolute;
+  display: block;
+  object-fit: contain;
+}
+video-player-container.consult-stage video-player[data-role="remote"] {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+video-player-container.consult-stage video-player[data-role="self"] {
+  right: 0.75rem;
+  bottom: 5.5rem;
+  width: 28%;
+  max-width: 13.5rem;
+  aspect-ratio: 16 / 9;
+  height: auto;
+  z-index: 2;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 2px rgb(255 255 255 / 0.85),
+    0 10px 24px -8px rgb(0 0 0 / 0.6);
+}
+@media (orientation: portrait) and (max-width: 640px) {
+  video-player-container.consult-stage video-player[data-role="self"] {
+    width: 30%;
+    aspect-ratio: 9 / 16;
+    bottom: 6rem;
+  }
+}

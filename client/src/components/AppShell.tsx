@@ -65,6 +65,7 @@ const NAV: Record<Role, NavGroup[]> = {
       items: [
         { href: "/patient", label: ["Dashboard", "Dashboard"], icon: "dashboard" },
         { href: "/patient/appointments", label: ["Appointments", "Appointments"], icon: "calendar_today" },
+        { href: "/patient/pharmacy", label: ["Pharmacy", "Pharmacy"], icon: "local_pharmacy" },
         { href: "/patient/assistant", label: ["Health assistant", "Health assistant"], icon: "smart_toy" },
       ],
     },
@@ -95,6 +96,7 @@ const NAV: Record<Role, NavGroup[]> = {
         { href: "/doctor/patients", label: ["My patients", "Mere mareez"], icon: "group" },
         { href: "/doctor/appointments", label: ["Appointments", "Appointments"], icon: "calendar_today" },
         { href: "/doctor/availability", label: ["Availability", "Dastyabi"], icon: "event_available" },
+        { href: "/doctor/approvals", label: ["Medicine approvals", "Dawa ki manzoori"], icon: "medication" },
         { href: "/doctor/earnings", label: ["Earnings", "Kamai"], icon: "payments" },
         { href: "/doctor/alerts", label: ["Alerts", "Alerts"], icon: "notifications_active" },
       ],
@@ -114,6 +116,7 @@ const NAV: Record<Role, NavGroup[]> = {
       items: [
         { href: "/admin/appointments", label: ["Appointments", "Appointments"], icon: "calendar_today" },
         { href: "/admin/users", label: ["People", "Log"], icon: "group" },
+        { href: "/admin/pharmacy", label: ["Pharmacy", "Pharmacy"], icon: "local_pharmacy" },
         { href: "/admin/revenue", label: ["Revenue", "Aamdani"], icon: "monitoring" },
         { href: "/admin/billing", label: ["Billing", "Billing"], icon: "payments" },
         {
@@ -358,6 +361,15 @@ function Breadcrumb({ role, pathname }: { role: Role; pathname: string }) {
 
   const here = flat.find((item) => item.href === home);
 
+  // Deep pages — an order inside the pharmacy, a chart inside "My patients" —
+  // keep their section and where you are, and fold what is between into an
+  // ellipsis. Four crumbs in the space between the logo and the search field
+  // each truncated to a letter, which said nothing at all.
+  const shown =
+    crumbs.length > 2
+      ? [crumbs[0], { href: "", label: "…" }, crumbs[crumbs.length - 1]]
+      : crumbs;
+
   return (
     <nav aria-label="Breadcrumb" className="hidden min-w-0 lg:block">
       <ol className="flex min-w-0 items-center gap-1.5 text-sm">
@@ -377,12 +389,16 @@ function Breadcrumb({ role, pathname }: { role: Role; pathname: string }) {
             </span>
           </li>
         )}
-        {crumbs.map((crumb, index) => {
-          const last = index === crumbs.length - 1;
+        {shown.map((crumb, index) => {
+          const last = index === shown.length - 1;
           return (
-            <li key={crumb.href} className="flex min-w-0 items-center gap-1.5">
+            <li key={crumb.href || "folded"} className="flex min-w-0 items-center gap-1.5">
               <Icon name="chevron_right" className="shrink-0 text-[16px] text-faint" />
-              {last ? (
+              {!crumb.href ? (
+                <span aria-hidden className="text-faint">
+                  {crumb.label}
+                </span>
+              ) : last ? (
                 <span aria-current="page" className="truncate font-semibold text-strong">
                   {crumb.label}
                 </span>
@@ -723,7 +739,12 @@ function Rail({
               )}
               <ul className="space-y-0.5">
                 {group.items.map((item) => {
-                  const active = pathname === item.href;
+                  // A section's own pages count as being in it — an order's
+                  // page is still the pharmacy. Never for a role's home, which
+                  // every page in the portal sits under.
+                  const active =
+                    pathname === item.href ||
+                    (item.href.split("/").length > 2 && pathname.startsWith(`${item.href}/`));
                   return (
                     <li key={item.href} className="relative">
                       {active && (

@@ -26,7 +26,7 @@ from app.api.responses import Page, ok, pagination
 from app.core.errors import bad_request, conflict, forbidden
 from app.db.base import new_id, utcnow
 from app.db.enums import AuditAction, Role
-from app.db.models import MedicalRecord, Prescription
+from app.db.models import MedicalRecord, PharmacyProduct, Prescription
 from app.modules.audit.service import AuditEntry, record_audit
 from app.modules.auth.rbac import Permission
 from app.modules.records import service
@@ -61,6 +61,12 @@ class PrescriptionCreate(BaseModel):
     instructions: Annotated[str, Field(max_length=2000)] | None = None
     start_date: datetime | None = Field(default=None, alias="startDate")
     end_date: datetime | None = Field(default=None, alias="endDate")
+    #: The pharmacy product this is, when the doctor picked one from the
+    #: catalog. Optional: the medication text is the prescription, and a
+    #: medicine the pharmacy does not stock is still prescribable. What the link
+    #: buys is precision — the patient's "Order these medicines" finds exactly
+    #: this pack rather than guessing from the name.
+    product_id: str | None = Field(default=None, alias="productId", max_length=64)
 
     @field_validator("start_date", "end_date")
     @classmethod
@@ -197,6 +203,9 @@ async def prescribe(
         if record_patient != payload.patient_id:
             raise bad_request("That medical record belongs to a different patient.")
 
+    if payload.product_id and await db.get(PharmacyProduct, payload.product_id) is None:
+        raise bad_request("That medicine is not in the pharmacy catalog.")
+
     prescription = Prescription(
         id=new_id(),
         patient_id=payload.patient_id,
@@ -210,6 +219,7 @@ async def prescribe(
         start_date=payload.start_date or utcnow(),
         end_date=payload.end_date,
         active=True,
+        product_id=payload.product_id,
     )
     db.add(prescription)
     await db.flush()

@@ -34,6 +34,7 @@ import {
   isSendable,
   issuesById,
   nextWindowFor,
+  offersOnline,
   overlaps,
   sameSchedule,
   slotCount,
@@ -65,11 +66,13 @@ import {
 } from "@/components/ui";
 import {
   ApiError,
+  ONLINE_SLOT_MINUTES,
   SLOT_MINUTES,
   appointments,
   doctors,
   type AvailabilityWindow,
   type DoctorProfile,
+  type WindowMode,
 } from "@/lib/api";
 import { useTr } from "@/lib/lang";
 import { useSession } from "@/lib/session";
@@ -114,6 +117,13 @@ function Notice({
   );
 }
 
+/** The three kinds of window, worded for the doctor choosing between them. */
+const MODE_OPTIONS: { value: WindowMode; label: [string, string] }[] = [
+  { value: "CLINIC", label: ["At the clinic", "Clinic mein"] },
+  { value: "ONLINE", label: ["Online video calls", "Online video call"] },
+  { value: "BOTH", label: ["Clinic or online", "Clinic ya online"] },
+];
+
 /** "09:00 · 09:30 · 10:00 … 16:30" — the abstract count made concrete. */
 function previewOf(window: DraftWindow): string {
   const starts = slotStarts(window);
@@ -156,7 +166,7 @@ function WindowRow({
       )}
     >
       <div className="flex flex-wrap items-start gap-3">
-        <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-3">
+        <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Field label={tr("Start", "Shuru")} htmlFor={`${window.id}-start`}>
             <Input
               id={`${window.id}-start`}
@@ -182,11 +192,34 @@ function WindowRow({
               id={`${window.id}-slot`}
               value={String(window.slotMinutes)}
               invalid={Boolean(issue)}
+              // A window that offers calls is fixed at the consultation's
+              // length; offering a choice the server would refuse is a trap.
+              disabled={offersOnline(window)}
               onChange={(event) => onChange({ slotMinutes: Number(event.target.value) })}
             >
               {SLOT_MINUTES.map((minutes) => (
                 <option key={minutes} value={minutes}>
                   {minutes} {tr("minutes", "minute")}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label={tr("Consultations", "Consultation")} htmlFor={`${window.id}-mode`}>
+            <Select
+              id={`${window.id}-mode`}
+              value={window.mode}
+              onChange={(event) => {
+                const mode = event.target.value as WindowMode;
+                // Choosing calls sets the half-hour slot along with it, so the
+                // row never sits in a state the doctor did not ask for.
+                onChange(
+                  mode === "CLINIC" ? { mode } : { mode, slotMinutes: ONLINE_SLOT_MINUTES },
+                );
+              }}
+            >
+              {MODE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {tr(...option.label)}
                 </option>
               ))}
             </Select>
@@ -208,6 +241,12 @@ function WindowRow({
         <p className="text-sm font-semibold tabular-nums text-strong">
           {windowSummary(window, words)}
         </p>
+        {offersOnline(window) && (
+          <Badge tone="info">
+            <Icon name="videocam" className="text-[14px]" />
+            {window.mode === "ONLINE" ? tr("Video only", "Sirf video") : tr("Video or clinic", "Video ya clinic")}
+          </Badge>
+        )}
         {preview && (
           <p className="text-xs tabular-nums text-faint" aria-hidden>
             {preview}
@@ -521,6 +560,13 @@ function ScheduleEditor({
   );
   const [accepting, setAccepting] = useState(profile.acceptingPatients);
   const [publishedAccepting, setPublishedAccepting] = useState(profile.acceptingPatients);
+  /** The online fee as typed — a string, so an empty box means "same as clinic". */
+  const [onlineFee, setOnlineFee] = useState(
+    profile.onlineFee === null ? "" : String(profile.onlineFee),
+  );
+  const [publishedOnlineFee, setPublishedOnlineFee] = useState(
+    profile.onlineFee === null ? "" : String(profile.onlineFee),
+  );
   const [busy, setBusy] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [copyFrom, setCopyFrom] = useState<number | null>(null);
@@ -530,8 +576,14 @@ function ScheduleEditor({
   const clashes = useMemo(() => overlaps(draft), [draft]);
   const sendable = useMemo(() => isSendable(draft), [draft]);
   const weekSlots = totalSlots(draft);
+  const onlineWindows = draft.filter(offersOnline).length;
+  const feeValue = onlineFee.trim() === "" ? null : Number(onlineFee);
+  const feeInvalid = feeValue !== null && (!Number.isFinite(feeValue) || feeValue < 0 || feeValue > 1_000_000);
 
-  const dirty = !sameSchedule(payload, published) || accepting !== publishedAccepting;
+  const dirty =
+    !sameSchedule(payload, published) ||
+    accepting !== publishedAccepting ||
+    onlineFee.trim() !== publishedOnlineFee.trim();
   const publishedEmpty = published.length === 0;
 
   const change = useCallback((id: string, patch: Partial<DraftWindow>) => {
@@ -555,6 +607,7 @@ function ScheduleEditor({
   const discard = () => {
     setDraft(draftFrom(published));
     setAccepting(publishedAccepting);
+    setOnlineFee(publishedOnlineFee);
     setServerError(null);
   };
 
@@ -565,12 +618,16 @@ function ScheduleEditor({
       const updated = await doctors.updateMe({
         availability: payload,
         acceptingPatients: accepting,
+        ...(feeValue === null ? { clearOnlineFee: true } : { onlineFee: feeValue }),
       });
       // The draft is left alone rather than rebuilt from the response: the
       // server stores exactly what it was sent, and re-minting every row id
       // would replay the whole week's entrance animation on a successful save.
       setPublished(sortWindows([...updated.availability]));
       setPublishedAccepting(updated.acceptingPatients);
+      const savedFee = updated.onlineFee === null ? "" : String(updated.onlineFee);
+      setPublishedOnlineFee(savedFee);
+      setOnlineFee(savedFee);
       toast.show({
         title: tr("Schedule saved", "Schedule mehfooz ho gaya"),
         body:
@@ -717,6 +774,55 @@ function ScheduleEditor({
             </div>
           )}
 
+          {/* What a video call costs. Beside the hours because it is part of
+              the same decision — opening online slots — and saved with them. */}
+          <div className="rounded-2xl border border-line bg-sunken/40 p-4">
+            <div className="flex flex-wrap items-start gap-4">
+              <span
+                aria-hidden
+                className="bg-gradient-soft grid h-11 w-11 shrink-0 place-items-center rounded-xl text-primary"
+              >
+                <Icon name="videocam" className="text-[22px]" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-strong">
+                  {tr("Online consultations", "Online consultation")}
+                </p>
+                <p className="mt-0.5 text-sm text-muted">
+                  {onlineWindows > 0
+                    ? tr(
+                        `${onlineWindows} ${onlineWindows === 1 ? "window offers" : "windows offer"} ${ONLINE_SLOT_MINUTES}-minute video calls. Patients pay before the call opens.`,
+                        `${onlineWindows} ${onlineWindows === 1 ? "window" : "windows"} mein ${ONLINE_SLOT_MINUTES} minute ki video call hai. Mareez call khulne se pehle payment karte hain.`,
+                      )
+                    : tr(
+                        "Set a window to “Online video calls” or “Clinic or online” to see patients over video.",
+                        "Video par mareez dekhne ke liye kisi window ko “Online video call” ya “Clinic ya online” karein.",
+                      )}
+                </p>
+              </div>
+              <div className="w-full sm:w-56">
+                <Field
+                  label={tr("Online fee (PKR)", "Online fees (PKR)")}
+                  htmlFor="online-fee"
+                  hint={tr(
+                    `Leave empty to charge your clinic fee (PKR ${profile.consultationFee.toLocaleString()}).`,
+                    `Khali chhorein to clinic wali fees (PKR ${profile.consultationFee.toLocaleString()}) lagegi.`,
+                  )}
+                  error={feeInvalid ? tr("Enter an amount in rupees.", "Rupay mein raqam likhein.") : undefined}
+                >
+                  <Input
+                    id="online-fee"
+                    inputMode="numeric"
+                    value={onlineFee}
+                    invalid={feeInvalid}
+                    placeholder={String(profile.consultationFee)}
+                    onChange={(event) => setOnlineFee(event.target.value.replace(/[^\d.]/g, ""))}
+                  />
+                </Field>
+              </div>
+            </div>
+          </div>
+
           <div className="rounded-2xl border border-line bg-sunken/40 p-4">
             <Switch
               checked={accepting}
@@ -767,7 +873,7 @@ function ScheduleEditor({
             <Button variant="ghost" disabled={!dirty || busy} onClick={discard}>
               {tr("Discard changes", "Tabdeeliyan hatayein")}
             </Button>
-            <Button loading={busy} disabled={!dirty || !sendable} onClick={() => void save()}>
+            <Button loading={busy} disabled={!dirty || !sendable || feeInvalid} onClick={() => void save()}>
               <Icon name="save" className="text-[20px]" />
               {tr("Save schedule", "Schedule mehfooz karein")}
             </Button>

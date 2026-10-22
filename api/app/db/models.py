@@ -320,6 +320,10 @@ class Doctor(Base):
     consultation_fee: Mapped[Decimal] = mapped_column(
         "consultationFee", Numeric(10, 2), default=Decimal("0"), nullable=False
     )
+    #: What an online consultation costs, when it differs from a clinic visit.
+    #: Empty means the clinic fee applies — most doctors charge the same, and a
+    #: required second fee would be a field nobody wanted to fill in.
+    online_fee: Mapped[Decimal | None] = mapped_column("onlineFee", Numeric(10, 2))
 
     #: Where this doctor actually sits — the half of the choice a patient makes
     #: that qualifications cannot answer. All nullable: a doctor approved before
@@ -332,7 +336,9 @@ class Doctor(Base):
     #: binary rounding is a bug nobody can see and nobody can explain.
     latitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
     longitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
-    #: [{ dayOfWeek, startTime, endTime, slotMinutes }]
+    #: [{ dayOfWeek, startTime, endTime, slotMinutes, mode }] — ``mode`` is
+    #: CLINIC, ONLINE or BOTH, and absent on windows written before online
+    #: consultations existed, which read as CLINIC.
     availability: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list, nullable=False)
     accepting_patients: Mapped[bool] = mapped_column(
         "acceptingPatients", Boolean, default=True, nullable=False
@@ -552,6 +558,15 @@ class Appointment(Base):
     )
     reason: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
+    mode: Mapped[enums.AppointmentMode] = mapped_column(
+        pg_enum(enums.AppointmentMode, "AppointmentMode"),
+        default=enums.AppointmentMode.CLINIC,
+        nullable=False,
+    )
+    #: The video session's name, for an online consultation. Random rather than
+    #: derived from the appointment id: a name anybody could compute is a room
+    #: anybody could try to walk into.
+    video_room: Mapped[str | None] = mapped_column("videoRoom", Text)
 
     #: "<doctorId>|<ISO start>" while the appointment holds the slot, NULL once
     #: cancelled. The unique index turns double-booking into a database error
@@ -884,6 +899,14 @@ class Prescription(Base):
     start_date: Mapped[datetime | None] = mapped_column("startDate", DateTime)
     end_date: Mapped[datetime | None] = mapped_column("endDate", DateTime)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    #: The catalog product this is, when the doctor picked one. Optional: a
+    #: prescription is a clinical statement first, and a medicine the pharmacy
+    #: does not stock must still be prescribable.
+    product_id: Mapped[str | None] = mapped_column(
+        "productId",
+        Text,
+        ForeignKey("pharmacy_products.id", ondelete="SET NULL", onupdate="CASCADE"),
+    )
     created_at: Mapped[datetime] = _created()
     updated_at: Mapped[datetime] = _updated()
 
@@ -1136,6 +1159,11 @@ class Invoice(Base):
     status: Mapped[enums.InvoiceStatus] = mapped_column(
         pg_enum(enums.InvoiceStatus, "InvoiceStatus"), default=enums.InvoiceStatus.DRAFT, nullable=False
     )
+    kind: Mapped[enums.InvoiceKind] = mapped_column(
+        pg_enum(enums.InvoiceKind, "InvoiceKind"),
+        default=enums.InvoiceKind.CONSULTATION,
+        nullable=False,
+    )
     line_items: Mapped[list[dict[str, Any]]] = mapped_column("lineItems", JSONB, default=list, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text)
     issued_at: Mapped[datetime | None] = mapped_column("issuedAt", DateTime)
@@ -1147,6 +1175,218 @@ class Invoice(Base):
     amends_invoice_id: Mapped[str | None] = mapped_column("amendsInvoiceId", Text)
     created_at: Mapped[datetime] = _created()
     updated_at: Mapped[datetime] = _updated()
+
+
+# ===========================================================================
+# Pharmacy
+# ===========================================================================
+
+
+class PharmacyProduct(Base):
+    """One medicine the pharmacy sells, as a pack.
+
+    Priced per pack because that is what changes hands: a strip of ten, a
+    bottle of 120 ml. A per-tablet price invites a cart that asks for seven
+    tablets of something sold in tens.
+    """
+
+    __tablename__ = "pharmacy_products"
+
+    id: Mapped[str] = _id()
+    #: The brand on the pack, e.g. "Panadol". What a patient searches for.
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    #: The active ingredient, e.g. "Paracetamol". What a doctor prescribes.
+    generic_name: Mapped[str] = mapped_column("genericName", Text, nullable=False)
+    strength: Mapped[str | None] = mapped_column(Text)
+    form: Mapped[enums.ProductForm] = mapped_column(
+        pg_enum(enums.ProductForm, "ProductForm"), nullable=False
+    )
+    pack_size: Mapped[str] = mapped_column("packSize", Text, nullable=False)
+    category: Mapped[str] = mapped_column(Text, nullable=False)
+    manufacturer: Mapped[str | None] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text)
+    price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    #: What the pharmacy paid. Optional, and only ever shown to administrators —
+    #: it is what turns "sales" into "margin" on the dashboard.
+    cost_price: Mapped[Decimal | None] = mapped_column("costPrice", Numeric(10, 2))
+    stock: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    low_stock_threshold: Mapped[int] = mapped_column(
+        "lowStockThreshold", Integer, default=10, nullable=False
+    )
+    rx_required: Mapped[bool] = mapped_column("rxRequired", Boolean, default=False, nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    #: False for prices that came from the starter catalog, which are estimates.
+    #: Set true the first time an administrator saves a price, so the catalog
+    #: screen can say which numbers nobody has checked yet.
+    price_reviewed: Mapped[bool] = mapped_column(
+        "priceReviewed", Boolean, default=True, nullable=False
+    )
+    created_at: Mapped[datetime] = _created()
+    updated_at: Mapped[datetime] = _updated()
+
+
+class PharmacySettings(Base):
+    """How the pharmacy delivers and who it says it is. One row, ever."""
+
+    __tablename__ = "pharmacy_settings"
+
+    SINGLETON: ClassVar[str] = "singleton"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True, default=SINGLETON)
+    delivery_fee: Mapped[Decimal] = mapped_column(
+        "deliveryFee", Numeric(10, 2), default=Decimal("150"), nullable=False
+    )
+    #: Orders at or above this subtotal deliver free. Empty means never free.
+    free_delivery_above: Mapped[Decimal | None] = mapped_column(
+        "freeDeliveryAbove", Numeric(10, 2)
+    )
+    cod_enabled: Mapped[bool] = mapped_column("codEnabled", Boolean, default=True, nullable=False)
+    #: The largest order a rider is asked to collect cash for. Empty means no limit.
+    cod_max_amount: Mapped[Decimal | None] = mapped_column("codMaxAmount", Numeric(10, 2))
+    #: Cities delivered to. Empty means everywhere.
+    cities: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
+    pharmacy_name: Mapped[str] = mapped_column(
+        "pharmacyName", Text, default="MediNova Pharmacy", nullable=False
+    )
+    #: The drug sale licence printed on every pharmacy invoice.
+    license_number: Mapped[str | None] = mapped_column("licenseNumber", Text)
+    address: Mapped[str | None] = mapped_column(Text)
+    phone: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(
+        "updatedAt", DateTime, default=utcnow, nullable=False
+    )
+    updated_by_id: Mapped[str | None] = mapped_column("updatedById", Text)
+
+
+class PharmacyOrder(Base):
+    """A medicine order, from the cart to the door."""
+
+    __tablename__ = "pharmacy_orders"
+
+    id: Mapped[str] = _id()
+    order_number: Mapped[str] = mapped_column("orderNumber", Text, nullable=False)
+    #: SET NULL, as on invoices: a delivered, paid order is the pharmacy's sales
+    #: record and must outlive the patient's account. Removal scrubs the
+    #: delivery details from it instead.
+    patient_id: Mapped[str | None] = mapped_column(
+        "patientId", Text, ForeignKey("patients.id", ondelete="SET NULL", onupdate="CASCADE")
+    )
+    status: Mapped[enums.PharmacyOrderStatus] = mapped_column(
+        pg_enum(enums.PharmacyOrderStatus, "PharmacyOrderStatus"), nullable=False
+    )
+    payment_method: Mapped[enums.PharmacyPaymentMethod] = mapped_column(
+        "paymentMethod",
+        pg_enum(enums.PharmacyPaymentMethod, "PharmacyPaymentMethod"),
+        nullable=False,
+    )
+
+    recipient_name: Mapped[str] = mapped_column("recipientName", Text, nullable=False)
+    phone: Mapped[str] = mapped_column(Text, nullable=False)
+    address_line: Mapped[str] = mapped_column("addressLine", Text, nullable=False)
+    city: Mapped[str] = mapped_column(Text, nullable=False)
+    delivery_notes: Mapped[str | None] = mapped_column("deliveryNotes", Text)
+
+    subtotal: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    delivery_fee: Mapped[Decimal] = mapped_column("deliveryFee", Numeric(10, 2), nullable=False)
+    total: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(Text, default="PKR", nullable=False)
+    #: Raised when the order becomes payable, not when it is placed: an order
+    #: waiting on a prescription has nothing to pay yet.
+    invoice_id: Mapped[str | None] = mapped_column(
+        "invoiceId", Text, ForeignKey("invoices.id", ondelete="SET NULL", onupdate="CASCADE")
+    )
+
+    rx_status: Mapped[enums.RxStatus] = mapped_column(
+        "rxStatus",
+        pg_enum(enums.RxStatus, "RxStatus"),
+        default=enums.RxStatus.NOT_REQUIRED,
+        nullable=False,
+    )
+    rx_route: Mapped[enums.RxRoute | None] = mapped_column(
+        "rxRoute", pg_enum(enums.RxRoute, "RxRoute")
+    )
+    #: Where the uploaded prescription is, in the private bucket.
+    rx_upload_path: Mapped[str | None] = mapped_column("rxUploadPath", Text)
+    #: The doctor asked to approve, for the DOCTOR route.
+    rx_doctor_id: Mapped[str | None] = mapped_column(
+        "rxDoctorId", Text, ForeignKey("doctors.id", ondelete="SET NULL", onupdate="CASCADE")
+    )
+    rx_reviewed_by_id: Mapped[str | None] = mapped_column("rxReviewedById", Text)
+    rx_reviewed_at: Mapped[datetime | None] = mapped_column("rxReviewedAt", DateTime)
+    rx_note: Mapped[str | None] = mapped_column("rxNote", Text)
+
+    courier: Mapped[str | None] = mapped_column(Text)
+    tracking_number: Mapped[str | None] = mapped_column("trackingNumber", Text)
+
+    confirmed_at: Mapped[datetime | None] = mapped_column("confirmedAt", DateTime)
+    packed_at: Mapped[datetime | None] = mapped_column("packedAt", DateTime)
+    dispatched_at: Mapped[datetime | None] = mapped_column("dispatchedAt", DateTime)
+    delivered_at: Mapped[datetime | None] = mapped_column("deliveredAt", DateTime)
+    cancelled_at: Mapped[datetime | None] = mapped_column("cancelledAt", DateTime)
+    cancelled_by: Mapped[str | None] = mapped_column("cancelledBy", Text)
+    cancel_reason: Mapped[str | None] = mapped_column("cancelReason", Text)
+    #: Cancelled after the money arrived. Set so the order stays on the
+    #: administrator's list until the refund is made, rather than being a
+    #: cancelled order that quietly kept somebody's money.
+    refund_due: Mapped[bool] = mapped_column("refundDue", Boolean, default=False, nullable=False)
+
+    created_at: Mapped[datetime] = _created()
+    updated_at: Mapped[datetime] = _updated()
+
+    #: Loaded with the order, always. An order is never read without its lines,
+    #: there are a handful of them, and a lazy load in async code is an error
+    #: waiting for the one path that forgot to ask.
+    items: Mapped[list[PharmacyOrderItem]] = relationship(
+        back_populates="order",
+        cascade="all, delete-orphan",
+        order_by="PharmacyOrderItem.created_at",
+        lazy="selectin",
+    )
+
+
+class PharmacyOrderItem(Base):
+    """One line of an order, priced as it was when the patient ordered.
+
+    Name, strength and price are copied rather than read through the product:
+    an order says what was sold and for how much, and a later price change or a
+    renamed product must not rewrite it.
+    """
+
+    __tablename__ = "pharmacy_order_items"
+
+    id: Mapped[str] = _id()
+    order_id: Mapped[str] = mapped_column(
+        "orderId",
+        Text,
+        ForeignKey("pharmacy_orders.id", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False,
+    )
+    product_id: Mapped[str | None] = mapped_column(
+        "productId",
+        Text,
+        ForeignKey("pharmacy_products.id", ondelete="SET NULL", onupdate="CASCADE"),
+    )
+    product_name: Mapped[str] = mapped_column("productName", Text, nullable=False)
+    generic_name: Mapped[str] = mapped_column("genericName", Text, nullable=False)
+    strength: Mapped[str | None] = mapped_column(Text)
+    form: Mapped[str] = mapped_column(Text, nullable=False)
+    pack_size: Mapped[str] = mapped_column("packSize", Text, nullable=False)
+    unit_price: Mapped[Decimal] = mapped_column("unitPrice", Numeric(10, 2), nullable=False)
+    #: The cost price when it was sold. Administrators only — it is what turns
+    #: sales into margin, and it must not move when a supplier's price does.
+    unit_cost: Mapped[Decimal | None] = mapped_column("unitCost", Numeric(10, 2))
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    line_total: Mapped[Decimal] = mapped_column("lineTotal", Numeric(10, 2), nullable=False)
+    rx_required: Mapped[bool] = mapped_column("rxRequired", Boolean, default=False, nullable=False)
+    #: The patient's prescription that covers this line, when one does.
+    prescription_id: Mapped[str | None] = mapped_column(
+        "prescriptionId",
+        Text,
+        ForeignKey("prescriptions.id", ondelete="SET NULL", onupdate="CASCADE"),
+    )
+    created_at: Mapped[datetime] = _created()
+
+    order: Mapped[PharmacyOrder] = relationship(back_populates="items")
 
 
 # ===========================================================================

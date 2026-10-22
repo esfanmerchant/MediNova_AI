@@ -6,7 +6,9 @@ A secure hospital platform with three primary roles (Admin, Doctor, Patient), a
 patient self-service portal, an AI health assistant with voice symptom input,
 OCR for uploaded prescriptions and reports, real-time vitals monitoring with
 doctor alerts, automated billing, break-glass emergency access, and an
-append-only audit trail.
+append-only audit trail — plus **online video consultations** in the browser
+and an **in-app pharmacy** that delivers prescribed medicine to the door, with
+cash on delivery or online payment.
 
 > **Clinical safety.** The AI assistant provides preliminary guidance only. It
 > never issues a diagnosis, and nothing it produces enters the medical record
@@ -22,9 +24,10 @@ append-only audit trail.
 | Client | Next.js App Router · React · TypeScript · Tailwind, in `client/` |
 | Data | Supabase Postgres (asyncpg over the transaction pooler) |
 | Auth | Custom: httpOnly cookie JWT + server-side session rows, scrypt hashing |
-| Stor age | Supabase Storage, private buckets with short-lived signed URLs |
+| Storage | Supabase Storage, private buckets with short-lived signed URLs |
 | OCR | Gemini vision (with consent) · PaddleOCR PP-OCRv5 locally otherwise |
-| Aurity | Clinical free text sealed at rest · CSP on both halves · hash-chained audit log |
+| Video | Zoom Video SDK for Web, embedded; call tokens signed by the API per room |
+| Security | Clinical free text sealed at rest · CSP on both halves · hash-chained audit log |
 
 Supabase supplies the database and file storage. It does **not** supply
 authentication: Supabase Auth has no idle-timeout concept, and R8 requires the
@@ -288,6 +291,32 @@ overlapping leave and nothing was left to say where the collision came from.
 Tests that create dated rows now pick a window unique to the run and sweep it
 afterwards.
 
+## Online consultations and the pharmacy
+
+**Online consultations.** A doctor marks weekly hours as *clinic*, *online* or
+*both*; online slots are 30 minutes. The patient books a video call like any
+appointment, the invoice is raised when the doctor confirms, and the room —
+embedded in the site, nothing to install — opens ten minutes before the start
+once the bill is paid. Only the patient and the treating doctor can get a call
+token, each token opens one room, nothing is recorded, and every join is in the
+audit trail. The doctor is credited when the consultation is completed, not
+when it is paid. Set `ZOOM_VIDEO_SDK_KEY` and `ZOOM_VIDEO_SDK_SECRET` (Zoom
+Build platform → *Build App → SDK credentials*); without them a production
+deployment simply does not offer online slots.
+
+**The pharmacy.** A catalog of common Pakistani medicines (prices are
+estimates until an administrator confirms them against DRAP's maximum retail
+price), a cart priced by the server, checkout with cash on delivery or a wallet
+transfer, and tracking from placement to the door. Prescription-only medicine
+is cleared before any money is taken: by the patient's own MediNova
+prescription, by a prescription photo the pharmacist checks, or by approval
+from a MediNova doctor who treats them. Administrators run stock, prices,
+orders and delivery from *Pharmacy* in their portal; medicine sales are
+reported apart from consultation fees.
+
+The full design, rules and decisions are in
+**[docs/telemedicine-and-pharmacy.md](docs/telemedicine-and-pharmacy.md)**.
+
 ## Deploying
 
 See **[DEPLOYMENT.md](DEPLOYMENT.md)**. The frontend belongs on Vercel and the
@@ -361,19 +390,20 @@ api/
     │   ├── patients/          # profile, roster, consent
     │   ├── doctors/           # directory and caseload
     │   ├── departments/
-    │   ├── appointments/      # availability grid, booking, lifecycle
+    │   ├── appointments/      # availability grid, booking, lifecycle, video rooms
     │   ├── records/           # clinical history + the clinical access gate
     │   ├── prescriptions/     # medication, discontinued never deleted
     │   ├── documents/         # upload, metadata, signed retrieval
     │   ├── assistant/         # health assistant, symptom review
     │   ├── vitals/            # readings, threshold engine, alerts, SSE
-    │   ├── billing/           # invoices, credit notes
+    │   ├── billing/           # invoices, credit notes, revenue, doctor earnings
+    │   ├── pharmacy/          # catalog, orders, prescription checks, delivery
     │   ├── notifications/     # in-app + email, templates, dispatcher loop
     │   └── dashboard/         # one summary per role
     ├── services/              # storage, upload validation, extraction, AI safety
     └── main.py
 client/src/
-├── app/                       # login, patient, doctor, admin
+├── app/                       # login, patient, doctor, admin, consult (video room)
 ├── components/                # AppShell, UI primitives, assistant
 └── lib/                       # api client, session + inactivity timer, speech
 ocr/                           # PaddleOCR feasibility harness

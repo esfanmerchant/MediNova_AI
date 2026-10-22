@@ -10,7 +10,7 @@
  */
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
@@ -22,6 +22,7 @@ import {
   Section,
   type Section as SectionSpec,
 } from "@/components/layout/PageSectionNav";
+import { PrescribeCard } from "@/components/PrescribeCard";
 import { PrescriptionRow, RecordTimeline } from "@/components/records";
 import { RecordVitals, ThresholdsPanel, VitalsTable } from "@/components/vitals";
 import {
@@ -32,7 +33,6 @@ import {
   EmptyState,
   ErrorState,
   Field,
-  Input,
   SkeletonRows,
   Textarea,
   cx,
@@ -69,24 +69,6 @@ function Expand({ open, children }: { open: boolean; children: ReactNode }) {
         </motion.div>
       )}
     </AnimatePresence>
-  );
-}
-
-/** A checkmark that draws itself, for the moment something is saved. */
-function DrawnCheck({ className }: { className?: string }) {
-  return (
-    <svg
-      aria-hidden
-      viewBox="0 0 24 24"
-      className={cx("pop-scale h-5 w-5", className)}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2.5}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M5 12.5l4.5 4.5L19 7" className="draw-stroke" />
-    </svg>
   );
 }
 
@@ -323,7 +305,11 @@ export default function PatientChart() {
             </Section>
 
             <Section id="prescribe">
-            <NewPrescriptionForm patientId={patientId} onSaved={reloadAll} />
+            <PrescribeCard
+              patientId={patientId}
+              onSaved={reloadAll}
+              description="Check the current medication above first."
+            />
             </Section>
 
             {/* Observations sit with the chart because that is where a doctor
@@ -683,161 +669,6 @@ function NewRecordForm({
               {busy ? "Saving…" : "File this record"}
             </Button>
             <Button variant="ghost" disabled={busy} onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-          </div>
-        </div>
-      </Expand>
-    </Card>
-  );
-}
-
-function NewPrescriptionForm({
-  patientId,
-  onSaved,
-}: {
-  patientId: string;
-  onSaved: () => void;
-}) {
-  const tr = useTr();
-  const [open, setOpen] = useState(false);
-  const [medication, setMedication] = useState("");
-  const [dosage, setDosage] = useState("");
-  const [frequency, setFrequency] = useState("");
-  const [duration, setDuration] = useState("");
-  const [instructions, setInstructions] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // A brief drawn checkmark on the button before the form folds away.
-  const [saved, setSaved] = useState(false);
-  const settle = useRef<number | undefined>(undefined);
-  useEffect(() => () => window.clearTimeout(settle.current), []);
-
-  const complete = medication && dosage && frequency && duration;
-
-  const submit = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      await prescriptionsApi.create({
-        patientId,
-        medication,
-        dosage,
-        frequency,
-        duration,
-        instructions: instructions || undefined,
-      });
-      setMedication("");
-      setDosage("");
-      setFrequency("");
-      setDuration("");
-      setInstructions("");
-      setSaved(true);
-      onSaved();
-      settle.current = window.setTimeout(() => {
-        setSaved(false);
-        setOpen(false);
-      }, 1100);
-    } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "Could not save the prescription.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Card
-      title="Prescribe"
-      description="Check the current medication above first."
-      icon="prescriptions"
-      action={
-        !open && (
-          <Button onClick={() => setOpen(true)}>
-            <Icon name="add" className="text-[20px]" />
-            New prescription
-          </Button>
-        )
-      }
-    >
-      {!open && (
-        <p className="text-sm text-muted">
-          Prescriptions are never deleted — stopping one keeps it in the patient&rsquo;s history.
-        </p>
-      )}
-      <Expand open={open}>
-        <div className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Medication" htmlFor="medication">
-              <Input
-                id="medication"
-                value={medication}
-                maxLength={200}
-                onChange={(event) => setMedication(event.target.value)}
-              />
-            </Field>
-            <Field label="Dosage" htmlFor="dosage">
-              <Input
-                id="dosage"
-                value={dosage}
-                maxLength={100}
-                onChange={(event) => setDosage(event.target.value)}
-                placeholder="e.g. 10 mg"
-              />
-            </Field>
-            <Field label="Frequency" htmlFor="frequency">
-              <Input
-                id="frequency"
-                value={frequency}
-                maxLength={100}
-                onChange={(event) => setFrequency(event.target.value)}
-                placeholder="e.g. Twice daily"
-              />
-            </Field>
-            <Field label="Duration" htmlFor="duration">
-              <Input
-                id="duration"
-                value={duration}
-                maxLength={100}
-                onChange={(event) => setDuration(event.target.value)}
-                placeholder="e.g. 14 days"
-              />
-            </Field>
-          </div>
-          <Field label="Instructions for the patient" htmlFor="instructions">
-            <Textarea
-              id="instructions"
-              rows={2}
-              value={instructions}
-              onChange={(event) => setInstructions(event.target.value)}
-              placeholder="e.g. Take after food"
-            />
-          </Field>
-
-          {error && (
-            <p role="alert" className="pop-in text-sm font-medium text-critical">
-              {error}
-            </p>
-          )}
-
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              disabled={!complete || busy || saved}
-              loading={busy}
-              className={cx(saved && "disabled:opacity-100")}
-              onClick={() => void submit()}
-            >
-              {saved ? (
-                <>
-                  <DrawnCheck />
-                  {tr("Prescribed", "Likh diya gaya")}
-                </>
-              ) : busy ? (
-                "Saving…"
-              ) : (
-                "Prescribe"
-              )}
-            </Button>
-            <Button variant="ghost" disabled={busy || saved} onClick={() => setOpen(false)}>
               Cancel
             </Button>
           </div>

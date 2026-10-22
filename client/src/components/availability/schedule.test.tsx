@@ -49,6 +49,7 @@ function win(overrides: Partial<DraftWindow> = {}): DraftWindow {
     startTime: "09:00",
     endTime: "17:00",
     slotMinutes: 30,
+    mode: "CLINIC",
     ...overrides,
   };
 }
@@ -378,6 +379,22 @@ describe("the standard week the empty state offers", () => {
   });
 });
 
+describe("windows that offer online consultations", () => {
+  it("must use the consultation length", () => {
+    expect(windowIssue(win({ mode: "ONLINE", slotMinutes: 15 }))?.[0]).toMatch(/30 minutes/);
+    expect(windowIssue(win({ mode: "BOTH", slotMinutes: 60 }))?.[0]).toMatch(/30 minutes/);
+  });
+
+  it("are fine at thirty minutes", () => {
+    expect(windowIssue(win({ mode: "ONLINE", slotMinutes: 30 }))).toBeNull();
+    expect(windowIssue(win({ mode: "BOTH", slotMinutes: 30 }))).toBeNull();
+  });
+
+  it("leave clinic windows free to use any length", () => {
+    expect(windowIssue(win({ mode: "CLINIC", slotMinutes: 15 }))).toBeNull();
+  });
+});
+
 describe("crossing the wire", () => {
   it("opens stored availability into rows with ids of their own", () => {
     const draft = draftFrom([
@@ -389,12 +406,17 @@ describe("crossing the wire", () => {
     expect(new Set(draft.map((w) => w.id)).size).toBe(2);
   });
 
-  it("sends back exactly the four fields the endpoint accepts", () => {
+  it("sends back exactly the five fields the endpoint accepts", () => {
     const payload = toPayload([win({ id: "a" })]);
     expect(payload).toEqual([
-      { dayOfWeek: 1, startTime: "09:00", endTime: "17:00", slotMinutes: 30 },
+      { dayOfWeek: 1, startTime: "09:00", endTime: "17:00", slotMinutes: 30, mode: "CLINIC" },
     ]);
     expect(Object.keys(payload[0])).not.toContain("id");
+  });
+
+  it("reads a window saved before online consultations as clinic hours", () => {
+    const [draft] = draftFrom([{ dayOfWeek: 1, startTime: "09:00", endTime: "12:00", slotMinutes: 15 }]);
+    expect(draft.mode).toBe("CLINIC");
   });
 
   it("survives a round trip unchanged", () => {
@@ -432,6 +454,17 @@ describe("whether there is anything to save", () => {
       win({ id: "2", startTime: "14:00", endTime: "17:00" }),
     ]);
     expect(sameSchedule(base, grown)).toBe(false);
+  });
+
+  it("notices a window changed from clinic to online", () => {
+    const base = toPayload([win({ id: "1" })]);
+    expect(sameSchedule(base, toPayload([win({ id: "1", mode: "BOTH" })]))).toBe(false);
+  });
+
+  it("does not call a missing mode a change from clinic", () => {
+    // What the server stored before modes existed, against the same hours now.
+    const legacy = [{ dayOfWeek: 1, startTime: "09:00", endTime: "17:00", slotMinutes: 30 }];
+    expect(sameSchedule(legacy, toPayload([win({ id: "1" })]))).toBe(true);
   });
 
   it("calls an empty schedule the same as another empty schedule", () => {

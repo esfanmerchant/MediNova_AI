@@ -49,6 +49,9 @@ function doctorProfile(
     latitude: null,
     longitude: null,
     consultationFee: 2500,
+    offersOnline: false,
+    onlineFee: null,
+    effectiveOnlineFee: 2500,
     acceptingPatients,
     availability,
     department: null,
@@ -67,6 +70,7 @@ function mount(profile: api.DoctorProfile, timezone: string | null = "Asia/Karac
     vi.spyOn(api.appointments, "availability").mockResolvedValue({
       doctorId: "d1",
       timezone,
+      onlineAvailable: true,
       days: [],
     });
   }
@@ -108,13 +112,42 @@ describe("a doctor who has never set their hours", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /Save schedule/ }));
     await waitFor(() => expect(updateMe).toHaveBeenCalledOnce());
-    expect(updateMe.mock.calls[0][0].availability).toEqual([
-      { dayOfWeek: 1, startTime: "09:00", endTime: "17:00", slotMinutes: 30 },
-      { dayOfWeek: 2, startTime: "09:00", endTime: "17:00", slotMinutes: 30 },
-      { dayOfWeek: 3, startTime: "09:00", endTime: "17:00", slotMinutes: 30 },
-      { dayOfWeek: 4, startTime: "09:00", endTime: "17:00", slotMinutes: 30 },
-      { dayOfWeek: 5, startTime: "09:00", endTime: "17:00", slotMinutes: 30 },
-    ]);
+    expect(updateMe.mock.calls[0][0].availability).toEqual(
+      [1, 2, 3, 4, 5].map((dayOfWeek) => ({
+        dayOfWeek,
+        startTime: "09:00",
+        endTime: "17:00",
+        slotMinutes: 30,
+        mode: "CLINIC",
+      })),
+    );
+    // An untouched fee box means "same as the clinic fee".
+    expect(updateMe.mock.calls[0][0].clearOnlineFee).toBe(true);
+  });
+
+  it("turns a window into online consultations at the consultation length", async () => {
+    const updateMe = mount(
+      doctorProfile([{ dayOfWeek: 1, startTime: "09:00", endTime: "12:00", slotMinutes: 15 }]),
+    );
+
+    const mode = await screen.findByLabelText("Consultations");
+    await userEvent.selectOptions(mode, "BOTH");
+
+    // The slot length follows, and is locked while calls are offered.
+    const length = screen.getByLabelText("Slot length") as HTMLSelectElement;
+    expect(length.value).toBe("30");
+    expect(length).toBeDisabled();
+    expect(screen.getByText("Video or clinic")).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText("Online fee (PKR)"), "1500");
+    await userEvent.click(screen.getByRole("button", { name: /Save schedule/ }));
+    await waitFor(() => expect(updateMe).toHaveBeenCalledOnce());
+    expect(updateMe.mock.calls[0][0]).toMatchObject({
+      availability: [
+        { dayOfWeek: 1, startTime: "09:00", endTime: "12:00", slotMinutes: 30, mode: "BOTH" },
+      ],
+      onlineFee: 1500,
+    });
   });
 
   it("offers every day of the week, Monday first, even the closed ones", async () => {

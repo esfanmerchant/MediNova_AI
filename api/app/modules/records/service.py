@@ -190,6 +190,7 @@ def serialize_prescription(
         "startDate": iso_or_none(prescription.start_date),
         "endDate": iso_or_none(prescription.end_date),
         "active": prescription.active,
+        "productId": prescription.product_id,
         "createdAt": iso_utc(prescription.created_at),
         "updatedAt": iso_utc(prescription.updated_at),
     }

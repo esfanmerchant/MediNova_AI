@@ -96,6 +96,17 @@ ENCOUNTER_STATUSES = (
 )
 
 
+class AppointmentMode(StrEnum):
+    """Where a consultation happens.
+
+    Every appointment that existed before online consultations is a clinic
+    visit, which is why ``CLINIC`` is the database default rather than a guess.
+    """
+
+    CLINIC = "CLINIC"
+    ONLINE = "ONLINE"
+
+
 class InvoiceStatus(StrEnum):
     DRAFT = "DRAFT"
     ISSUED = "ISSUED"
@@ -103,6 +114,18 @@ class InvoiceStatus(StrEnum):
     VOID = "VOID"
     REFUNDED = "REFUNDED"
     OVERDUE = "OVERDUE"
+
+
+class InvoiceKind(StrEnum):
+    """What a bill is for, so the two businesses are never summed together.
+
+    Revenue reporting treats an invoice's ``amount`` as the doctor's fee. A
+    pharmacy invoice has an amount too — the medicines — and without this
+    column a patient's paracetamol would be reported as a doctor's earnings.
+    """
+
+    CONSULTATION = "CONSULTATION"
+    PHARMACY = "PHARMACY"
 
 
 class FeeMode(StrEnum):
@@ -131,6 +154,9 @@ class PaymentMethod(StrEnum):
     NAYAPAY = "NAYAPAY"
     EASYPAISA = "EASYPAISA"
     COUNTER = "COUNTER"
+    #: Cash handed to the rider at the door, recorded by the pharmacy once it is
+    #: back. The same "a person confirms it" rule as the desk.
+    CASH_ON_DELIVERY = "CASH_ON_DELIVERY"
 
 
 class PaymentStatus(StrEnum):
@@ -288,6 +314,9 @@ class NotificationType(StrEnum):
     #: and filing it under ACCOUNT_SECURITY would make a good event look like a
     #: suspicious one.
     ACCOUNT_REGISTERED = "ACCOUNT_REGISTERED"
+    #: Anything about a medicine order: placed, approved, dispatched, delivered,
+    #: and a doctor being asked to approve one.
+    PHARMACY_ORDER = "PHARMACY_ORDER"
 
 
 class NotificationChannel(StrEnum):
@@ -372,6 +401,15 @@ class AuditAction(StrEnum):
     #: onto a device the hospital does not control. The trail should not describe
     #: those two acts with the same word.
     PATIENT_DATA_EXPORTED = "PATIENT_DATA_EXPORTED"
+    #: A call token handed to the patient or the doctor for an online
+    #: consultation. The nearest thing to "who was in the room".
+    VIDEO_CONSULT_JOINED = "VIDEO_CONSULT_JOINED"
+    PHARMACY_ORDER_PLACED = "PHARMACY_ORDER_PLACED"
+    PHARMACY_ORDER_UPDATED = "PHARMACY_ORDER_UPDATED"
+    #: A prescription accepted or refused for a medicine order — by the pharmacy
+    #: for an upload, or by a doctor for an approval request.
+    PHARMACY_RX_REVIEWED = "PHARMACY_RX_REVIEWED"
+    PHARMACY_CATALOG_CHANGED = "PHARMACY_CATALOG_CHANGED"
 
 
 class AuditSeverity(StrEnum):
@@ -409,3 +447,71 @@ PG_ENUM_TYPES: dict[str, type[StrEnum]] = {
     "AuditAction": AuditAction,
     "AuditSeverity": AuditSeverity,
 }
+
+
+# ---------------------------------------------------------------------------
+# Pharmacy
+# ---------------------------------------------------------------------------
+
+
+class ProductForm(StrEnum):
+    """What the medicine physically is — the icon a patient recognises it by."""
+
+    TABLET = "TABLET"
+    CAPSULE = "CAPSULE"
+    SYRUP = "SYRUP"
+    SUSPENSION = "SUSPENSION"
+    DROPS = "DROPS"
+    INJECTION = "INJECTION"
+    CREAM = "CREAM"
+    OINTMENT = "OINTMENT"
+    GEL = "GEL"
+    LOTION = "LOTION"
+    INHALER = "INHALER"
+    SACHET = "SACHET"
+    SPRAY = "SPRAY"
+    SOLUTION = "SOLUTION"
+    OTHER = "OTHER"
+
+
+class PharmacyOrderStatus(StrEnum):
+    """Where a medicine order has got to.
+
+    Prescriptions are cleared *before* money is asked for: an order holding
+    unverified prescription-only medicine sits in ``PENDING_RX`` and cannot be
+    paid for, so a refused prescription never needs a refund.
+    """
+
+    PENDING_RX = "PENDING_RX"
+    AWAITING_PAYMENT = "AWAITING_PAYMENT"
+    CONFIRMED = "CONFIRMED"
+    PACKED = "PACKED"
+    DISPATCHED = "DISPATCHED"
+    DELIVERED = "DELIVERED"
+    CANCELLED = "CANCELLED"
+
+
+class PharmacyPaymentMethod(StrEnum):
+    #: Paid in cash to the rider.
+    COD = "COD"
+    #: A wallet transfer with a screenshot, confirmed by an administrator —
+    #: the same route as every other bill in the system.
+    ONLINE = "ONLINE"
+
+
+class RxRoute(StrEnum):
+    """How an order's prescription-only medicine is authorised."""
+
+    #: Every such item is on one of the patient's own MediNova prescriptions.
+    PRESCRIBED = "PRESCRIBED"
+    #: A photo of a prescription from any doctor, checked by the pharmacy.
+    UPLOAD = "UPLOAD"
+    #: A MediNova doctor the patient has seen is asked to approve it.
+    DOCTOR = "DOCTOR"
+
+
+class RxStatus(StrEnum):
+    NOT_REQUIRED = "NOT_REQUIRED"
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"

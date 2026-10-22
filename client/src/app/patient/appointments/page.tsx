@@ -10,6 +10,7 @@
  */
 
 import { AnimatePresence, motion } from "framer-motion";
+import Link from "next/link";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
@@ -48,6 +49,7 @@ import {
   appointments,
   doctors,
   type Appointment,
+  type AppointmentMode,
   type AvailabilityDay,
 } from "@/lib/api";
 import { useTr } from "@/lib/lang";
@@ -358,6 +360,9 @@ function UpcomingRow({
     }
   };
 
+  const online = appointment.mode === "ONLINE";
+  const callable = online && ["CONFIRMED", "IN_PROGRESS"].includes(appointment.status);
+
   return (
     <>
       <AppointmentRow
@@ -377,6 +382,18 @@ function UpcomingRow({
             </>
           ) : patientCanChange(appointment) ? (
             <>
+              {callable && (
+                // A full page load, not a client navigation: the call page
+                // carries its own permissions for camera and microphone,
+                // and those belong to the document that is opened.
+                <a
+                  href={`/consult/${appointment.id}`}
+                  className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-gradient-brand px-4 text-sm font-semibold text-white shadow-sm transition-transform hover:-translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                >
+                  <Icon name="videocam" className="text-[20px]" />
+                  {tr("Open consultation", "Consultation kholein")}
+                </a>
+              )}
               <Button variant="secondary" onClick={onMove}>
                 <Icon name="edit_calendar" className="text-[20px]" />
                 {tr("Reschedule", "Waqt badlein")}
@@ -389,13 +406,35 @@ function UpcomingRow({
             // Checked in and onward, the visit belongs to the clinic. Offering
             // buttons the server would refuse only teaches people that the
             // portal's buttons are decorative.
-            <span className="flex items-center gap-1.5 text-sm font-medium text-muted">
-              <Icon name="how_to_reg" className="text-[18px] text-primary" />
-              {tr("With the clinic now.", "Ab clinic ke paas hai.")}
-            </span>
+            callable ? (
+              <a
+                href={`/consult/${appointment.id}`}
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-gradient-brand px-4 text-sm font-semibold text-white shadow-sm transition-transform hover:-translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                <Icon name="videocam" className="text-[20px]" />
+                {tr("Join the call", "Call mein shamil hon")}
+              </a>
+            ) : (
+              <span className="flex items-center gap-1.5 text-sm font-medium text-muted">
+                <Icon name="how_to_reg" className="text-[18px] text-primary" />
+                {tr("With the clinic now.", "Ab clinic ke paas hai.")}
+              </span>
+            )
           )
         }
       />
+      {online && appointment.status === "CONFIRMED" && (
+        <p className="-mt-2 flex items-start gap-1.5 pb-3 text-sm text-muted">
+          <Icon name="info" className="mt-px shrink-0 text-[16px] text-info" />
+          {tr(
+            "Pay the invoice before the call — the room opens ten minutes before the start once payment is confirmed.",
+            "Call se pehle invoice ada karein — payment confirm hone ke baad room shuru se das minute pehle khulta hai.",
+          )}{" "}
+          <Link href="/patient/billing" className="font-semibold text-primary underline-offset-2 hover:underline">
+            {tr("Go to billing", "Billing par jayein")}
+          </Link>
+        </p>
+      )}
       {error && (
         <p role="alert" className="pop-in flex items-center gap-1.5 pb-3 text-sm font-medium text-critical">
           <Icon name="error" className="text-[16px]" />
@@ -410,7 +449,7 @@ function UpcomingRow({
 // Booking flow
 // ---------------------------------------------------------------------------
 
-type StepKey = "doctor" | "date" | "time" | "confirm";
+type StepKey = "doctor" | "mode" | "date" | "time" | "confirm";
 
 /** Fade plus a short horizontal slide, in the direction of travel. */
 const SLIDE = {
@@ -475,6 +514,9 @@ function Booking({
 }) {
   const tr = useTr();
   const [doctorId, setDoctorId] = useState(moving?.doctorId ?? "");
+  // A clinic visit or a call. A reschedule keeps what it was booked as — the
+  // server refuses to turn one into the other, and so should the flow.
+  const [mode, setMode] = useState<AppointmentMode | null>(moving?.mode ?? null);
   const [day, setDay] = useState<string | null>(null);
   const [slot, setSlot] = useState<string | null>(null);
   const [reason, setReason] = useState("");
@@ -496,9 +538,20 @@ function Booking({
   );
   // Built from the data, so a city with nobody in it is never offered.
   const cities = useAsync(() => doctors.cities(), []);
+  const chosenDoctor = (directory.data?.data ?? []).find((doctor) => doctor.id === doctorId);
+  // The choice is only asked when there is one to make. A doctor with clinic
+  // hours alone is a clinic visit, and a step with one answer is a step wasted.
+  const offersOnline = !moving && Boolean(chosenDoctor?.offersOnline);
+  // What is being booked. Unasked means a clinic visit — including when the
+  // chosen doctor has dropped out of a re-filtered list, which must not strand
+  // the flow on a step that is no longer offered.
+  const effectiveMode: AppointmentMode | null = mode ?? (offersOnline ? null : "CLINIC");
   const slots = useAsync(
-    () => (doctorId ? appointments.availability(doctorId) : Promise.resolve(null)),
-    [doctorId],
+    () =>
+      doctorId && effectiveMode
+        ? appointments.availability(doctorId, undefined, undefined, effectiveMode)
+        : Promise.resolve(null),
+    [doctorId, effectiveMode],
   );
 
   const submit = async () => {
@@ -509,7 +562,12 @@ function Booking({
       if (moving) {
         await appointments.reschedule(moving.id, slot);
       } else {
-        await appointments.book({ doctorId, startTime: slot, reason: reason || undefined });
+        await appointments.book({
+          doctorId,
+          startTime: slot,
+          reason: reason || undefined,
+          mode: effectiveMode ?? "CLINIC",
+        });
       }
       onDone();
     } catch (caught) {
@@ -526,10 +584,24 @@ function Booking({
   };
 
   const days = slots.data?.days ?? [];
-  const steps: StepKey[] = moving ? ["date", "time", "confirm"] : ["doctor", "date", "time", "confirm"];
-  const furthest: StepKey = !doctorId ? "doctor" : !day ? "date" : !slot ? "time" : "confirm";
-  const furthestIndex = steps.indexOf(furthest);
-  const current = Math.min(steps.indexOf(visited), furthestIndex);
+  const steps: StepKey[] = moving
+    ? ["date", "time", "confirm"]
+    : offersOnline
+      ? ["doctor", "mode", "date", "time", "confirm"]
+      : ["doctor", "date", "time", "confirm"];
+  const furthest: StepKey = !doctorId
+    ? "doctor"
+    : !effectiveMode
+      ? "mode"
+      : !day
+        ? "date"
+        : !slot
+          ? "time"
+          : "confirm";
+  const furthestIndex = Math.max(0, steps.indexOf(furthest));
+  // A step that is not in this flow (the "How" step, after the list changed
+  // under it) resolves to the first one rather than to nothing at all.
+  const current = Math.max(0, Math.min(steps.indexOf(visited), furthestIndex));
   const step = steps[current];
 
   // Slide forward when advancing, back when returning. Derived from the last
@@ -540,13 +612,11 @@ function Booking({
   }
   const direction = tracked.direction;
 
-  const chosenDoctor = (directory.data?.data ?? []).find((doctor) => doctor.id === doctorId);
   // Only from the directory, and only when it is a real number: an invented or
   // stale price on a confirmation screen is a promise nobody made.
-  const fee =
-    typeof chosenDoctor?.consultationFee === "number" && chosenDoctor.consultationFee > 0
-      ? chosenDoctor.consultationFee
-      : null;
+  const listedFee =
+    effectiveMode === "ONLINE" ? chosenDoctor?.effectiveOnlineFee : chosenDoctor?.consultationFee;
+  const fee = typeof listedFee === "number" && listedFee > 0 ? listedFee : null;
   const doctorName = chosenDoctor?.name ?? moving?.doctorName ?? tr("Your doctor", "Aap ka doctor");
   // Only the directory carries a picture; an appointment being moved does not,
   // and falls back to initials rather than showing the wrong person's face.
@@ -557,6 +627,7 @@ function Booking({
 
   const labels: Record<StepKey, string> = {
     doctor: tr("Doctor", "Doctor"),
+    mode: tr("How", "Kaise"),
     date: tr("Date", "Tareekh"),
     time: tr("Time", "Waqt"),
     confirm: tr("Confirm", "Tasdeeq"),
@@ -587,7 +658,7 @@ function Booking({
         onSelect={(index) => setVisited(steps[index])}
       />
 
-      <div className="relative mt-8 overflow-hidden">
+      <div className="relative mt-8 overflow-hidden pb-3">
         <AnimatePresence mode="wait" initial={false} custom={direction}>
           <motion.div
             key={step}
@@ -661,9 +732,10 @@ function Booking({
                             aria-checked={selected}
                             onClick={() => {
                               setDoctorId(doctor.id);
+                              setMode(doctor.offersOnline ? null : "CLINIC");
                               setDay(null);
                               setSlot(null);
-                              setVisited("date");
+                              setVisited(doctor.offersOnline ? "mode" : "date");
                             }}
                             className="flex items-center gap-3 rounded-xl text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                           >
@@ -683,6 +755,12 @@ function Booking({
                               <span className="block text-sm text-muted">
                                 {doctor.specialization}
                               </span>
+                              {doctor.offersOnline && (
+                                <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-info-soft px-2 py-0.5 text-[11px] font-semibold text-info">
+                                  <Icon name="videocam" className="text-[13px]" />
+                                  {tr("Online available", "Online dastyab")}
+                                </span>
+                              )}
                             </span>
                             <span
                               aria-hidden
@@ -713,6 +791,84 @@ function Booking({
               </StepFrame>
             )}
 
+            {step === "mode" && chosenDoctor && (
+              <StepFrame
+                title={tr("How would you like to see them?", "Aap kaise milna chahte hain?")}
+                hint={tr(
+                  "An online consultation is a 30-minute video call from your phone or computer.",
+                  "Online consultation aap ke phone ya computer se 30 minute ki video call hai.",
+                )}
+              >
+                <div role="radiogroup" aria-label={tr("How", "Kaise")} className="grid gap-3 sm:grid-cols-2">
+                  {(
+                    [
+                      {
+                        value: "CLINIC" as const,
+                        icon: "local_hospital",
+                        title: tr("Visit the clinic", "Clinic jayein"),
+                        body: chosenDoctor.clinicName
+                          ? tr(`In person at ${chosenDoctor.clinicName}.`, `${chosenDoctor.clinicName} mein khud.`)
+                          : tr("In person.", "Khud ja kar."),
+                        fee: chosenDoctor.consultationFee,
+                        after: tr("Invoiced after the visit.", "Visit ke baad invoice."),
+                      },
+                      {
+                        value: "ONLINE" as const,
+                        icon: "videocam",
+                        title: tr("Video consultation", "Video consultation"),
+                        body: tr(
+                          "From home. Nothing to install — it opens in your browser.",
+                          "Ghar se. Kuchh install nahi karna — browser mein khulti hai.",
+                        ),
+                        fee: chosenDoctor.effectiveOnlineFee,
+                        after: tr(
+                          "Paid before the call, once the doctor confirms.",
+                          "Doctor ki tasdeeq ke baad, call se pehle payment.",
+                        ),
+                      },
+                    ]
+                  ).map((option) => {
+                    const selected = mode === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        onClick={() => {
+                          setMode(option.value);
+                          setDay(null);
+                          setSlot(null);
+                          setVisited("date");
+                        }}
+                        className={cx(
+                          "flex flex-col items-start gap-2 rounded-2xl p-5 text-left shadow-card transition-[box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-overlay",
+                          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                          selected ? "border-gradient-thick" : "border border-line bg-card",
+                        )}
+                      >
+                        <span
+                          aria-hidden
+                          className={cx(
+                            "grid h-12 w-12 place-items-center rounded-xl",
+                            selected ? "bg-gradient-brand text-white" : "bg-gradient-soft text-primary",
+                          )}
+                        >
+                          <Icon name={option.icon} className="text-[24px]" />
+                        </span>
+                        <span className="font-display text-lg font-bold text-strong">{option.title}</span>
+                        <span className="text-sm text-muted">{option.body}</span>
+                        <span className="mt-1 font-semibold tabular-nums text-strong">
+                          PKR {option.fee.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </span>
+                        <span className="text-xs text-faint">{option.after}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </StepFrame>
+            )}
+
             {step === "date" && (
               <StepFrame
                 title={tr("Which day suits you?", "Kaun sa din theek rahe ga?")}
@@ -736,15 +892,31 @@ function Booking({
                 ) : days.every((entry) => entry.availableCount === 0) ? (
                   <EmptyState
                     icon="event_busy"
-                    title={tr(
-                      "This doctor has no free appointments in the next two weeks.",
-                      "Is doctor ke paas agle do hafton mein koi khali waqt nahi.",
-                    )}
+                    title={
+                      effectiveMode === "ONLINE"
+                        ? tr(
+                            "No free online consultations in the next two weeks.",
+                            "Agle do hafton mein koi khali online consultation nahi.",
+                          )
+                        : tr(
+                            "This doctor has no free appointments in the next two weeks.",
+                            "Is doctor ke paas agle do hafton mein koi khali waqt nahi.",
+                          )
+                    }
                     action={
                       !moving && (
-                        <Button variant="secondary" onClick={() => setVisited("doctor")}>
-                          {tr("Choose another doctor", "Koi aur doctor chunein")}
-                        </Button>
+                        <div className="flex flex-wrap justify-center gap-2">
+                          {offersOnline && (
+                            <Button variant="secondary" onClick={() => setVisited("mode")}>
+                              {effectiveMode === "ONLINE"
+                                ? tr("Try a clinic visit", "Clinic visit dekhein")
+                                : tr("Try online instead", "Online dekhein")}
+                            </Button>
+                          )}
+                          <Button variant="secondary" onClick={() => setVisited("doctor")}>
+                            {tr("Choose another doctor", "Koi aur doctor chunein")}
+                          </Button>
+                        </div>
                       )
                     }
                   />
@@ -803,10 +975,32 @@ function Booking({
                         </div>
                       </div>
 
+                      {effectiveMode === "ONLINE" && (
+                        <div className="sm:col-span-3">
+                          <dt className="text-[11px] font-bold uppercase tracking-wider text-faint">
+                            {tr("Where", "Kahan")}
+                          </dt>
+                          <dd className="mt-1 flex items-start gap-2 text-sm text-strong">
+                            <Icon name="videocam" className="mt-0.5 shrink-0 text-[18px] text-primary" />
+                            <span>
+                              <span className="block font-semibold">
+                                {tr("Online video consultation", "Online video consultation")}
+                              </span>
+                              <span className="block text-muted">
+                                {tr(
+                                  "Join from this portal on the day. Allow your camera and microphone when asked.",
+                                  "Us din isi portal se join karein. Poochhne par camera aur mic ki ijazat dein.",
+                                )}
+                              </span>
+                            </span>
+                          </dd>
+                        </div>
+                      )}
+
                       {/* Where to go, on the screen somebody reads just before
                           they commit — and again on the day, when they come
                           back to this appointment to check. */}
-                      {chosenDoctor?.clinicName && (
+                      {effectiveMode !== "ONLINE" && chosenDoctor?.clinicName && (
                         <div className="sm:col-span-3">
                           <dt className="text-[11px] font-bold uppercase tracking-wider text-faint">
                             {tr("Where", "Kahan")}
@@ -853,10 +1047,15 @@ function Booking({
                     {fee !== null && (
                       <p className="mt-4 flex items-start gap-1.5 border-t border-line pt-3 text-xs text-muted">
                         <Icon name="info" className="mt-px shrink-0 text-[14px]" />
-                        {tr(
-                          "The doctor's listed fee. Nothing is charged now — you are invoiced after the visit.",
-                          "Doctor ki darj shuda fees. Abhi kuchh charge nahi hota — visit ke baad invoice aata hai.",
-                        )}
+                        {effectiveMode === "ONLINE"
+                          ? tr(
+                              "Nothing is charged now. Once the doctor confirms, an invoice is issued — pay it before the call and the room opens ten minutes before the start.",
+                              "Abhi kuchh charge nahi hota. Doctor ki tasdeeq par invoice aaye ga — call se pehle ada karein, room shuru se das minute pehle khulega.",
+                            )
+                          : tr(
+                              "The doctor's listed fee. Nothing is charged now — you are invoiced after the visit.",
+                              "Doctor ki darj shuda fees. Abhi kuchh charge nahi hota — visit ke baad invoice aata hai.",
+                            )}
                       </p>
                     )}
                   </div>
@@ -922,10 +1121,12 @@ function Booking({
         onBook={(id) => {
           // The decision was made in the panel, so this is the same act as
           // pressing the card — choose, and move on.
+          const picked = (directory.data?.data ?? []).find((doctor) => doctor.id === id);
           setDoctorId(id);
+          setMode(picked?.offersOnline ? null : "CLINIC");
           setDay(null);
           setSlot(null);
-          setVisited("date");
+          setVisited(picked?.offersOnline ? "mode" : "date");
           setAbout(null);
         }}
       />

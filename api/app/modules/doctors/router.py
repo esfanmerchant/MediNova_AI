@@ -32,8 +32,15 @@ from app.db.models import (
     Patient,
     User,
 )
-from app.modules.appointments.schedule import AvailabilityWindow, iso_utc, validate_windows
-from app.modules.appointments.service import holds_a_slot
+from app.modules.appointments.schedule import (
+    AvailabilityWindow,
+    WindowMode,
+    iso_utc,
+    offers_online,
+    parse_windows,
+    validate_windows,
+)
+from app.modules.appointments.service import holds_a_slot, online_consultations_available
 from app.modules.audit.service import AuditEntry, record_audit
 from app.modules.auth.rbac import Permission
 from app.services import avatars
@@ -52,6 +59,15 @@ class DoctorProfileUpdate(BaseModel):
         default=None, alias="yearsExperience"
     )
     accepting_patients: bool | None = Field(default=None, alias="acceptingPatients")
+    #: What a video consultation costs, when it differs from a clinic visit.
+    #: Self-service because offering online consultations is: a doctor who
+    #: opens online hours decides what they charge for them.
+    online_fee: Annotated[Decimal, Field(ge=0, le=1_000_000)] | None = Field(
+        default=None, alias="onlineFee"
+    )
+    #: Sent as true to go back to charging the clinic fee online. A separate
+    #: switch because ``onlineFee: null`` cannot be told apart from "not sent".
+    clear_online_fee: bool = Field(default=False, alias="clearOnlineFee")
 
     #: Where they sit. Self-service, unlike the licence number and department:
     #: a doctor moving to a different clinic is an ordinary Tuesday, not a
@@ -126,6 +142,9 @@ def _serialize(
     department: Department | None,
     avatar_url: str | None = None,
 ) -> dict[str, Any]:
+    online = online_consultations_available() and offers_online(
+        parse_windows(doctor.availability)
+    )
     return {
         "id": doctor.id,
         "name": user.name,
@@ -137,6 +156,15 @@ def _serialize(
         "qualifications": doctor.qualifications,
         "yearsExperience": doctor.years_experience,
         "consultationFee": float(doctor.consultation_fee),
+        # Whether a patient can book this doctor for a video call right now —
+        # online hours published, and calls possible on this deployment.
+        "offersOnline": online,
+        "onlineFee": float(doctor.online_fee) if doctor.online_fee is not None else None,
+        # What an online consultation will actually be billed at, so a card
+        # never has to repeat the fallback rule to show a price.
+        "effectiveOnlineFee": float(
+            doctor.online_fee if doctor.online_fee is not None else doctor.consultation_fee
+        ),
         "acceptingPatients": doctor.accepting_patients,
         "availability": doctor.availability,
         # Null throughout when a doctor has never been asked — the directory
@@ -164,9 +192,21 @@ async def list_doctors(
     city: str | None = Query(default=None, max_length=80),
     search: str | None = Query(default=None, max_length=100),
     accepting_only: bool = Query(default=False, alias="acceptingOnly"),
+    online_only: bool = Query(default=False, alias="onlineOnly"),
 ) -> dict[str, Any]:
     """Directory for booking. Deliberately contains no patient information."""
     filters = []
+    if online_only:
+        # JSONB containment: some window in the week offers calls, either
+        # online-only or both ways.
+        filters.append(
+            or_(
+                *(
+                    Doctor.availability.contains([{"mode": str(mode)}])
+                    for mode in (WindowMode.ONLINE, WindowMode.BOTH)
+                )
+            )
+        )
     if department_id:
         filters.append(Doctor.department_id == department_id)
     if specialization:
@@ -269,6 +309,8 @@ async def update_my_profile(
         raise not_found("Doctor")
 
     changed = payload.model_dump(exclude_none=True, by_alias=False)
+    if changed.pop("clear_online_fee", False):
+        changed["online_fee"] = None
 
     if payload.availability is not None:
         # Overlapping windows would generate the same slot time twice, and the

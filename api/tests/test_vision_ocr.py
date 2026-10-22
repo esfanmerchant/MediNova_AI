@@ -118,6 +118,73 @@ class TestShaping:
         assert medication["needsReview"] is True
         assert medication["dosage"]["needs_review"] is True
 
+    def test_text_that_is_not_on_the_line_is_flagged(self) -> None:
+        """Taken from a live run: the model wrote its reasoning into the name.
+
+        It arrived at 0.92 with no review flag, indistinguishable from a clean
+        read. The model's own first rule is to transcribe only what is written,
+        and this is that rule, checked.
+        """
+        result = to_structured(
+            response(
+                medications=[
+                    {
+                        "medication": "Amoxicillin Registered Name or generic name visible: Amoxicillin",
+                        "dosage": "500 mg",
+                        "frequency": "TID",
+                        "duration": "5 days",
+                        "sourceText": "1. Amoxicillin 500 mg - 1 tab TID x 5 days",
+                        "legible": True,
+                    }
+                ]
+            )
+        )
+        medication = result["medications"][0]
+
+        assert medication["medication"]["needs_review"] is True
+        assert medication["medication"]["confidence"] < 0.5
+        assert medication["needsReview"] is True
+        assert result["needsReview"] is True
+        # Only the field that strayed is marked down; the dose was on the page.
+        assert medication["dosage"]["needs_review"] is False
+
+    def test_an_expanded_abbreviation_is_not_what_was_written(self) -> None:
+        # "TID" on the page, "three times daily" in the field: a reasonable
+        # reading, and still not a transcription. Review, don't trust.
+        result = to_structured(
+            response(
+                medications=[
+                    {
+                        "medication": "Amoxicillin",
+                        "dosage": "500 mg",
+                        "frequency": "three times daily",
+                        "duration": "5 days",
+                        "sourceText": "1. Amoxicillin 500 mg - 1 tab TID x 5 days",
+                        "legible": True,
+                    }
+                ]
+            )
+        )
+        assert result["medications"][0]["frequency"]["needs_review"] is True
+
+    def test_spacing_and_case_are_not_differences(self) -> None:
+        # "500MG" on the page and "500 mg" in the field are the same reading.
+        result = to_structured(
+            response(
+                medications=[
+                    {
+                        "medication": "amoxicillin",
+                        "dosage": "500 mg",
+                        "frequency": "TID",
+                        "duration": "5 days",
+                        "sourceText": "1. AMOXICILLIN 500MG - 1 tab TID x 5 days",
+                        "legible": True,
+                    }
+                ]
+            )
+        )
+        assert result["medications"][0]["needsReview"] is False
+
     def test_nothing_is_ever_fully_certain(self) -> None:
         # No machine reading is certain, so no field may claim 1.0.
         result = to_structured(response())

@@ -139,6 +139,11 @@ class Settings(BaseSettings):
     #: every other bucket here: a payment proof shows a bank balance and a
     #: name, and is nobody's business but the payer's and the reviewer's.
     SUPABASE_PAYMENT_PROOFS_BUCKET: str = "payment-proofs"
+    #: Prescriptions a patient uploads to buy prescription-only medicine. Its
+    #: own bucket for the same reason as the others: a prescription names a
+    #: condition, and nothing that can read a payment screenshot should be able
+    #: to read one.
+    SUPABASE_PHARMACY_RX_BUCKET: str = "pharmacy-prescriptions"
     #: Delivery URLs are signed per request, after the access check. Short
     #: enough that a leaked link is stale before it travels (conflict C8).
     SUPABASE_SIGNED_URL_TTL_SECONDS: int = 300
@@ -156,6 +161,15 @@ class Settings(BaseSettings):
     #: only for patients who have granted AI consent (conflict C2). Turning this
     #: off keeps every document on local OCR regardless of consent.
     AI_VISION_OCR_ENABLED: bool = True
+
+    # --- Online consultations ---------------------------------------------
+    #: Zoom Video SDK credentials, from the Zoom Build platform
+    #: (platform.zoom.us → Build App → SDK credentials) — not the keys of an
+    #: ordinary Zoom meeting account. The secret signs call tokens here and
+    #: never reaches a browser. Everything about an online consultation except
+    #: the call itself works without them.
+    ZOOM_VIDEO_SDK_KEY: str = ""
+    ZOOM_VIDEO_SDK_SECRET: str = ""
 
     # --- OCR -------------------------------------------------------------
     OCR_ENABLED: bool = True
@@ -193,6 +207,10 @@ class Settings(BaseSettings):
     @property
     def ai_configured(self) -> bool:
         return self.AI_ENABLED and bool(self.AI_API_KEY)
+
+    @property
+    def video_configured(self) -> bool:
+        return bool(self.ZOOM_VIDEO_SDK_KEY and self.ZOOM_VIDEO_SDK_SECRET)
 
     @property
     def email_configured(self) -> bool:

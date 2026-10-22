@@ -173,6 +173,29 @@ export default function AdminRevenue() {
                   )}
                 />
               </div>
+
+              {/* The second business. Kept as its own line rather than folded
+                  into "earned": medicine sales are gross takings, and the
+                  margin on them is the pharmacy's dashboard's question. */}
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Tile
+                  emphasis
+                  label={tr("Pharmacy sales", "Pharmacy ki farokht")}
+                  value={amount(totals.allTime.pharmacySales, currency)}
+                  hint={tr(
+                    `${totals.allTime.pharmacyOrders} paid orders · ${amount(totals.thisMonth.pharmacySales, currency)} this month`,
+                    `${totals.allTime.pharmacyOrders} ada shuda orders · is mahine ${amount(totals.thisMonth.pharmacySales, currency)}`,
+                  )}
+                />
+                <Tile
+                  label={tr("Platform revenue", "Platform ki aamdani")}
+                  value={amount(totals.allTime.platformRevenue, currency)}
+                  hint={tr(
+                    "Fees, late charges and medicine sales — before costs.",
+                    "Fees, der ke charges aur dawaon ki farokht — kharche se pehle.",
+                  )}
+                />
+              </div>
             </Card>
 
             

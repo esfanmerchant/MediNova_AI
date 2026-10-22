@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
+from enum import StrEnum
 from itertools import pairwise
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -24,10 +25,17 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.config import settings
+from app.db.enums import AppointmentMode
 
 #: Anything finer invites a slot grid nobody can staff; anything coarser than an
 #: hour is better modelled as two windows.
 ALLOWED_SLOT_MINUTES = frozenset({10, 15, 20, 30, 45, 60})
+
+#: How long an online consultation lasts — the length the owner set. Every
+#: window that offers online slots uses exactly this, because a video call is
+#: sold as a fixed half hour and a ten-minute "online" slot would be a call that
+#: ends as the patient's camera comes on.
+ONLINE_SLOT_MINUTES = 30
 
 #: ISO weekday numbering, matching ``date.isoweekday()``: Monday is 1.
 WEEKDAY_NAMES = {
@@ -87,6 +95,28 @@ def iso_utc(stored: datetime) -> str:
     return stored.replace(microsecond=0).isoformat() + "Z"
 
 
+class WindowMode(StrEnum):
+    """What a weekly window offers.
+
+    Lives in the availability JSON rather than as a database type, because it
+    describes a stretch of a doctor's week, not an appointment. ``BOTH`` is a
+    window whose every slot can go either way: whoever books first decides
+    whether that half hour is a clinic visit or a call.
+    """
+
+    CLINIC = "CLINIC"
+    ONLINE = "ONLINE"
+    BOTH = "BOTH"
+
+    @property
+    def appointment_modes(self) -> frozenset[AppointmentMode]:
+        if self is WindowMode.BOTH:
+            return frozenset({AppointmentMode.CLINIC, AppointmentMode.ONLINE})
+        if self is WindowMode.ONLINE:
+            return frozenset({AppointmentMode.ONLINE})
+        return frozenset({AppointmentMode.CLINIC})
+
+
 class AvailabilityWindow(BaseModel):
     """One recurring weekly window, e.g. Tuesdays 09:00-17:00 in 30-minute slots."""
 
@@ -96,6 +126,9 @@ class AvailabilityWindow(BaseModel):
     start_time: str = Field(alias="startTime", pattern=_TIME_PATTERN)
     end_time: str = Field(alias="endTime", pattern=_TIME_PATTERN)
     slot_minutes: int = Field(default=30, alias="slotMinutes")
+    #: Absent on every window saved before online consultations existed, and
+    #: those were clinic hours — so that is the default rather than a guess.
+    mode: WindowMode = WindowMode.CLINIC
 
     @field_validator("slot_minutes")
     @classmethod
@@ -111,6 +144,10 @@ class AvailabilityWindow(BaseModel):
             raise ValueError("endTime must be later than startTime")
         if self.end_minutes - self.start_minutes < self.slot_minutes:
             raise ValueError("the window is shorter than one slot")
+        if self.mode is not WindowMode.CLINIC and self.slot_minutes != ONLINE_SLOT_MINUTES:
+            raise ValueError(
+                f"windows that offer online consultations use {ONLINE_SLOT_MINUTES}-minute slots"
+            )
         return self
 
     @property
@@ -128,6 +165,7 @@ class AvailabilityWindow(BaseModel):
             "startTime": self.start_time,
             "endTime": self.end_time,
             "slotMinutes": self.slot_minutes,
+            "mode": str(self.mode),
         }
 
 
@@ -194,6 +232,8 @@ class Slot:
     end: datetime
     local_start: datetime
     local_end: datetime
+    #: How this slot may be booked: in the clinic, as a call, or either.
+    modes: frozenset[AppointmentMode] = frozenset({AppointmentMode.CLINIC})
 
     @property
     def local_date(self) -> date:
@@ -204,13 +244,16 @@ class Slot:
         return self.local_start.strftime("%H:%M")
 
 
-def _slot(local_start: datetime, minutes: int) -> Slot:
+def _slot(
+    local_start: datetime, minutes: int, modes: frozenset[AppointmentMode]
+) -> Slot:
     local_end = local_start + timedelta(minutes=minutes)
     return Slot(
         start=to_utc(local_start),
         end=to_utc(local_end),
         local_start=local_start,
         local_end=local_end,
+        modes=modes,
     )
 
 
@@ -228,7 +271,7 @@ def slots_for_day(windows: list[AvailabilityWindow], day: date) -> list[Slot]:
         cursor = window.start_minutes
         while cursor + window.slot_minutes <= window.end_minutes:
             local_start = datetime.combine(day, time(cursor // 60, cursor % 60))
-            slots.append(_slot(local_start, window.slot_minutes))
+            slots.append(_slot(local_start, window.slot_minutes, window.mode.appointment_modes))
             cursor += window.slot_minutes
     return sorted(slots, key=lambda s: s.start)
 
@@ -259,6 +302,11 @@ def find_slot(windows: list[AvailabilityWindow], start: datetime) -> Slot | None
         if slot.start == start.replace(microsecond=0):
             return slot
     return None
+
+
+def offers_online(windows: list[AvailabilityWindow]) -> bool:
+    """Whether any of a doctor's weekly windows can be booked as a call."""
+    return any(AppointmentMode.ONLINE in w.mode.appointment_modes for w in windows)
 
 
 def overlaps(

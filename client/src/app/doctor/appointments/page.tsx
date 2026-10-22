@@ -86,19 +86,22 @@ function DrawnCheck({ className }: { className?: string }) {
  * Where a consultation sits on its path. The gradient fills the track up to
  * the current step, and the current circle carries a slow halo.
  */
-function StatusStepper({ status }: { status: AppointmentStatus }) {
+function StatusStepper({ status, online = false }: { status: AppointmentStatus; online?: boolean }) {
   const tr = useTr();
-  const index = STEPS.findIndex((step) => step.status === status);
+  // An online consultation has no front desk: joining the call is the
+  // check-in, so the step that would never be reached is not drawn.
+  const steps = online ? STEPS.filter((step) => step.status !== "CHECKED_IN") : STEPS;
+  const index = steps.findIndex((step) => step.status === status);
   if (index < 0) return null;
-  const progress = index / (STEPS.length - 1);
-  // Circle centres sit at 10%, 30%, … of the width with five equal columns.
-  const inset = 100 / STEPS.length / 2;
+  const progress = index / (steps.length - 1);
+  // Circle centres sit at the middle of each equal column.
+  const inset = 100 / steps.length / 2;
 
   return (
     <ol
       aria-label={tr("Progress", "Pesh-raft")}
       className="relative grid w-full max-w-xl"
-      style={{ gridTemplateColumns: `repeat(${STEPS.length}, minmax(0, 1fr))` }}
+      style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}
     >
       <span
         aria-hidden
@@ -110,7 +113,7 @@ function StatusStepper({ status }: { status: AppointmentStatus }) {
         className="bg-gradient-brand absolute top-3 h-0.5 -translate-y-1/2 rounded-full transition-[width] duration-500 ease-out"
         style={{ left: `${inset}%`, width: `${(100 - inset * 2) * progress}%` }}
       />
-      {STEPS.map((step, position) => {
+      {steps.map((step, position) => {
         const state = position < index ? "done" : position === index ? "current" : "todo";
         return (
           <li
@@ -396,8 +399,12 @@ function ConsultationRow({
   const [notes, setNotes] = useState("");
   const [writing, setWriting] = useState(false);
 
-  const step = NEXT_STEP[appointment.status];
+  const online = appointment.mode === "ONLINE";
+  // Confirmed online consultations start from the call page, not a button
+  // here: the doctor joining the room is what moves them to "in progress".
+  const step = online && appointment.status === "CONFIRMED" ? undefined : NEXT_STEP[appointment.status];
   const completing = step?.to === "COMPLETED";
+  const callable = online && (appointment.status === "CONFIRMED" || appointment.status === "IN_PROGRESS");
 
   const advance = async (to: AppointmentStatus, withNotes?: string) => {
     setBusy(true);
@@ -427,6 +434,18 @@ function ConsultationRow({
         detail={appointment.medicalRecordNumber}
         actions={
           <>
+            {callable && !writing && (
+              // A full page load, not a client navigation: the call page
+              // carries its own camera and microphone permissions, and those
+              // belong to the document that is opened.
+              <a
+                href={`/consult/${appointment.id}`}
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-gradient-brand px-4 text-sm font-semibold text-white shadow-sm transition-transform hover:-translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                <Icon name="videocam" className="text-[20px]" />
+                {appointment.status === "IN_PROGRESS" ? "Rejoin call" : "Start video call"}
+              </a>
+            )}
             {step && !writing && (
               <Button
                 disabled={busy}
@@ -451,7 +470,7 @@ function ConsultationRow({
       />
 
       <div className="-mt-1 pb-4">
-        <StatusStepper status={appointment.status} />
+        <StatusStepper status={appointment.status} online={online} />
       </div>
 
       <AnimatePresence initial={false}>

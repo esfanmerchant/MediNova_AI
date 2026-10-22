@@ -19,6 +19,12 @@ an accountant.
 ledgers that the platform is holding and has not yet paid out. It is the one
 figure here that is a debt rather than an asset.
 
+**Pharmacy sales** are a second business and are kept apart from the first. A
+consultation invoice's ``amount`` is a doctor's fee; a pharmacy invoice's is the
+price of medicine the platform sold. Summing the two as "owed to doctors" would
+pay a doctor for a patient's paracetamol, so every doctor-side figure here reads
+consultation invoices only, and medicine sales are reported beside them.
+
 Only **confirmed** money counts. An invoice that has been issued is a hope; one
 that has been paid is a fact, and a revenue chart built on the first is a chart
 that goes down when somebody finally chases the debtors.
@@ -31,11 +37,11 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Literal
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
-from app.db.enums import InvoiceStatus
+from app.db.enums import InvoiceKind, InvoiceStatus
 from app.db.models import Appointment, Doctor, DoctorLedgerEntry, Invoice
 
 #: How a period is cut up. The label is what a chart axis shows.
@@ -70,6 +76,10 @@ class Totals:
     late_fees: Decimal
     #: How many paid invoices this is built from.
     invoices: int
+    #: Medicine sold by the platform's own pharmacy, delivery included.
+    pharmacy_sales: Decimal = Decimal("0")
+    #: How many of those invoices were medicine orders.
+    pharmacy_orders: int = 0
 
 
 async def totals(
@@ -88,19 +98,27 @@ async def totals(
     if until is not None:
         where.append(Invoice.paid_at < until)
 
+    pharmacy = Invoice.kind == InvoiceKind.PHARMACY
     row = (
         await db.execute(
             select(
                 func.coalesce(func.sum(Invoice.total_amount), 0),
-                func.coalesce(func.sum(Invoice.amount), 0),
+                # The doctors' share is a consultation fee, and only that.
+                func.coalesce(
+                    func.sum(case((pharmacy, 0), else_=Invoice.amount)), 0
+                ),
                 func.coalesce(func.sum(Invoice.platform_fee), 0),
                 func.coalesce(func.sum(Invoice.tax_amount), 0),
                 func.count(Invoice.id),
+                func.coalesce(
+                    func.sum(case((pharmacy, Invoice.total_amount), else_=0)), 0
+                ),
+                func.count(case((pharmacy, Invoice.id))),
             ).where(*where)
         )
     ).one()
 
-    handled, fees, platform, tax, count = row
+    handled, fees, platform, tax, count, medicine, medicine_count = row
 
     # A late charge is only real once the bill it sits on was actually paid
     # late, and `total_amount` never contained it — so it is summed separately
@@ -120,6 +138,8 @@ async def totals(
         tax=Decimal(tax),
         late_fees=Decimal(late),
         invoices=int(count),
+        pharmacy_sales=Decimal(medicine),
+        pharmacy_orders=int(medicine_count),
     )
 
 
@@ -145,6 +165,7 @@ async def series(db: AsyncSession, grain: Grain) -> list[dict[str, Any]]:
     """
     bucket = func.date_trunc(_TRUNC[grain], Invoice.paid_at).label("bucket")
     since = utcnow() - _WINDOW[grain]
+    pharmacy = Invoice.kind == InvoiceKind.PHARMACY
 
     rows = (
         await db.execute(
@@ -153,8 +174,9 @@ async def series(db: AsyncSession, grain: Grain) -> list[dict[str, Any]]:
                 func.coalesce(func.sum(Invoice.total_amount), 0),
                 func.coalesce(func.sum(Invoice.platform_fee), 0),
                 func.coalesce(func.sum(Invoice.tax_amount), 0),
-                func.coalesce(func.sum(Invoice.amount), 0),
+                func.coalesce(func.sum(case((pharmacy, 0), else_=Invoice.amount)), 0),
                 func.count(Invoice.id),
+                func.coalesce(func.sum(case((pharmacy, Invoice.total_amount), else_=0)), 0),
             )
             .where(
                 Invoice.status == InvoiceStatus.PAID,
@@ -173,9 +195,10 @@ async def series(db: AsyncSession, grain: Grain) -> list[dict[str, Any]]:
             "platformFee": str(platform),
             "tax": str(tax),
             "toDoctors": str(fees),
+            "pharmacy": str(medicine),
             "invoices": int(count),
         }
-        for moment, handled, platform, tax, fees, count in rows
+        for moment, handled, platform, tax, fees, count, medicine in rows
     ]
 
 
@@ -228,4 +251,14 @@ def serialize(totals_: Totals) -> dict[str, Any]:
         # has to explain to an accountant.
         "earned": str(totals_.platform_fee + totals_.late_fees),
         "invoices": totals_.invoices,
+        # The pharmacy's takings, gross. Medicine is the platform's own stock,
+        # so unlike a consultation fee all of it is the platform's revenue —
+        # though not its profit, which the pharmacy dashboard's margin answers.
+        "pharmacySales": str(totals_.pharmacy_sales),
+        "pharmacyOrders": totals_.pharmacy_orders,
+        # Everything the platform itself took in: its fees, its late charges and
+        # its medicine sales. Tax and the doctors' share stay out of it.
+        "platformRevenue": str(
+            totals_.platform_fee + totals_.late_fees + totals_.pharmacy_sales
+        ),
     }

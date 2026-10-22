@@ -25,6 +25,7 @@ function invoice(overrides: Partial<Invoice> = {}): Invoice {
     id: "inv-1",
     patientId: "patient-1",
     appointmentId: "appt-1",
+    kind: "CONSULTATION",
     invoiceNumber: "INV-2026-000042",
     amount: "500.10",
     platformFee: "0.00",

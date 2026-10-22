@@ -60,6 +60,36 @@ const maps = {
 };
 
 /**
+ * What the Zoom Video SDK needs, on the consultation page and nowhere else.
+ *
+ * From Zoom's own CSP guidance for the Web Video SDK. The SDK compiles
+ * WebAssembly (`'wasm-unsafe-eval'`, which permits exactly that and nothing
+ * else, unlike `'unsafe-eval'`), runs its media pipeline in `blob:` workers,
+ * loads its assets from Zoom's CDN, and talks to Zoom over https and secure
+ * websockets. Video and audio arrive as `blob:` and `https:` media.
+ *
+ * Scoped to `/consult/*` by a second header rule below, because every one of
+ * these widens the policy, and the other two hundred pages have no use for any
+ * of it. Like the Maps block, this is one feature's dependency: drop online
+ * consultations and this is the block to delete.
+ */
+const zoom = {
+  script: ["'wasm-unsafe-eval'", "https://zoom.us", "https://*.zoom.us", "https://dmogdx0jrul3u.cloudfront.net", "blob:"],
+  connect: [
+    "https://zoom.us",
+    "https://*.zoom.us",
+    "wss://*.zoom.us",
+    "https://zoom.com",
+    "https://*.zoom.com",
+    "wss://*.zoom.com",
+    "https://dmogdx0jrul3u.cloudfront.net",
+  ],
+  worker: ["blob:"],
+  media: ["blob:", "https:"],
+  img: ["https:"],
+};
+
+/**
  * Content-Security-Policy for the pages this app serves.
  *
  * Built from the configured origins rather than written as a literal, so a
@@ -83,10 +113,11 @@ const maps = {
  * it already is: React escaping everything it renders, and no `dangerouslySetInnerHTML`
  * anywhere in this codebase.
  */
-const csp = [
+function buildCsp(extra: Partial<Record<keyof typeof zoom, string[]>> = {}): string {
+  return [
   "default-src 'self'",
   // Google Maps draws the clinic locations; it loads its own further scripts.
-  `script-src 'self' 'unsafe-inline' ${developing ? "'unsafe-eval' " : ""}${maps.script.join(" ")}`,
+  `script-src 'self' 'unsafe-inline' ${developing ? "'unsafe-eval' " : ""}${[...maps.script, ...(extra.script ?? [])].join(" ")}`,
   // Tailwind and the Material Symbols stylesheet; inline styles come from the
   // framework, from element-level style attributes, and from Maps, which
   // injects its own.
@@ -95,10 +126,11 @@ const csp = [
   // `blob:` is the avatar cropper previewing a file before upload; `data:` is
   // inlined icons. Supabase serves every document and avatar through a signed
   // URL on its own origin.
-  `img-src 'self' data: blob: ${[...supabase, ...maps.img].join(" ")}`,
-  `connect-src 'self' ${[...api, ...supabase, ...maps.connect].join(" ")}`,
+  `img-src 'self' data: blob: ${[...supabase, ...maps.img, ...(extra.img ?? [])].join(" ")}`,
+  `connect-src 'self' ${[...api, ...supabase, ...maps.connect, ...(extra.connect ?? [])].join(" ")}`,
   // The service worker, which delivers push notifications offline.
-  "worker-src 'self'",
+  `worker-src 'self' ${(extra.worker ?? []).join(" ")}`,
+  ...(extra.media ? [`media-src 'self' ${extra.media.join(" ")}`] : []),
   "manifest-src 'self'",
   // Nothing here is embedded, and nothing embeds this.
   "frame-src 'none'",
@@ -111,9 +143,13 @@ const csp = [
   // request against a server that is not listening for TLS — a CSP that breaks
   // development is a CSP somebody deletes rather than fixes.
   ...(api.every((origin) => origin.startsWith("https://")) ? ["upgrade-insecure-requests"] : []),
-]
-  .map((directive) => directive.replace(/\s+/g, " ").trim())
-  .join("; ");
+  ]
+    .map((directive) => directive.replace(/\s+/g, " ").trim())
+    .join("; ");
+}
+
+const csp = buildCsp();
+const consultCsp = buildCsp(zoom);
 
 const nextConfig: NextConfig = {
   /**
@@ -178,6 +214,20 @@ const nextConfig: NextConfig = {
           // Belt and braces with `frame-ancestors` above, for browsers that
           // only understand the older header.
           { key: "X-Frame-Options", value: "DENY" },
+        ],
+      },
+      {
+        // The consultation room, and only it. Listed after the rule above
+        // because the later of two matching rules wins for the same header.
+        // A camera and a microphone are the point of this page, and asked for
+        // by this origin only — an embedded frame still gets neither.
+        source: "/consult/:path*",
+        headers: [
+          { key: "Content-Security-Policy", value: consultCsp },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(self), microphone=(self), geolocation=(), payment=(), usb=()",
+          },
         ],
       },
     ];

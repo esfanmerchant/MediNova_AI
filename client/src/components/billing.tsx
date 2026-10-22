@@ -649,10 +649,20 @@ function InvoiceRow({
                   : "bg-gradient-soft text-primary",
               )}
             >
-              <Icon name={invoice.amendsInvoiceId ? "undo" : "receipt_long"} className="text-[20px]" />
+              <Icon
+                name={invoice.amendsInvoiceId ? "undo" : invoice.kind === "PHARMACY" ? "local_pharmacy" : "receipt_long"}
+                className="text-[20px]"
+              />
             </span>
             <div className="min-w-0 leading-tight">
-              <p className="font-semibold tabular-nums text-strong">{invoice.invoiceNumber}</p>
+              <p className="flex items-center gap-1.5 font-semibold tabular-nums text-strong">
+                {invoice.invoiceNumber}
+                {invoice.kind === "PHARMACY" && (
+                  <span className="rounded-full bg-info-soft px-1.5 py-px text-[10px] font-bold uppercase tracking-wide text-info">
+                    {tr("Medicines", "Dawaiyan")}
+                  </span>
+                )}
+              </p>
               <p className="mt-0.5 text-xs text-faint">
                 {tr("Issued", "Jari hua")} {when(invoice.issuedAt)}
                 {invoice.status === "OVERDUE" &&
