@@ -14,7 +14,13 @@ requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
-    "sqlalchemy[asyncio]>=2.0.36",
+    # Held on the 2.0 line. 2.1 retyped `Select` and `Row` (one type argument
+    # per column, rather than one tuple), so code written against 2.0 stops
+    # type-checking on a clean install while a laptop with 2.0 already on it
+    # sees nothing — which is how CI went red without a line of ours changing.
+    # Moving to 2.1 is a deliberate upgrade, not something a fresh install
+    # should do on its own.
+    "sqlalchemy[asyncio]>=2.0.36,<2.1",
     "asyncpg>=0.30",
     "psycopg[binary]>=3.2",
     "alembic>=1.14",
