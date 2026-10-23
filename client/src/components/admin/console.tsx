@@ -784,3 +784,48 @@ export function TogglePill({
     </button>
   );
 }
+
+/**
+ * "PKR 1,655" from the API's string, grouped in the string so an amount is
+ * never a float on its way to the screen. Paisa only when there are some.
+ */
+export function consoleMoney(amount: string | number, currency = "PKR"): string {
+  const text = String(amount);
+  const negative = text.startsWith("-");
+  const [whole, fraction] = (negative ? text.slice(1) : text).split(".");
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const paisa = fraction && /[1-9]/.test(fraction) ? `.${fraction}` : "";
+  return `${negative ? "−" : ""}${currency} ${grouped}${paisa}`;
+}
+
+/**
+ * Copies one value — an account number, a reference — so it reaches a banking
+ * app without being retyped. Says "Copied" by turning into a tick.
+ */
+export function CopyButton({ value, label, size = 30 }: { value: string; label: string; size?: number }) {
+  const tr = useTr();
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 1600);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+  return (
+    <button
+      type="button"
+      aria-label={copied ? tr("Copied", "Copy ho gaya") : label}
+      title={copied ? tr("Copied", "Copy ho gaya") : label}
+      onClick={(event) => {
+        event.stopPropagation();
+        void navigator.clipboard?.writeText(value).then(() => setCopied(true));
+      }}
+      style={{ width: size, height: size }}
+      className={cx(
+        "grid shrink-0 place-items-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+        copied ? "bg-stable-soft text-stable" : "text-muted hover:bg-sunken hover:text-strong",
+      )}
+    >
+      <Icon name={copied ? "check" : "content_copy"} className="text-[15px]" />
+    </button>
+  );
+}

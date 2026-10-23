@@ -59,7 +59,7 @@ function messageOf(caught: unknown, fallback: string): string {
   return caught instanceof ApiError ? caught.message : fallback;
 }
 
-const STATUS_TONE: Record<InvoiceStatus, "good" | "warning" | "critical" | "neutral" | "info"> = {
+export const STATUS_TONE: Record<InvoiceStatus, "good" | "warning" | "critical" | "neutral" | "info"> = {
   PAID: "good",
   ISSUED: "info",
   OVERDUE: "critical",
@@ -99,11 +99,16 @@ function when(iso: string | null): string {
     : "—";
 }
 
-/** Formats an amount without ever turning it into a number. */
+/**
+ * Formats an amount without ever turning it into a number: the thousands are
+ * grouped in the string, and paisa shown only when there are some.
+ */
 function money(amount: string, currency: string): string {
   const negative = amount.startsWith("-");
-  const digits = negative ? amount.slice(1) : amount;
-  return `${negative ? "−" : ""}${currency} ${digits}`;
+  const [whole, fraction] = (negative ? amount.slice(1) : amount).split(".");
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const paisa = fraction && /[1-9]/.test(fraction) ? `.${fraction}` : "";
+  return `${negative ? "−" : ""}${currency} ${grouped}${paisa}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -225,7 +230,7 @@ function DateTile({ label, value, icon }: { label: string; value: string; icon: 
  * — printing gave you a table of line items and no indication of who owed what
  * to whom.
  */
-function PrintHeader({ invoice }: { invoice: Invoice }) {
+export function PrintHeader({ invoice }: { invoice: Invoice }) {
   const tr = useTr();
   const issued = invoice.issuedAt ?? invoice.createdAt;
   return (
@@ -389,7 +394,7 @@ export function InvoiceDetail({ invoice }: { invoice: Invoice }) {
  * invoice and "why was this cancelled" is the first question anyone
  * reconciling the accounts will ask.
  */
-function AdminActions({
+export function AdminActions({
   invoice,
   onChanged,
 }: {
@@ -760,6 +765,58 @@ function InvoiceRow({
 }
 
 /**
+ * Every invoice as one spreadsheet.
+ *
+ * Refetched at the full page size rather than exported from the rows on
+ * screen: a table shows a page, and a file called "my invoices" that quietly
+ * holds a subset is worse than no file. `total` says whether even that was
+ * enough, and the reader is told rather than left to count.
+ *
+ * Amounts go out as the strings the API sent. Formatting them for display
+ * here would put a currency symbol and a thousands separator into a column
+ * somebody is about to sum.
+ */
+export async function exportInvoicesCsv(): Promise<{ saved: number; total: number }> {
+  const page = await invoicesApi.list({ limit: 100 });
+  const csv = toCsv(
+    [
+      "Invoice",
+      "Issued",
+      "Due",
+      "Status",
+      "Amount",
+      "Platform fee",
+      "Tax",
+      "Total",
+      "Late fee charged",
+      "Amount due",
+      "Currency",
+      "Paid on",
+      "Notes",
+    ],
+    page.data.map((invoice) => [
+      invoice.invoiceNumber,
+      // ISO dates, not the display format: a spreadsheet sorts these and a
+      // human still reads them.
+      invoice.issuedAt?.slice(0, 10),
+      invoice.dueAt?.slice(0, 10),
+      invoice.status,
+      invoice.amount,
+      invoice.platformFee,
+      invoice.taxAmount,
+      invoice.totalAmount,
+      invoice.lateFeeCharged,
+      invoice.amountDue,
+      invoice.currency,
+      invoice.paidAt?.slice(0, 10),
+      invoice.notes,
+    ]),
+  );
+  downloadCsv(`medinova-invoices-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+  return { saved: page.data.length, total: page.meta.total };
+}
+
+/**
  * Invoice history.
  *
  * `canManage` decides whether administrative controls render. It is not
@@ -786,69 +843,17 @@ export function InvoicesPanel({
   const rows = (fetched.data?.data ?? []).map((invoice) => edited[invoice.id] ?? invoice);
   const outstanding = fetched.data?.meta.outstanding;
 
-  /**
-   * Every invoice as one spreadsheet.
-   *
-   * Refetched at the full page size rather than exported from the rows on
-   * screen: the table shows fifty, and a file called "my invoices" that quietly
-   * holds a subset is worse than no file. `total` says whether even that was
-   * enough, and the reader is told rather than left to count.
-   *
-   * Amounts go out as the strings the API sent. Formatting them for display
-   * here would put a currency symbol and a thousands separator into a column
-   * somebody is about to sum.
-   */
   async function download() {
     setDownloading(true);
     try {
-      const page = await invoicesApi.list({ limit: 100 });
-      const csv = toCsv(
-        [
-          "Invoice",
-          "Issued",
-          "Due",
-          "Status",
-          "Amount",
-          "Platform fee",
-          "Tax",
-          "Total",
-          "Late fee charged",
-          "Amount due",
-          "Currency",
-          "Paid on",
-          "Notes",
-        ],
-        page.data.map((invoice) => [
-          invoice.invoiceNumber,
-          // ISO dates, not the display format: a spreadsheet sorts these and a
-          // human still reads them.
-          invoice.issuedAt?.slice(0, 10),
-          invoice.dueAt?.slice(0, 10),
-          invoice.status,
-          invoice.amount,
-          invoice.platformFee,
-          invoice.taxAmount,
-          invoice.totalAmount,
-          invoice.lateFeeCharged,
-          invoice.amountDue,
-          invoice.currency,
-          invoice.paidAt?.slice(0, 10),
-          invoice.notes,
-        ]),
-      );
-      downloadCsv(`medinova-invoices-${new Date().toISOString().slice(0, 10)}.csv`, csv);
-
-      const total = page.meta.total;
+      const { saved, total } = await exportInvoicesCsv();
       toast.show({
         tone: "success",
         title: tr("Invoices saved", "Invoices save hogaye"),
         body:
-          total > page.data.length
-            ? tr(
-                `The most recent ${page.data.length} of ${total}.`,
-                `${total} mein se haaliya ${page.data.length}.`,
-              )
-            : tr(`${page.data.length} invoice(s) in one file.`, `Ek file mein ${page.data.length} invoice.`),
+          total > saved
+            ? tr(`The most recent ${saved} of ${total}.`, `${total} mein se haaliya ${saved}.`)
+            : tr(`${saved} invoice(s) in one file.`, `Ek file mein ${saved} invoice.`),
       });
     } catch (cause) {
       toast.show({

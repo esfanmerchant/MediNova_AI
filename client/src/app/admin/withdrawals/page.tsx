@@ -18,38 +18,64 @@ import { useCallback, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
-import { ConsoleHeader, FinishedState } from "@/components/admin/console";
-import { useToast } from "@/components/overlays";
 import {
-  Badge,
-  Button,
-  Card,
-  ErrorState,
-  Field,
-  Input,
-  SkeletonRows,
-} from "@/components/ui";
-import { ApiError, withdrawalReview, type PendingWithdrawal } from "@/lib/api";
+  ConsoleCard,
+  ConsoleHeader,
+  CopyButton,
+  FinishedState,
+  PastelTile,
+  StatusPill,
+  consoleMoney,
+  consoleStamp,
+} from "@/components/admin/console";
+import { useNow } from "@/components/doctorApplication/shared";
+import { useToast } from "@/components/overlays";
+import { Button, ErrorState, Field, Input, SkeletonRows } from "@/components/ui";
+import { ApiError, withdrawalReview, type PendingWithdrawal, type WithdrawalMethod } from "@/lib/api";
 import { useTr } from "@/lib/lang";
 import { useAsync, QUEUE_REFRESH_MS } from "@/lib/useAsync";
 
-/** A value the administrator will copy into their banking app. */
-function Detail({ label, value }: { label: string; value: string }) {
+const DAY_MS = 86_400_000;
+
+/** Each service by the name on its own app, not the enum's capitals. */
+const METHOD: Record<WithdrawalMethod, string> = {
+  BANK: "Bank",
+  EASYPAISA: "Easypaisa",
+  JAZZCASH: "JazzCash",
+  NAYAPAY: "NayaPay",
+};
+
+/** A value the administrator will copy into their banking app, with the button that does it. */
+function Detail({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  const tr = useTr();
+  // A dt and a dd, and nothing else, inside the group — the copy button lives
+  // in the dd beside the value it copies.
   return (
-    <div>
-      <dt className="text-[11px] font-bold uppercase tracking-wider text-faint">{label}</dt>
-      <dd className="select-all font-mono text-sm font-semibold text-strong">{value}</dd>
+    <div className="flex flex-col gap-0.5 rounded-[14px] border border-line bg-card py-2 pr-1.5 pl-3">
+      <dt className="text-[12px] text-muted">{label}</dt>
+      <dd className="m-0 flex items-center gap-2">
+        <span className={mono ? "min-w-0 flex-1 truncate font-mono text-[12.5px] font-semibold text-strong" : "min-w-0 flex-1 truncate text-[13.5px] font-semibold text-strong"}>
+          {value}
+        </span>
+        <CopyButton value={value} label={tr(`Copy ${label.toLowerCase()}`, `${label} copy karein`)} />
+      </dd>
     </div>
   );
 }
 
-function Request({
-  withdrawal,
-  onDecided,
-}: {
-  withdrawal: PendingWithdrawal;
-  onDecided: () => void;
-}) {
+function initialsOf(name: string): string {
+  return (
+    name
+      .replace(/^Dr\.?\s+/i, "")
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? "")
+      .join("") || "?"
+  );
+}
+
+function Request({ withdrawal, onDecided }: { withdrawal: PendingWithdrawal; onDecided: () => void }) {
   const tr = useTr();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
@@ -77,10 +103,7 @@ function Request({
         toast.show({
           tone: "success",
           title: tr("Request rejected", "Darkhwast mustard ho gayi"),
-          body: tr(
-            "The amount is back in the doctor's balance.",
-            "Raqam doctor ke balance mein wapas chali gayi.",
-          ),
+          body: tr("The amount is back in the doctor's balance.", "Raqam doctor ke balance mein wapas chali gayi."),
         });
       }
       onDecided();
@@ -95,49 +118,46 @@ function Request({
     }
   }
 
+  const bank = withdrawal.method === "BANK";
+
   return (
-    <li className="rounded-2xl border border-line bg-card p-4 shadow-card">
+    <li className="flex flex-col gap-3.5 rounded-[20px] border border-line bg-sunken/40 px-[18px] py-4">
       <div className="flex flex-wrap items-center gap-3">
-        <span className="font-display text-lg font-bold tabular-nums text-strong">
-          {withdrawal.currency} {withdrawal.amount}
+        <span aria-hidden className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-pastel-sky text-[13px] font-bold text-primary">
+          {initialsOf(withdrawal.doctorName)}
         </span>
-        <Badge tone="neutral">{withdrawal.method}</Badge>
-        <span className="text-sm text-muted">{withdrawal.doctorName}</span>
-        <span className="ml-auto text-xs text-faint">
-          {withdrawal.createdAt ? new Date(withdrawal.createdAt).toLocaleString() : ""}
+        <span className="flex flex-col">
+          <span className="text-[15px] font-semibold text-strong">{withdrawal.doctorName}</span>
+          {withdrawal.createdAt && (
+            <span className="text-[12.5px] text-muted tabular-nums">
+              {tr(`Asked ${consoleStamp(withdrawal.createdAt)}`, `${consoleStamp(withdrawal.createdAt)} ko manga`)}
+            </span>
+          )}
+        </span>
+        <StatusPill>{METHOD[withdrawal.method]}</StatusPill>
+        <span className="ml-auto font-display text-[22px] font-bold text-strong tabular-nums">
+          {consoleMoney(withdrawal.amount, withdrawal.currency)}
         </span>
       </div>
 
-      <dl className="mt-3 grid gap-3 sm:grid-cols-3">
+      <dl className="grid gap-2.5 sm:grid-cols-3">
         <Detail label={tr("Account name", "Account ka naam")} value={withdrawal.accountName} />
+        <Detail label={bank ? tr("Account number", "Account number") : tr("Mobile number", "Mobile number")} value={withdrawal.accountNumber} mono />
         <Detail
-          label={
-            withdrawal.method === "BANK"
-              ? tr("Account number", "Account number")
-              : tr("Mobile number", "Mobile number")
-          }
-          value={withdrawal.accountNumber}
+          label={bank ? tr("Bank", "Bank") : tr("Service", "Service")}
+          value={withdrawal.bankName ?? METHOD[withdrawal.method]}
         />
-        {withdrawal.bankName && (
-          <Detail label={tr("Bank", "Bank")} value={withdrawal.bankName} />
-        )}
       </dl>
 
       {paying ? (
-        <div className="mt-4 space-y-3 rounded-xl border border-line bg-sunken p-3">
+        <div className="space-y-3 rounded-2xl border border-line bg-card p-4">
           <Field
             label={tr("Transfer reference", "Transfer ka reference")}
             htmlFor={`ref-${withdrawal.id}`}
             hint={tr("Optional, but useful later.", "Ikhtiyari, magar baad mein kaam aata hai.")}
           >
-            <Input
-              id={`ref-${withdrawal.id}`}
-              maxLength={120}
-              value={reference}
-              onChange={(event) => setReference(event.target.value)}
-            />
+            <Input id={`ref-${withdrawal.id}`} maxLength={120} value={reference} onChange={(event) => setReference(event.target.value)} />
           </Field>
-
           <div>
             <input
               id={`proof-${withdrawal.id}`}
@@ -148,13 +168,12 @@ function Request({
             />
             <label
               htmlFor={`proof-${withdrawal.id}`}
-              className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-line bg-card px-4 text-sm font-semibold text-strong hover:border-primary"
+              className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-full border border-line-strong bg-card px-[18px] text-[13.5px] font-semibold text-strong hover:bg-sunken"
             >
               <Icon name="image" className="text-[18px]" />
               {file ? file.name : tr("Attach the receipt", "Receipt lagayein")}
             </label>
           </div>
-
           <div className="flex flex-wrap gap-2">
             <Button loading={busy} onClick={() => act("paid")}>
               {tr("Confirm sent", "Bhej diya — tasdeeq")}
@@ -165,7 +184,7 @@ function Request({
           </div>
         </div>
       ) : rejecting ? (
-        <div className="mt-4 space-y-3 rounded-xl border border-line bg-sunken p-3">
+        <div className="space-y-3 rounded-2xl border border-critical/35 bg-critical-soft p-4">
           <Field
             label={tr("Why is this being rejected?", "Yeh kyun mustard ho raha hai?")}
             htmlFor={`reason-${withdrawal.id}`}
@@ -174,21 +193,10 @@ function Request({
               "Doctor yeh parhega, aur raqam us ke balance mein wapas chali jaye gi.",
             )}
           >
-            <Input
-              id={`reason-${withdrawal.id}`}
-              maxLength={500}
-              autoFocus
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-            />
+            <Input id={`reason-${withdrawal.id}`} maxLength={500} autoFocus value={reason} onChange={(event) => setReason(event.target.value)} />
           </Field>
           <div className="flex flex-wrap gap-2">
-            <Button
-              variant="danger"
-              loading={busy}
-              disabled={reason.trim().length < 3}
-              onClick={() => act("reject")}
-            >
+            <Button variant="danger" loading={busy} disabled={reason.trim().length < 3} onClick={() => act("reject")}>
               {tr("Reject request", "Darkhwast mustard karein")}
             </Button>
             <Button variant="ghost" onClick={() => setRejecting(false)}>
@@ -197,12 +205,12 @@ function Request({
           </div>
         </div>
       ) : (
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button onClick={() => setPaying(true)}>
-            <Icon name="send" className="text-[20px]" />
+            <Icon name="check" className="text-[18px]" />
             {tr("I have sent this", "Maine bhej diya hai")}
           </Button>
-          <Button variant="ghost" onClick={() => setRejecting(true)}>
+          <Button variant="ghost" className="!text-critical" onClick={() => setRejecting(true)}>
             {tr("Reject", "Mustard karein")}
           </Button>
         </div>
@@ -213,6 +221,7 @@ function Request({
 
 export default function AdminWithdrawals() {
   const tr = useTr();
+  const now = useNow(true, 60_000);
   const [refresh, setRefresh] = useState(0);
   const reload = useCallback(() => setRefresh((n) => n + 1), []);
   const queue = useAsync(() => withdrawalReview.pending({ limit: 50 }), [refresh], {
@@ -224,16 +233,23 @@ export default function AdminWithdrawals() {
   // the sum is shown when they agree, and left out rather than mixed when not.
   const currencies = new Set(rows.map((row) => row.currency));
   const total = rows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
-  const waitingTotal =
-    currencies.size === 1
-      ? `${[...currencies][0]} ${new Intl.NumberFormat("en-PK", { maximumFractionDigits: 0 }).format(total)}`
-      : null;
+  const oneCurrency = currencies.size === 1 ? [...currencies][0] : null;
+  const largest = rows.reduce<PendingWithdrawal | null>(
+    (best, row) => (!best || Number(row.amount) > Number(best.amount) ? row : best),
+    null,
+  );
+  const oldest = rows.reduce<PendingWithdrawal | null>(
+    (first, row) => (row.createdAt && (!first?.createdAt || row.createdAt < first.createdAt) ? row : first),
+    null,
+  );
+  const waitedDays = oldest?.createdAt ? Math.floor((now - Date.parse(oldest.createdAt)) / DAY_MS) : 0;
+  const figure = (value: number) => new Intl.NumberFormat("en-PK", { maximumFractionDigits: 0 }).format(value);
 
   return (
     <AppShell role="ADMIN">
       <div id="main" className="space-y-6">
-        <ConsoleHeader mark="withdrawals"
-          icon="account_balance"
+        <ConsoleHeader
+          mark="withdrawals"
           eyebrow={tr("Doctors' earnings, paid out", "Doctors ki kamai ki adaigi")}
           title={tr("Withdrawals", "Withdrawals")}
         >
@@ -246,10 +262,13 @@ export default function AdminWithdrawals() {
                     `${rows.length} doctors adaigi ke muntazir`,
                   )}
                 </a>
-                {waitingTotal && (
+                {oneCurrency && (
                   <>
-                    {tr(", ", ", ")}
-                    <b>{waitingTotal}</b> {tr("in all", "kul")}
+                    {", "}
+                    <b>
+                      {oneCurrency} {figure(total)}
+                    </b>{" "}
+                    {tr("in all", "kul")}
                   </>
                 )}
                 .{" "}
@@ -262,28 +281,73 @@ export default function AdminWithdrawals() {
           </p>
         </ConsoleHeader>
 
+        {rows.length > 0 && (
+          <div className="stagger grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <PastelTile
+              pastel="butter"
+              icon="account_balance_wallet"
+              label={tr("Waiting to be paid", "Adaigi baqi")}
+              unit={oneCurrency ?? undefined}
+              value={oneCurrency ? figure(total) : rows.length}
+              note={tr(`${rows.length} ${rows.length === 1 ? "request" : "requests"}`, `${rows.length} darkhwastein`)}
+            />
+            {largest && (
+              <PastelTile
+                pastel="sky"
+                icon="arrow_upward"
+                label={tr("Largest request", "Sab se bari darkhwast")}
+                unit={largest.currency}
+                value={figure(Number(largest.amount) || 0)}
+                note={largest.doctorName}
+              />
+            )}
+            {oldest?.createdAt && (
+              <PastelTile
+                pastel="lilac"
+                icon="schedule"
+                label={tr("Waiting longest", "Sab se lamba intezar")}
+                value={waitedDays < 1 ? tr("Today", "Aaj") : tr(`${waitedDays} ${waitedDays === 1 ? "day" : "days"}`, `${waitedDays} din`)}
+                note={tr(`Since ${consoleStamp(oldest.createdAt)}`, `${consoleStamp(oldest.createdAt)} se`)}
+              />
+            )}
+          </div>
+        )}
+
         <div id="requests" className="scroll-mt-24">
-          <Card icon="account_balance" title={tr("Requests", "Darkhwastein")}>
-            {queue.loading && <SkeletonRows rows={2} />}
-            {queue.error && <ErrorState message={queue.error.message} onRetry={queue.reload} />}
+          <ConsoleCard
+            icon="account_balance"
+            title={tr("Requests", "Darkhwastein")}
+            subtitle={tr(
+              "Oldest first. Copy each detail into the banking app; nothing is typed by hand.",
+              "Sab se purani pehle. Har detail banking app mein copy karein; kuch haath se na likhein.",
+            )}
+            className="rise-in"
+          >
+            {queue.loading && !queue.data && (
+              <div className="px-5 pb-5">
+                <SkeletonRows rows={2} title={false} />
+              </div>
+            )}
+            {queue.error && (
+              <div className="px-5 pb-5">
+                <ErrorState message={queue.error.message} onRetry={queue.reload} />
+              </div>
+            )}
             {queue.data && rows.length === 0 && (
               <FinishedState
                 size={130}
                 title={tr("Nothing waiting", "Kuch zer-e-intezar nahi")}
-                description={tr(
-                  "Withdrawal requests from doctors appear here.",
-                  "Doctors ki withdrawal darkhwastein yahan aayengi.",
-                )}
+                description={tr("Withdrawal requests from doctors appear here.", "Doctors ki withdrawal darkhwastein yahan aayengi.")}
               />
             )}
             {rows.length > 0 && (
-              <ul className="space-y-4">
+              <ul className="flex flex-col gap-2.5 px-3.5 pb-3.5">
                 {rows.map((withdrawal) => (
                   <Request key={withdrawal.id} withdrawal={withdrawal} onDecided={reload} />
                 ))}
               </ul>
             )}
-          </Card>
+          </ConsoleCard>
         </div>
       </div>
     </AppShell>

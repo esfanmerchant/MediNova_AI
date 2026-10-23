@@ -184,16 +184,6 @@ export function PaymentAccount() {
             </div>
           </div>
 
-          <p className="flex items-start gap-2 rounded-xl border border-line bg-sunken p-4 text-sm text-muted">
-            <Icon name="qr_code_2" className="mt-0.5 shrink-0 text-[18px] text-primary" />
-            <span>
-              {tr(
-                "The QR code shown beside these comes from client/public/brand/nayapay-qr.png. If that file is absent the numbers are shown on their own.",
-                "In ke saath dikhne wala QR code client/public/brand/nayapay-qr.png se aata hai. File na ho to sirf numbers dikhte hain.",
-              )}
-            </span>
-          </p>
-
           <div className="flex flex-wrap items-center gap-3">
             <Button onClick={save} loading={saving} disabled={!dirty}>
               {tr("Save account", "Account mehfooz karein")}

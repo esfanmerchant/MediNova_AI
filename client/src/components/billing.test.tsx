@@ -89,7 +89,8 @@ describe("amounts", () => {
     render(<InvoicesPanel />);
 
     await user.click(await screen.findByRole("button", { name: /view detail/i }));
-    expect(screen.getAllByText("PKR 80.00").length).toBeGreaterThan(0);
+    // Whole rupees are written without ".00" — PKR 80, as on the console.
+    expect(screen.getAllByText("PKR 80").length).toBeGreaterThan(0);
   });
 
   it("shows a credit note as negative", async () => {

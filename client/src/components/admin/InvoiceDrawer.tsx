@@ -1,16 +1,18 @@
 "use client";
 
 /**
- * One invoice, opened from search onto the Billing page.
+ * One invoice, opened from the Billing table or from search.
  *
- * The ledger below already expands a row in place; this is for the invoice
- * search found, which may be pages back in that ledger. It shows the same
- * detail the row does, read-only — recording a payment or issuing a credit
- * note stays on the row, where its confirmations live.
+ * The whole bill, and — on the Billing page, where `onChanged` is given — the
+ * counter's controls beneath it: record a payment, cancel an unpaid bill, or
+ * issue a credit note. Each keeps its own confirmation, as it did on the row.
+ * Printing keeps only the invoice; see `.invoice-print` in globals.css.
  */
 
-import { InvoiceDetail, STATUS_LABEL } from "@/components/billing";
+import { AdminActions, InvoiceDetail, PrintHeader, STATUS_LABEL } from "@/components/billing";
+import { Icon } from "@/components/Icon";
 import { Drawer } from "@/components/overlays";
+import { Button } from "@/components/ui";
 import type { Invoice } from "@/lib/api";
 import { useTr } from "@/lib/lang";
 
@@ -34,7 +36,16 @@ export function takeHeldInvoice(): Invoice | null {
   return invoice;
 }
 
-export function InvoiceDrawer({ invoice, onClose }: { invoice: Invoice | null; onClose: () => void }) {
+export function InvoiceDrawer({
+  invoice,
+  onClose,
+  onChanged,
+}: {
+  invoice: Invoice | null;
+  onClose: () => void;
+  /** Offers the counter's controls, and is told what they changed. */
+  onChanged?: (next: Invoice) => void;
+}) {
   const tr = useTr();
   return (
     <Drawer
@@ -47,8 +58,26 @@ export function InvoiceDrawer({ invoice, onClose }: { invoice: Invoice | null; o
           : undefined
       }
       width={600}
+      footer={
+        invoice ? (
+          <Button variant="ghost" onClick={() => window.print()}>
+            <Icon name="print" className="text-[18px]" />
+            {tr("Print", "Print karein")}
+          </Button>
+        ) : undefined
+      }
     >
-      {invoice && <InvoiceDetail invoice={invoice} />}
+      {invoice && (
+        <div className="invoice-print">
+          <PrintHeader invoice={invoice} />
+          <InvoiceDetail invoice={invoice} />
+          {onChanged && (
+            <div className="no-print">
+              <AdminActions invoice={invoice} onChanged={onChanged} />
+            </div>
+          )}
+        </div>
+      )}
     </Drawer>
   );
 }

@@ -8,38 +8,39 @@
  * here because of the role, but the API re-checks every request (spec §34).
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
-import { ConsoleHeader } from "@/components/admin/console";
-import {
-  PageSectionNav,
-  Section,
-  type Section as SectionSpec,
-} from "@/components/layout/PageSectionNav";
+import { Icon } from "@/components/Icon";
+import { AdminInvoices } from "@/components/admin/AdminInvoices";
+import { ConsoleHeader, consoleMoney } from "@/components/admin/console";
 import { InvoiceDrawer, INVOICE_HELD, peekHeldInvoice, takeHeldInvoice } from "@/components/admin/InvoiceDrawer";
-import { paymentReview, type Invoice } from "@/lib/api";
-import { useTr } from "@/lib/lang";
-import { PAGE_REFRESH_MS, useAsync } from "@/lib/useAsync";
 import { BillingRates } from "@/components/BillingRates";
+import { exportInvoicesCsv } from "@/components/billing";
 import { PaymentAccount } from "@/components/PaymentAccount";
 import { PaymentQueue } from "@/components/PaymentQueue";
-import { InvoicesPanel } from "@/components/billing";
-
-const SECTIONS: Array<SectionSpec & { words: [string, string] }> = [
-  { id: "to-confirm", label: "", words: ["To confirm", "Tasdeeq baqi"], icon: "fact_check", badge: "warning" },
-  { id: "rates", label: "", words: ["Rates", "Rates"], icon: "percent" },
-  { id: "wallets", label: "", words: ["Wallets", "Wallets"], icon: "account_balance_wallet" },
-  { id: "invoices", label: "", words: ["Invoices", "Invoices"], icon: "receipt_long" },
-];
+import { Drawer, useToast } from "@/components/overlays";
+import { Button } from "@/components/ui";
+import { ApiError, invoices, paymentReview, type Invoice } from "@/lib/api";
+import { useTr } from "@/lib/lang";
+import { PAGE_REFRESH_MS, useAsync } from "@/lib/useAsync";
 
 export default function AdminBilling() {
   const tr = useTr();
-  // One row is enough: the header wants the count, the queue below has the rows.
-  const waiting = useAsync(() => paymentReview.pending({ limit: 1 }), [], { refreshMs: PAGE_REFRESH_MS });
-  const toConfirm = waiting.data?.meta.total ?? 0;
+  const toast = useToast();
+  const [refresh, setRefresh] = useState(0);
+  const reload = useCallback(() => setRefresh((n) => n + 1), []);
+  const [rates, setRates] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
-  // An invoice search picked: held before this page arrived, or while it was showing.
+  // One row is enough: the header wants the count, the queue below has the rows.
+  const waiting = useAsync(() => paymentReview.pending({ limit: 1 }), [refresh], { refreshMs: PAGE_REFRESH_MS });
+  const toConfirm = waiting.data?.meta.total ?? 0;
+  // What is still owed on bills that are due, for the sentence.
+  const due = useAsync(() => invoices.list({ status: "ISSUED", limit: 1 }), [refresh], { refreshMs: PAGE_REFRESH_MS });
+
+  // An invoice opened from the table, or picked in search: held before this
+  // page arrived, or while it was showing.
   const [opened, setOpened] = useState<Invoice | null>(() => peekHeldInvoice());
   useEffect(() => {
     takeHeldInvoice();
@@ -47,13 +48,65 @@ export default function AdminBilling() {
     window.addEventListener(INVOICE_HELD, onHeld);
     return () => window.removeEventListener(INVOICE_HELD, onHeld);
   }, []);
+
+  // The setup checklist links to #wallets: the settings drawer opens for it.
+  useEffect(() => {
+    const onHash = () => {
+      if (window.location.hash === "#wallets" || window.location.hash === "#rates") setRates(true);
+    };
+    const timer = window.setTimeout(onHash, 0);
+    window.addEventListener("hashchange", onHash);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("hashchange", onHash);
+    };
+  }, []);
+
+  async function download() {
+    setDownloading(true);
+    try {
+      const { saved, total } = await exportInvoicesCsv();
+      toast.show({
+        tone: "success",
+        title: tr("Invoices saved", "Invoices save hogaye"),
+        body:
+          total > saved
+            ? tr(`The most recent ${saved} of ${total}.`, `${total} mein se haaliya ${saved}.`)
+            : tr(`${saved} invoice(s) in one file.`, `Ek file mein ${saved} invoice.`),
+      });
+    } catch (cause) {
+      toast.show({
+        tone: "critical",
+        title: tr("Could not save the invoices", "Invoices save nahi ho sake"),
+        body: cause instanceof ApiError ? cause.message : String(cause),
+      });
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  const dueCount = due.data?.meta.total ?? 0;
+  const owed = due.data?.meta.outstanding;
+
   return (
     <AppShell role="ADMIN">
-      <div id="main">
-        <ConsoleHeader mark="billing"
-          icon="receipt_long"
+      <div id="main" className="space-y-6">
+        <ConsoleHeader
+          mark="billing"
           eyebrow={tr("Invoices, payments and rates", "Invoices, adaigiyan aur rates")}
           title={tr("Billing", "Billing")}
+          actions={
+            <>
+              <Button variant="ghost" loading={downloading} onClick={() => void download()}>
+                <Icon name="download" className="text-[18px]" />
+                {tr("Download CSV", "CSV download")}
+              </Button>
+              <Button variant="secondary" onClick={() => setRates(true)}>
+                <Icon name="tune" className="text-[18px]" />
+                {tr("Rates and wallets", "Rates aur wallets")}
+              </Button>
+            </>
+          }
         >
           <p>
             {toConfirm > 0 ? (
@@ -69,60 +122,58 @@ export default function AdminBilling() {
             ) : (
               waiting.data && <>{tr("No payments are waiting to be confirmed. ", "Koi adaigi tasdeeq ki muntazir nahi. ")}</>
             )}
-            {tr(
-              "Every invoice in the hospital is here, and an issued one is never edited.",
-              "Hospital ka har invoice yahan hai, aur jari shuda kabhi badla nahi jaata.",
+            {owed !== undefined && dueCount > 0 && (
+              <>
+                <b>{consoleMoney(owed)}</b>{" "}
+                {tr(
+                  `is still due on ${dueCount} ${dueCount === 1 ? "invoice" : "invoices"}, and an issued invoice is never edited.`,
+                  `${dueCount} invoices par abhi baqi hai, aur jari shuda invoice kabhi badla nahi jaata.`,
+                )}
+              </>
             )}
+            {owed !== undefined && dueCount === 0 &&
+              tr(
+                "Every invoice in the hospital is here, and an issued one is never edited.",
+                "Hospital ka har invoice yahan hai, aur jari shuda kabhi badla nahi jaata.",
+              )}
           </p>
         </ConsoleHeader>
 
         {/* Payments waiting on somebody come first: it is the only thing on
-            this page that is *work*, and the rest is reference. */}
-        <PageSectionNav
-              mode="jump"
-              label={tr("Sections", "Hisse")}
-              sections={SECTIONS.map(({ words, ...section }) => ({ ...section, label: tr(...words) }))}
-            />
+            this page that is *work*. Shown only while there is some. */}
+        {toConfirm > 0 && (
+          <div id="to-confirm" className="scroll-mt-24">
+            <PaymentQueue />
+          </div>
+        )}
 
-        <Section id="to-confirm">
-<div className="mt-6">
-          <PaymentQueue />
-        </div>
+        <AdminInvoices refresh={refresh} onOpen={setOpened} />
 
-        {/* Then the settings that shape what the ledger below will look like. */}
-        
-        </Section>
+        <InvoiceDrawer
+          invoice={opened}
+          onClose={() => setOpened(null)}
+          onChanged={(next) => {
+            setOpened(next);
+            reload();
+          }}
+        />
 
-        <Section id="rates">
-<div className="mt-6">
-          <BillingRates />
-        </div>
-
-        
-        </Section>
-
-        <Section id="wallets">
-<div className="mt-6">
-          <PaymentAccount />
-        </div>
-
-        
-        </Section>
-
-        <Section id="invoices">
-<div className="mt-6">
-          <InvoicesPanel
-            canManage
-            title={tr("All invoices", "Tamam invoices")}
-            description={tr(
-              "Record payments, cancel unpaid invoices, and issue credit notes.",
-              "Adaigi darj karein, ghair-ada invoices mansookh karein, aur credit notes banayein.",
-            )}
-          />
-        </div>
-        </Section>
-
-        <InvoiceDrawer invoice={opened} onClose={() => setOpened(null)} />
+        {/* The settings that shape every new bill, out of the ledger's way. */}
+        <Drawer
+          open={rates}
+          onClose={() => setRates(false)}
+          title={tr("Rates and wallets", "Rates aur wallets")}
+          description={tr(
+            "What a new invoice charges, and where patients send the money.",
+            "Naya invoice kya charge karta hai, aur mareez raqam kahan bhejte hain.",
+          )}
+          width={620}
+        >
+          <div className="flex flex-col gap-6">
+            <BillingRates />
+            <PaymentAccount />
+          </div>
+        </Drawer>
       </div>
     </AppShell>
   );
