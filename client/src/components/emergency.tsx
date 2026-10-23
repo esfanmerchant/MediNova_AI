@@ -15,9 +15,10 @@
  */
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Icon } from "@/components/Icon";
+import { Art, FinishedState, LiveDot } from "@/components/admin/console";
 import {
   Badge,
   Button,
@@ -157,7 +158,7 @@ function GrantCard({ grant, onRevoked }: { grant: EmergencyGrant; onRevoked: () 
             {tr(`record${grant.accessCount === 1 ? "" : "s"} opened`, "record khole gaye")}
           </span>
           <span className="ml-auto text-xs tabular-nums text-muted">
-            {tr("patient", "mareez")} {grant.patientId}
+            {grant.patientMrn ? tr("record", "record") : tr("patient", "mareez")} {grant.patientMrn ?? grant.patientId}
           </span>
         </div>
 
@@ -466,8 +467,10 @@ function ReviewRow({ grant, onReviewed }: { grant: EmergencyGrant; onReviewed: (
               {grant.accessCount}
             </span>{" "}
             {tr(`record${grant.accessCount === 1 ? "" : "s"} opened`, "record khole gaye")} ·{" "}
-            {tr("patient", "mareez")}{" "}
-            <span className="tabular-nums">{grant.patientId}</span>
+            {grant.patientMrn ? tr("record", "record") : tr("patient", "mareez")}{" "}
+            {/* The record number a person can look up; the internal id only
+                when the API did not send one. */}
+            <span className="font-mono tabular-nums">{grant.patientMrn ?? grant.patientId}</span>
           </p>
 
           {reviewed && grant.reviewNotes && (
@@ -540,16 +543,130 @@ function ReviewRow({ grant, onReviewed }: { grant: EmergencyGrant; onReviewed: (
  * these, and a number only visible to someone who already suspected there was
  * something to see is not a control.
  */
+/**
+ * A grant that is open right now, said at the top of the review queue in red:
+ * who holds it, on which record, why, and how long it has left. An
+ * administrator may end it — the API allows the holder or a reviewer to — and
+ * is asked once more first, because the clinician loses access mid-shift.
+ */
+function LiveGrant({ grant, onEnded }: { grant: EmergencyGrant; onEnded: (next: EmergencyGrant) => void }) {
+  const tr = useTr();
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // A clock of its own, so the ring and the minutes run down while the page
+  // is open rather than standing at whatever they were when it loaded.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const total = Math.max(1, new Date(grant.expiresAt).getTime() - new Date(grant.grantedAt).getTime());
+  const left = Math.max(0, new Date(grant.expiresAt).getTime() - now);
+  const minutes = Math.round(left / 60_000);
+
+  const end = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      onEnded(await emergencyApi.revoke(grant.id));
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : tr("Could not end the access.", "Access khatam nahi ho saki."));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section
+      aria-label={tr("Emergency access open now", "Abhi khuli emergency access")}
+      className="relative overflow-hidden rounded-3xl bg-[linear-gradient(140deg,#3B0A12,#6A1420_55%,#8A1E2B)] p-5 text-[#FDE8EA] sm:p-6"
+    >
+      <div className="flex flex-wrap items-start gap-4">
+        <Art name="siren" size={64} className="shrink-0" />
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <p className="mono-caps flex items-center gap-2 text-[0.68rem] text-[#FFB4B8]">
+            <LiveDot tone="red" />
+            {tr("Open now", "Abhi khuli")}
+          </p>
+          <p className="font-display text-lg leading-snug font-bold text-white">
+            {tr(
+              `${grant.requesterName ?? "A deleted account"} has emergency access to record ${grant.patientMrn ?? grant.patientId}`,
+              `${grant.requesterName ?? "Hataya gaya account"} ke paas record ${grant.patientMrn ?? grant.patientId} ki emergency access hai`,
+            )}
+          </p>
+          <p className="text-[13.5px] text-[#F7C9CD]">“{grant.reason}”</p>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl bg-white/[0.08] px-3.5 py-2.5">
+        <svg aria-hidden viewBox="0 0 40 40" className="h-9 w-9 shrink-0 -rotate-90">
+          <circle cx="20" cy="20" r="15" fill="none" stroke="rgba(255,255,255,.15)" strokeWidth="5" />
+          <circle
+            cx="20"
+            cy="20"
+            r="15"
+            fill="none"
+            stroke="#FFB4B8"
+            strokeWidth="5"
+            strokeLinecap="round"
+            pathLength={1}
+            strokeDasharray={`${left / total} 1`}
+          />
+        </svg>
+        <span className="flex-1 text-[13.5px] font-semibold">
+          {tr(
+            `${minutes} min left · ${grant.accessCount} ${grant.accessCount === 1 ? "record" : "records"} opened so far`,
+            `${minutes} min baqi · ab tak ${grant.accessCount} record khole gaye`,
+          )}
+        </span>
+        {confirming ? (
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="text-[13px]">{tr("They lose access at once.", "Un ki access foran khatam hogi.")}</span>
+            <Button variant="danger" loading={busy} onClick={() => void end()}>
+              {tr("End it now", "Abhi khatam karein")}
+            </Button>
+            <Button variant="ghost" className="text-white hover:bg-white/10" onClick={() => setConfirming(false)}>
+              {tr("Keep it open", "Khuli rehne dein")}
+            </Button>
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setConfirming(true)}
+            className="min-h-10 rounded-full border border-white/30 px-4 text-[13px] font-semibold text-white hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-white"
+          >
+            {tr("End access now", "Access abhi khatam karein")}
+          </button>
+        )}
+      </div>
+      {error && (
+        <p role="alert" className="mt-2 text-sm font-semibold text-white">
+          {error}
+        </p>
+      )}
+    </section>
+  );
+}
+
 export function EmergencyReviewPanel() {
   const tr = useTr();
   const fetched = useAsync(() => emergencyApi.list({ limit: 50 }), []);
   const [reviewed, setReviewed] = useState<Record<string, EmergencyGrant>>({});
 
   const rows = (fetched.data?.data ?? []).map((grant) => reviewed[grant.id] ?? grant);
+  const live = rows.filter((grant) => grant.live && grant.status === "ACTIVE");
   const outstanding = fetched.data?.meta.unreviewed ?? 0;
   const firstUnreviewed = rows.find((grant) => !grant.reviewedAt);
 
   return (
+    <div className="flex flex-col gap-5">
+    {live.map((grant) => (
+      <LiveGrant
+        key={grant.id}
+        grant={grant}
+        onEnded={(next) => setReviewed((current) => ({ ...current, [next.id]: next }))}
+      />
+    ))}
     <Card
       icon="fact_check"
       title={tr("Emergency access", "Emergency access")}
@@ -594,8 +711,9 @@ export function EmergencyReviewPanel() {
       {fetched.error && <ErrorState message={fetched.error.message} onRetry={fetched.reload} />}
 
       {!fetched.loading && !fetched.error && rows.length === 0 && (
-        <EmptyState
-          icon="verified_user"
+        <FinishedState
+          art="shield"
+          size={130}
           title={tr("No emergency access has been used", "Ab tak koi emergency access istemal nahi hui")}
           description={tr(
             "Break-glass grants appear here as soon as they are issued.",
@@ -610,12 +728,9 @@ export function EmergencyReviewPanel() {
             {outstanding > 0 && (
               <motion.div key="backlog" {...EXPAND} className="overflow-hidden">
                 <div className="edge-pulse flex flex-wrap items-center gap-4 rounded-2xl border border-critical/40 bg-critical-soft p-4 pl-5">
-                  <span
-                    aria-hidden
-                    className="animate-breathe grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-card text-critical shadow-sm"
-                  >
-                    <Icon name="e911_emergency" filled className="text-[24px]" />
-                  </span>
+                  {/* The siren is the one drawing in this queue; the strip's
+                      pulsing edge is what says it is live, so the art holds still. */}
+                  <Art name="siren" size={56} className="shrink-0" />
                   <div className="min-w-0 flex-1">
                     <p className="font-display font-bold text-critical">
                       <span className="tabular-nums">{outstanding}</span>{" "}
@@ -642,6 +757,24 @@ export function EmergencyReviewPanel() {
                 </div>
               </motion.div>
             )}
+            {outstanding === 0 && (
+              <motion.div key="caught-up" {...EXPAND} className="overflow-hidden">
+                <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-line bg-sunken/60 p-4 pl-5">
+                  <Art name="caught-up" size={96} className="shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-display font-bold text-strong">
+                      {tr("Every grant has been reviewed", "Har grant ka jaiza ho chuka")}
+                    </p>
+                    <p className="mt-0.5 text-sm text-muted">
+                      {tr(
+                        "Each decision is sealed in the audit trail.",
+                        "Har faisla audit trail mein mohar band hai.",
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </motion.div>
+            )}
           </AnimatePresence>
 
           <ul className="stagger space-y-3">
@@ -656,5 +789,6 @@ export function EmergencyReviewPanel() {
         </div>
       )}
     </Card>
+    </div>
   );
 }

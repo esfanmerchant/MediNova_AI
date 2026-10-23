@@ -9,7 +9,7 @@
  */
 
 import { AppShell } from "@/components/AppShell";
-import { PageHeader } from "@/components/PageHeader";
+import { ConsoleHeader } from "@/components/admin/console";
 import { useTr } from "@/lib/lang";
 import { EmergencyReviewPanel } from "@/components/emergency";
 
@@ -18,14 +18,18 @@ export default function AdminEmergency() {
   return (
     <AppShell role="ADMIN">
       <div id="main">
-        <PageHeader
-          eyebrow={tr("Admin portal", "Intezami portal")}
+        <ConsoleHeader
+          icon="e911_emergency"
+          eyebrow={tr("Break-glass, reviewed afterwards", "Break-glass, baad mein review")}
           title={tr("Emergency access", "Emergency access")}
-          subtitle={tr(
-            "Break-glass access is granted immediately — a clinician who cannot get in during an emergency is a clinician who starts sharing logins. Reviewing each grant afterwards is what makes that safe, so nothing here is closed until someone has read it.",
-            "Emergency access foran milta hai — jo doctor waqt par andar na ja sake, woh login share karna shuru kar deta hai. Har grant ka baad mein review hi isay mehfooz banata hai, is liye jab tak koi parh na le, yahan kuchh band nahi hota.",
-          )}
-        />
+        >
+          <p>
+            {tr(
+              "Break-glass access is granted immediately — a clinician who cannot get in during an emergency is a clinician who starts sharing logins. Reviewing each grant afterwards is what makes that safe, so nothing here is closed until someone has read it.",
+              "Emergency access foran milta hai — jo doctor waqt par andar na ja sake, woh login share karna shuru kar deta hai. Har grant ka baad mein review hi isay mehfooz banata hai, is liye jab tak koi parh na le, yahan kuchh band nahi hota.",
+            )}
+          </p>
+        </ConsoleHeader>
 
         <div className="mt-6">
           <EmergencyReviewPanel />

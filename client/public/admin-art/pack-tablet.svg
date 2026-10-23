@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160">
+  <defs>
+    <linearGradient id="foil" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".55" stop-color="#E9EFF7"/><stop offset="1" stop-color="#CBD8EB"/></linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#A9BEDF"/><stop offset="1" stop-color="#8099C6"/></linearGradient>
+    <linearGradient id="band" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1A8FC7"/><stop offset="1" stop-color="#0B3FA8"/></linearGradient>
+    <radialGradient id="pill" cx=".36" cy=".3" r=".75"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".65" stop-color="#F1F5FA"/><stop offset="1" stop-color="#C3D2E8"/></radialGradient>
+    <radialGradient id="s" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#0B1630" stop-opacity=".22"/><stop offset="1" stop-color="#0B1630" stop-opacity="0"/></radialGradient>
+  </defs>
+  <ellipse cx="80" cy="141" rx="58" ry="8" fill="url(#s)"/>
+  <g transform="rotate(-10 80 80)">
+    <rect x="18" y="44" width="124" height="84" rx="13" fill="url(#edge)"/>
+    <rect x="18" y="38" width="124" height="84" rx="13" fill="url(#foil)"/>
+    <path d="M18 51a13 13 0 0 1 13-13h11v84H31a13 13 0 0 1-13-13z" fill="url(#band)"/>
+    <path d="M27 54v30" stroke="#FFFFFF" stroke-opacity=".7" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M34 54v18" stroke="#FFFFFF" stroke-opacity=".4" stroke-width="3.5" stroke-linecap="round"/>
+    <circle cx="64" cy="62" r="13" fill="#D4DFEE"/><circle cx="64" cy="61" r="10.5" fill="url(#pill)"/><path d="M58 61h12" stroke="#C3D2E8" stroke-width="1.8" stroke-linecap="round"/>
+    <circle cx="94" cy="62" r="13" fill="#D4DFEE"/><circle cx="94" cy="61" r="10.5" fill="url(#pill)"/><path d="M88 61h12" stroke="#C3D2E8" stroke-width="1.8" stroke-linecap="round"/>
+    <circle cx="124" cy="62" r="13" fill="#D4DFEE"/><circle cx="124" cy="61" r="10.5" fill="url(#pill)"/><path d="M118 61h12" stroke="#C3D2E8" stroke-width="1.8" stroke-linecap="round"/>
+    <circle cx="64" cy="98" r="13" fill="#D4DFEE"/><circle cx="64" cy="97" r="10.5" fill="url(#pill)"/><path d="M58 97h12" stroke="#C3D2E8" stroke-width="1.8" stroke-linecap="round"/>
+    <circle cx="94" cy="98" r="13" fill="#D4DFEE"/><circle cx="94" cy="97" r="10.5" fill="url(#pill)"/><path d="M88 97h12" stroke="#C3D2E8" stroke-width="1.8" stroke-linecap="round"/>
+    <circle cx="124" cy="98" r="12" fill="#C9D6EA" stroke="#A9BEDF" stroke-width="1.5" stroke-dasharray="3 2.5"/>
+  </g>
+</svg>

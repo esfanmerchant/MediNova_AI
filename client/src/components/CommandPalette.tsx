@@ -42,7 +42,22 @@ export interface PaletteItem {
   /** The rail section this page sits in, translated. Used as the group title. */
   section: string;
   icon: string;
+  /** A second line under the label — whose order, which role. */
+  detail?: string;
+  /** Runs before navigating, for a result that hands something to the page it opens. */
+  onPick?: () => void;
 }
+
+/**
+ * Looks a query up on the server: people, orders — anything that is a record
+ * rather than a page. Results arrive above the pages that match.
+ */
+export type PaletteSearch = (query: string) => Promise<PaletteItem[]>;
+
+/** Long enough to mean something, short enough to find a two-letter surname. */
+const SEARCH_MIN = 2;
+/** Typing pauses this long before the server is asked. */
+const SEARCH_DELAY_MS = 250;
 
 /**
  * A forgiving subsequence match, scored so the obvious answer sorts first.
@@ -82,12 +97,54 @@ export function fuzzyScore(query: string, text: string): number | null {
  * which is why there is no code anywhere that resets it. A palette that
  * remembered the last search would make the second use slower than the first.
  */
-function Palette({ onClose, items }: { onClose: () => void; items: PaletteItem[] }) {
+function Palette({
+  onClose,
+  items,
+  search,
+  placeholder,
+}: {
+  onClose: () => void;
+  items: PaletteItem[];
+  search?: PaletteSearch;
+  placeholder?: string;
+}) {
   const tr = useTr();
   const router = useRouter();
   const calm = useCalmMotion();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
+  // Server results, tagged with the query that produced them: a slow answer to
+  // an old query is simply not shown, rather than raced against a new one.
+  const [found, setFound] = useState<{ query: string; items: PaletteItem[] }>({ query: "", items: [] });
+  const [searching, setSearching] = useState(false);
+
+  useEffect(() => {
+    const term = query.trim();
+    if (!search || term.length < SEARCH_MIN) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setSearching(true);
+      search(term)
+        .then((results) => {
+          if (!cancelled) setFound({ query: term, items: results });
+        })
+        .catch(() => {
+          if (!cancelled) setFound({ query: term, items: [] });
+        })
+        .finally(() => {
+          if (!cancelled) setSearching(false);
+        });
+    }, SEARCH_DELAY_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [query, search]);
+
+  const records = useMemo(
+    () => (found.query === query.trim() && query.trim().length >= SEARCH_MIN ? found.items : []),
+    [found, query],
+  );
   const listId = `palette-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const field = useRef<HTMLInputElement>(null);
 
@@ -110,7 +167,7 @@ function Palette({ onClose, items }: { onClose: () => void; items: PaletteItem[]
       .map((entry) => entry.item);
 
     const sections: { label: string; items: { item: PaletteItem; index: number }[] }[] = [];
-    for (const item of ranked) {
+    for (const item of [...records, ...ranked]) {
       const existing = sections.find((section) => section.label === item.section);
       if (existing) existing.items.push({ item, index: 0 });
       else sections.push({ label: item.section, items: [{ item, index: 0 }] });
@@ -123,7 +180,7 @@ function Palette({ onClose, items }: { onClose: () => void; items: PaletteItem[]
       }
     }
     return { sections, flat: sections.flatMap((section) => section.items.map((e) => e.item)) };
-  }, [items, query]);
+  }, [items, query, records]);
 
   const count = results.flat.length;
   const activeId = count > 0 ? `${listId}-option-${Math.min(active, count - 1)}` : undefined;
@@ -150,6 +207,7 @@ function Palette({ onClose, items }: { onClose: () => void; items: PaletteItem[]
   const go = useCallback(
     (item: PaletteItem | undefined) => {
       if (!item) return;
+      item.onPick?.();
       onClose();
       router.push(item.href);
     },
@@ -195,8 +253,8 @@ function Palette({ onClose, items }: { onClose: () => void; items: PaletteItem[]
           aria-controls={listId}
           aria-autocomplete="list"
           aria-activedescendant={activeId}
-          aria-label={tr("Search pages", "Safhaat mein dhoondein")}
-          placeholder={tr("Go to a page…", "Kisi safhe par jayein…")}
+          aria-label={search ? tr("Search", "Dhoondein") : tr("Search pages", "Safhaat mein dhoondein")}
+          placeholder={placeholder ?? tr("Go to a page…", "Kisi safhe par jayein…")}
           value={query}
           onChange={(event) => {
             setQuery(event.target.value);
@@ -205,6 +263,7 @@ function Palette({ onClose, items }: { onClose: () => void; items: PaletteItem[]
           onKeyDown={onKeyDown}
           className="min-h-14 w-full bg-transparent text-base text-strong outline-none placeholder:text-faint"
         />
+        {searching && <span aria-hidden className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-line border-t-primary" />}
         <kbd className="mono-caps hidden shrink-0 rounded-md border border-line-strong px-1.5 py-0.5 text-[10px] text-faint sm:block">
           Esc
         </kbd>
@@ -212,13 +271,23 @@ function Palette({ onClose, items }: { onClose: () => void; items: PaletteItem[]
 
       {/* The count, for a reader who cannot see the list shrink. */}
       <p role="status" className="sr-only">
-        {count === 1 ? tr("1 page", "1 safha") : `${count} ${tr("pages", "safhaat")}`}
+        {search
+          ? count === 1
+            ? tr("1 result", "1 natija")
+            : `${count} ${tr("results", "nataij")}`
+          : count === 1
+            ? tr("1 page", "1 safha")
+            : `${count} ${tr("pages", "safhaat")}`}
       </p>
 
       <div id={listId} role="listbox" className="max-h-[52vh] overflow-y-auto p-2">
         {count === 0 && (
           <p className="px-3 py-8 text-center text-sm text-muted">
-            {tr("No page matches that.", "Is se koi safha nahi milta.")}
+            {searching
+              ? tr("Looking…", "Dhoond rahe hain…")
+              : search
+                ? tr("Nothing matches that.", "Is se kuchh nahi milta.")
+                : tr("No page matches that.", "Is se koi safha nahi milta.")}
           </p>
         )}
 
@@ -229,7 +298,9 @@ function Palette({ onClose, items }: { onClose: () => void; items: PaletteItem[]
               const selected = index === active;
               return (
                 <div
-                  key={item.href}
+                  // Records share a page — every person opens /admin/users — so
+                  // the key needs what tells them apart, not just where they go.
+                  key={`${item.section}-${item.href}-${item.label}-${item.detail ?? ""}`}
                   id={`${listId}-option-${index}`}
                   role="option"
                   aria-selected={selected}
@@ -252,7 +323,10 @@ function Palette({ onClose, items }: { onClose: () => void; items: PaletteItem[]
                     />
                   )}
                   <Icon name={item.icon} filled={selected} className="relative text-[20px]" />
-                  <span className="relative min-w-0 flex-1 truncate">{item.label}</span>
+                  <span className="relative min-w-0 flex-1">
+                    <span className="block truncate">{item.label}</span>
+                    {item.detail && <span className="block truncate text-[12px] font-normal text-faint">{item.detail}</span>}
+                  </span>
                   {selected && <Icon name="keyboard_return" className="relative text-[18px] text-faint" />}
                 </div>
               );
@@ -278,10 +352,15 @@ export function CommandPalette({
   open,
   onClose,
   items,
+  search,
+  placeholder,
 }: {
   open: boolean;
   onClose: () => void;
   items: PaletteItem[];
+  /** Records to look up as well as pages — the console's people and orders. */
+  search?: PaletteSearch;
+  placeholder?: string;
 }) {
   const tr = useTr();
   return (
@@ -293,10 +372,10 @@ export function CommandPalette({
       placement="top"
       layer="z-[120]"
       trap={false}
-      label={tr("Search pages", "Safhaat mein dhoondein")}
+      label={search ? tr("Search", "Dhoondein") : tr("Search pages", "Safhaat mein dhoondein")}
       className="glass max-w-xl overflow-hidden rounded-2xl"
     >
-      <Palette onClose={onClose} items={items} />
+      <Palette onClose={onClose} items={items} search={search} placeholder={placeholder} />
     </AnimatedModal>
   );
 }

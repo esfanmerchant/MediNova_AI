@@ -12,7 +12,7 @@ import { useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
-import { PageHeader } from "@/components/PageHeader";
+import { ConsoleHeader } from "@/components/admin/console";
 import { useToast } from "@/components/overlays";
 import { PharmacyAdminTabs } from "@/components/pharmacy/AdminTabs";
 import { Switch } from "@/components/forms";
@@ -28,11 +28,9 @@ export default function PharmacySettingsPage() {
   return (
     <AppShell role="ADMIN">
       <div id="main">
-        <PageHeader
-          eyebrow={tr("Pharmacy", "Pharmacy")}
-          title={tr("Settings", "Settings")}
-          subtitle={tr("Delivery, cash on delivery, and the pharmacy's licence.", "Delivery, cash on delivery, aur pharmacy ka licence.")}
-        />
+        <ConsoleHeader icon="tune" eyebrow={tr("Pharmacy", "Pharmacy")} title={tr("Pharmacy settings", "Pharmacy settings")}>
+          <p>{tr("Delivery, cash on delivery, and the pharmacy's licence.", "Delivery, cash on delivery, aur pharmacy ka licence.")}</p>
+        </ConsoleHeader>
         <div className="mt-6">
           <PharmacyAdminTabs />
         </div>

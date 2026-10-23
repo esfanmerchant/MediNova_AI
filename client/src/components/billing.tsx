@@ -69,7 +69,7 @@ const STATUS_TONE: Record<InvoiceStatus, "good" | "warning" | "critical" | "neut
   DRAFT: "neutral",
 };
 
-const STATUS_LABEL: Record<InvoiceStatus, [string, string]> = {
+export const STATUS_LABEL: Record<InvoiceStatus, [string, string]> = {
   PAID: ["Paid", "Ada shuda"],
   ISSUED: ["Due", "Wajib-ul-ada"],
   OVERDUE: ["Overdue", "Muddat guzar gayi"],
@@ -249,7 +249,7 @@ function PrintHeader({ invoice }: { invoice: Invoice }) {
   );
 }
 
-function InvoiceDetail({ invoice }: { invoice: Invoice }) {
+export function InvoiceDetail({ invoice }: { invoice: Invoice }) {
   const tr = useTr();
   return (
     <div className="space-y-4">
@@ -667,6 +667,14 @@ function InvoiceRow({
                   </span>
                 )}
               </p>
+              {invoice.patientName && (
+                <p className="mt-0.5 text-[13px] font-medium text-strong">
+                  {invoice.patientName}
+                  {invoice.medicalRecordNumber && (
+                    <span className="ml-1.5 font-mono text-[11.5px] font-normal text-faint">{invoice.medicalRecordNumber}</span>
+                  )}
+                </p>
+              )}
               <p className="mt-0.5 text-xs text-faint">
                 {tr("Issued", "Jari hua")} {when(invoice.issuedAt)}
                 {invoice.status === "OVERDUE" &&

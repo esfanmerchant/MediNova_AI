@@ -27,6 +27,7 @@ import { createPortal } from "react-dom";
 
 import { Icon } from "@/components/Icon";
 import { cx } from "@/components/ui";
+import { useTr } from "@/lib/lang";
 import { SPRING, TRANSITION, useCalmMotion } from "@/lib/motion";
 // Portals need the document, which the server does not have.
 import { useHydrated as useMounted } from "@/lib/useHydrated";
@@ -307,6 +308,7 @@ export function Dialog({
   footer?: ReactNode;
   size?: "sm" | "md" | "lg";
 }) {
+  const tr = useTr();
   const labelId = useId();
   const widths = { sm: "max-w-sm", md: "max-w-lg", lg: "max-w-2xl" } as const;
 
@@ -337,7 +339,7 @@ export function Dialog({
         </div>
         <button
           type="button"
-          aria-label="Close"
+          aria-label={tr("Close", "Band karein")}
           onClick={onClose}
           className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted transition-[background-color,color,transform] hover:rotate-90 hover:scale-110 hover:bg-sunken hover:text-strong focus-visible:outline-2 focus-visible:outline-primary"
         >
@@ -380,6 +382,7 @@ export function Drawer({
   side?: "right" | "left";
   width?: number;
 }) {
+  const tr = useTr();
   const labelId = useId();
 
   return (
@@ -393,7 +396,7 @@ export function Drawer({
         </div>
         <button
           type="button"
-          aria-label="Close"
+          aria-label={tr("Close", "Band karein")}
           onClick={onClose}
           className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted transition-[background-color,color,transform] hover:rotate-90 hover:bg-sunken hover:text-strong focus-visible:outline-2 focus-visible:outline-primary"
         >

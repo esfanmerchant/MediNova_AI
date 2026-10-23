@@ -20,6 +20,8 @@
 import { motion } from "framer-motion";
 import Link from "next/link";
 import {
+  createContext,
+  useContext,
   useEffect,
   useId,
   useRef,
@@ -30,6 +32,7 @@ import {
 
 import { Icon } from "@/components/Icon";
 import { CountUp } from "@/components/motion";
+import { useTr } from "@/lib/lang";
 import { SPRING, pulse, useCalmMotion } from "@/lib/motion";
 
 // The count-up lives with the rest of the motion system now; re-exported so
@@ -106,6 +109,15 @@ function useTilt(ref: React.RefObject<HTMLElement | null>, enabled: boolean, max
   return { onMove, onLeave, onDown, onUp };
 }
 
+/**
+ * True inside the administration console. The shell sets it, and the shared
+ * Card reads it to wear the console's surface — larger corners, an open
+ * header — so the components the console borrows from the portals (the
+ * payment queue, the invoice ledger, the audit panel) match the console's own
+ * cards without the portals changing at all.
+ */
+export const ConsoleSurface = createContext(false);
+
 export function Card({
   title,
   description,
@@ -134,6 +146,7 @@ export function Card({
 }) {
   const shell = useRef<HTMLElement | null>(null);
   const tilt = useTilt(shell, interactive);
+  const inConsole = useContext(ConsoleSurface);
   const shells = {
     default: "border border-line bg-card shadow-card",
     glass: "glass",
@@ -147,26 +160,36 @@ export function Card({
       onMouseLeave={interactive ? tilt.onLeave : undefined}
       onPointerDown={interactive ? tilt.onDown : undefined}
       onPointerUp={interactive ? tilt.onUp : undefined}
-      className={cx("rounded-2xl", shells[variant], interactive && "tilt card-hover", className)}
+      className={cx(inConsole ? "rounded-3xl" : "rounded-2xl", shells[variant], interactive && "tilt card-hover", className)}
     >
       {(title || action) && (
-        <header className="flex flex-wrap items-center gap-3 border-b border-line px-6 py-5">
+        <header
+          className={cx(
+            "flex flex-wrap items-center gap-3",
+            inConsole ? "px-5 pt-5 pb-3 sm:px-6" : "border-b border-line px-6 py-5",
+          )}
+        >
           {icon && (
             <span
               aria-hidden
-              className="bg-gradient-soft grid h-11 w-11 shrink-0 place-items-center rounded-xl text-primary"
+              className={cx(
+                "grid shrink-0 place-items-center text-primary",
+                inConsole ? "h-10 w-10 rounded-2xl bg-sunken" : "bg-gradient-soft h-11 w-11 rounded-xl",
+              )}
             >
-              <Icon name={icon} className="text-[22px]" />
+              <Icon name={icon} className={inConsole ? "text-[20px]" : "text-[22px]"} />
             </span>
           )}
           <div className="min-w-0">
-            {title && <h2 className="font-display text-lg font-bold text-strong">{title}</h2>}
-            {description && <p className="mt-1 text-sm text-muted">{description}</p>}
+            {title && (
+              <h2 className={cx("font-display font-bold text-strong", inConsole ? "text-[1.05rem]" : "text-lg")}>{title}</h2>
+            )}
+            {description && <p className={cx("text-muted", inConsole ? "mt-0.5 text-[13px]" : "mt-1 text-sm")}>{description}</p>}
           </div>
           {action && <div className="ml-auto">{action}</div>}
         </header>
       )}
-      <div className={flush ? undefined : "p-6"}>{children}</div>
+      <div className={flush ? undefined : inConsole && (title || action) ? "px-5 pt-2 pb-5 sm:px-6" : "p-6"}>{children}</div>
     </section>
   );
 }
@@ -435,7 +458,8 @@ export function Avatar({
     .join("");
   const palettes = [
     "bg-primary-soft text-primary",
-    "bg-accent-soft text-accent",
+    // The brand teal is 4.2:1 on its own tint; initials take a step darker.
+    "bg-accent-soft text-[#076b75] dark:text-accent",
     "bg-warning-soft text-warning",
     "bg-[#ece4ff] text-[#4a2fa3]",
     "bg-[#ffe3f1] text-[#8c1d5a]",
@@ -970,7 +994,7 @@ export function EmptyState({
 }
 
 export function ErrorState({
-  title = "Something went wrong",
+  title,
   message,
   onRetry,
 }: {
@@ -978,15 +1002,27 @@ export function ErrorState({
   message: string;
   onRetry?: () => void;
 }) {
+  const tr = useTr();
   return (
     <div role="alert" className="flex gap-3 rounded-2xl border border-critical/40 bg-critical-soft p-5">
       <Icon name="error" filled className="mt-0.5 shrink-0 text-[24px] text-critical" />
       <div>
-        <p className="font-semibold text-critical">{title}</p>
+        <p className="font-semibold text-critical">{title ?? tr("Something went wrong", "Kuchh ghalat ho gaya")}</p>
         <p className="mt-1 text-sm text-strong">{message}</p>
+        {/* A failed read, said plainly: nothing the person did is gone, and
+            this kind of failure usually passes on its own. Only where there
+            is something to retry — a failed action says its own thing. */}
+        {onRetry && (
+          <p className="mt-1 text-[13px] text-muted">
+            {tr(
+              "Nothing you did was lost. This usually clears within a minute.",
+              "Aap ka kuchh zaya nahi hua. Yeh aksar ek minute mein theek ho jaata hai.",
+            )}
+          </p>
+        )}
         {onRetry && (
           <Button variant="secondary" className="mt-3" onClick={onRetry}>
-            Try again
+            {tr("Try again", "Dobara koshish karein")}
           </Button>
         )}
       </div>
@@ -995,12 +1031,16 @@ export function ErrorState({
 }
 
 export function Unauthorized({ message }: { message?: string }) {
+  const tr = useTr();
   return (
     <ErrorState
-      title="You do not have access to this"
+      title={tr("You do not have access to this", "Aap ko is ki ijazat nahi")}
       message={
         message ??
-          "Your account does not have permission to view this page. If you think that is wrong, contact an administrator."
+        tr(
+          "Your account does not have permission to view this page. If you think that is wrong, contact an administrator.",
+          "Aap ke account ko yeh safha dekhne ki ijazat nahi. Agar yeh ghalat lagta hai to admin se rabta karein.",
+        )
       }
     />
   );

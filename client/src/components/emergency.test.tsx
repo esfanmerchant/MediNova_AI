@@ -217,12 +217,36 @@ describe("the review queue", () => {
     expect(screen.queryByRole("button", { name: /record review/i })).toBeNull();
   });
 
+  it("names the opened record by its number, not an internal id", async () => {
+    // A reviewer has to be able to look the record up; "c4eebf57…" is not
+    // something a person can do anything with.
+    mockQueue([grant({ patientMrn: "MRN-2026-0042" })], 1);
+    render(<EmergencyReviewPanel />);
+
+    expect(await screen.findByText("MRN-2026-0042")).toBeInTheDocument();
+  });
+
+  it("puts an open grant at the top, and ends it only on a second press", async () => {
+    mockQueue([grant()], 1);
+    const revoke = vi.spyOn(api.emergency, "revoke").mockResolvedValue(grant({ status: "REVOKED", live: false }));
+    const user = userEvent.setup();
+    render(<EmergencyReviewPanel />);
+
+    const strip = await screen.findByRole("region", { name: /emergency access open now/i });
+    await user.click(within(strip).getByRole("button", { name: /end access now/i }));
+    expect(revoke).not.toHaveBeenCalled();
+    await user.click(within(strip).getByRole("button", { name: /end it now/i }));
+    expect(revoke).toHaveBeenCalledWith("g1");
+    expect(screen.queryByRole("region", { name: /emergency access open now/i })).toBeNull();
+  });
+
   it("names a deleted requester honestly", async () => {
     // The trail outlives the account — `userId` is deliberately not a foreign
     // key (R6) — so a missing name is a fact, not a broken row.
     mockQueue([grant({ requesterName: null })], 1);
     render(<EmergencyReviewPanel />);
 
-    expect(await screen.findByText(/deleted account/i)).toBeInTheDocument();
+    // Named in the queue, and in the red strip while the grant is still open.
+    expect((await screen.findAllByText(/deleted account/i)).length).toBeGreaterThan(0);
   });
 });

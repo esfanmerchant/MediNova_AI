@@ -209,12 +209,21 @@ async def announce(db: AsyncSession, grant_record: EmergencyAccess, requester_na
         )
 
 
-def serialize(grant_record: EmergencyAccess, *, requester_name: str | None = None) -> dict[str, Any]:
+def serialize(
+    grant_record: EmergencyAccess,
+    *,
+    requester_name: str | None = None,
+    patient_mrn: str | None = None,
+) -> dict[str, Any]:
     return {
         "id": grant_record.id,
         "requesterId": grant_record.requester_id,
         "requesterName": requester_name,
         "patientId": grant_record.patient_id,
+        # The record number, for the reviewer: an internal id is not something
+        # a person can look up or recognise. Not the patient's name — the queue
+        # says which record was opened, and the record itself says whose it is.
+        "patientMrn": patient_mrn,
         "reason": grant_record.reason,
         "status": str(effective_status(grant_record)),
         "grantedAt": grant_record.granted_at.isoformat() + "Z",

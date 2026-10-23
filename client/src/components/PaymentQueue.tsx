@@ -22,12 +22,12 @@
 import { useCallback, useState } from "react";
 
 import { Icon } from "@/components/Icon";
+import { FinishedState } from "@/components/admin/console";
 import { Dialog, useToast } from "@/components/overlays";
 import {
   Badge,
   Button,
   Card,
-  EmptyState,
   ErrorState,
   Field,
   Input,
@@ -373,8 +373,8 @@ export function PaymentQueue() {
       {queue.loading && <SkeletonRows rows={2} />}
       {queue.error && <ErrorState message={queue.error.message} onRetry={queue.reload} />}
       {queue.data && rows.length === 0 && (
-        <EmptyState
-          icon="check_circle"
+        <FinishedState
+          size={130}
           title={tr("Nothing waiting", "Kuch zer-e-intezar nahi")}
           description={tr(
             "Payments patients send appear here for you to check.",

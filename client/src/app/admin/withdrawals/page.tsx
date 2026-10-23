@@ -18,13 +18,12 @@ import { useCallback, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
-import { PageHeader } from "@/components/PageHeader";
+import { ConsoleHeader, FinishedState } from "@/components/admin/console";
 import { useToast } from "@/components/overlays";
 import {
   Badge,
   Button,
   Card,
-  EmptyState,
   ErrorState,
   Field,
   Input,
@@ -221,40 +220,71 @@ export default function AdminWithdrawals() {
   });
 
   const rows = queue.data?.data ?? [];
+  // Requests in one queue can be in different currencies only in principle;
+  // the sum is shown when they agree, and left out rather than mixed when not.
+  const currencies = new Set(rows.map((row) => row.currency));
+  const total = rows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+  const waitingTotal =
+    currencies.size === 1
+      ? `${[...currencies][0]} ${new Intl.NumberFormat("en-PK", { maximumFractionDigits: 0 }).format(total)}`
+      : null;
 
   return (
     <AppShell role="ADMIN">
       <div id="main" className="space-y-6">
-        <PageHeader
-          eyebrow={tr("Admin portal", "Intezami portal")}
+        <ConsoleHeader
+          icon="account_balance"
+          eyebrow={tr("Doctors' earnings, paid out", "Doctors ki kamai ki adaigi")}
           title={tr("Withdrawals", "Withdrawals")}
-          subtitle={tr(
-            "Doctors waiting to be paid what they have earned.",
-            "Woh doctors jinhein un ki kamai ada honi hai.",
-          )}
-        />
+        >
+          <p>
+            {rows.length > 0 ? (
+              <>
+                <a href="#requests">
+                  {tr(
+                    `${rows.length} ${rows.length === 1 ? "doctor is" : "doctors are"} waiting to be paid`,
+                    `${rows.length} doctors adaigi ke muntazir`,
+                  )}
+                </a>
+                {waitingTotal && (
+                  <>
+                    {tr(", ", ", ")}
+                    <b>{waitingTotal}</b> {tr("in all", "kul")}
+                  </>
+                )}
+                .{" "}
+              </>
+            ) : null}
+            {tr(
+              "Send each transfer from the hospital's account, then record its reference here.",
+              "Har transfer hospital ke account se bhejein, phir us ka reference yahan darj karein.",
+            )}
+          </p>
+        </ConsoleHeader>
 
-        <Card icon="account_balance" title={tr("Requests", "Darkhwastein")}>
-          {queue.loading && <SkeletonRows rows={2} />}
-          {queue.error && <ErrorState message={queue.error.message} onRetry={queue.reload} />}
-          {queue.data && rows.length === 0 && (
-            <EmptyState
-              icon="check_circle"
-              title={tr("Nothing waiting", "Kuch zer-e-intezar nahi")}
-              description={tr(
-                "Withdrawal requests from doctors appear here.",
-                "Doctors ki withdrawal darkhwastein yahan aayengi.",
-              )}
-            />
-          )}
-          {rows.length > 0 && (
-            <ul className="space-y-4">
-              {rows.map((withdrawal) => (
-                <Request key={withdrawal.id} withdrawal={withdrawal} onDecided={reload} />
-              ))}
-            </ul>
-          )}
-        </Card>
+        <div id="requests" className="scroll-mt-24">
+          <Card icon="account_balance" title={tr("Requests", "Darkhwastein")}>
+            {queue.loading && <SkeletonRows rows={2} />}
+            {queue.error && <ErrorState message={queue.error.message} onRetry={queue.reload} />}
+            {queue.data && rows.length === 0 && (
+              <FinishedState
+                size={130}
+                title={tr("Nothing waiting", "Kuch zer-e-intezar nahi")}
+                description={tr(
+                  "Withdrawal requests from doctors appear here.",
+                  "Doctors ki withdrawal darkhwastein yahan aayengi.",
+                )}
+              />
+            )}
+            {rows.length > 0 && (
+              <ul className="space-y-4">
+                {rows.map((withdrawal) => (
+                  <Request key={withdrawal.id} withdrawal={withdrawal} onDecided={reload} />
+                ))}
+              </ul>
+            )}
+          </Card>
+        </div>
       </div>
     </AppShell>
   );

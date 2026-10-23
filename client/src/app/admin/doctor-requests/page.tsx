@@ -18,7 +18,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
-import { PageHeader } from "@/components/PageHeader";
+import { ConsoleHeader, FinishedState } from "@/components/admin/console";
 import { Segmented } from "@/components/forms";
 import {
   Avatar,
@@ -217,14 +217,37 @@ export default function DoctorRequestsPage() {
   return (
     <AppShell role="ADMIN">
       <div id="main" className="space-y-6">
-        <PageHeader
-          eyebrow={tr("Administration", "Intezamia")}
+        <ConsoleHeader
+          icon="how_to_reg"
+          eyebrow={tr("Doctors who want to join", "Doctors jo shamil hona chahte hain")}
           title={tr("Doctor requests", "Doctors ki darkhwastein")}
-          subtitle={tr(
-            "Check each applicant's registration and documents before their account opens.",
-            "Account kholne se pehle har applicant ki registration aur documents check karein.",
-          )}
-        />
+        >
+          <p>
+            {pending !== null && pending > 0 ? (
+              <>
+                <a
+                  href="#applications"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    setTab("pending");
+                  }}
+                >
+                  {tr(
+                    `${pending} ${pending === 1 ? "doctor is" : "doctors are"} waiting for a decision`,
+                    `${pending} doctors faisle ke muntazir`,
+                  )}
+                </a>
+                .{" "}
+              </>
+            ) : pending === 0 ? (
+              <>{tr("Nobody is waiting for a decision. ", "Koi faisle ka muntazir nahi. ")}</>
+            ) : null}
+            {tr(
+              "Check each applicant's registration and documents before their account opens.",
+              "Account kholne se pehle har applicant ki registration aur documents check karein.",
+            )}
+          </p>
+        </ConsoleHeader>
 
         <Segmented
           options={options}
@@ -233,124 +256,129 @@ export default function DoctorRequestsPage() {
           label={tr("Application status", "Darkhwast ki soorat-e-haal")}
         />
 
-        <Card
-          icon="how_to_reg"
-          title={tr("Applications", "Darkhwastein")}
-          description={
-            rows
-              ? tr(
-                  `${rows.length} application${rows.length === 1 ? "" : "s"}`,
-                  `${rows.length} darkhwast`,
-                )
-              : undefined
-          }
-          flush
-        >
-          {loading && <SkeletonTable rows={5} columns={5} />}
+        <div id="applications" className="scroll-mt-24">
+          <Card
+            icon="how_to_reg"
+            title={tr("Applications", "Darkhwastein")}
+            description={
+              rows
+                ? tr(
+                    `${rows.length} application${rows.length === 1 ? "" : "s"}`,
+                    `${rows.length} darkhwast`,
+                  )
+                : undefined
+            }
+            flush
+          >
+            {loading && <SkeletonTable rows={5} columns={5} />}
 
-          {error && (
-            <div className="p-6">
-              <ErrorState
-                message={error.message}
-                onRetry={() => setNonce((value) => value + 1)}
+            {error && (
+              <div className="p-6">
+                <ErrorState
+                  message={error.message}
+                  onRetry={() => setNonce((value) => value + 1)}
+                />
+              </div>
+            )}
+
+            {rows && rows.length === 0 && !error && tab === "pending" && (
+              <FinishedState title={empty[tab].title} description={empty[tab].description} />
+            )}
+            {rows && rows.length === 0 && !error && tab !== "pending" && (
+              <EmptyState
+                icon={empty[tab].icon}
+                title={empty[tab].title}
+                description={empty[tab].description}
               />
-            </div>
-          )}
+            )}
 
-          {rows && rows.length === 0 && !error && (
-            <EmptyState
-              icon={empty[tab].icon}
-              title={empty[tab].title}
-              description={empty[tab].description}
-            />
-          )}
-
-          {rows && rows.length > 0 && (
-            <div className="overflow-x-auto p-2">
-              <table className="table-modern min-w-[52rem]">
-                <thead>
-                  <tr>
-                    <th scope="col">{tr("Applicant", "Applicant")}</th>
-                    <th scope="col">{tr("Specialization", "Specialization")}</th>
-                    <th scope="col">{tr("Registration", "Registration")}</th>
-                    <th scope="col">{tr("Submitted", "Bheji gayi")}</th>
-                    <th scope="col">{tr("Status", "Soorat-e-haal")}</th>
-                    <th scope="col">
-                      <span className="sr-only">{tr("Review", "Jaiza")}</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <AnimatePresence initial={false}>
-                    {rows.map((row) => {
-                      const name = row.applicant?.name ?? row.fullName ?? "";
-                      return (
-                        <motion.tr
-                          key={row.id}
-                          layout={!reduced}
-                          initial={false}
-                          exit={
-                            reduced
-                              ? { opacity: 0 }
-                              : { opacity: 0, x: 48, transition: { duration: 0.28 } }
-                          }
-                        >
-                          <td>
-                            <div className="flex items-center gap-3">
-                              <Avatar name={name || "?"} />
-                              <div className="min-w-0">
-                                <p className="truncate font-semibold text-strong">
-                                  {name || tr("Unnamed applicant", "Naam nahi diya")}
-                                </p>
-                                {row.applicant?.email && (
-                                  <p className="truncate font-mono text-[11px] text-faint">
-                                    {row.applicant.email}
+            {rows && rows.length > 0 && (
+              <div className="overflow-x-auto p-2">
+                <table className="table-modern min-w-[52rem]">
+                  <thead>
+                    <tr>
+                      <th scope="col">{tr("Applicant", "Applicant")}</th>
+                      <th scope="col">{tr("Specialization", "Specialization")}</th>
+                      <th scope="col">{tr("Registration", "Registration")}</th>
+                      <th scope="col">{tr("Submitted", "Bheji gayi")}</th>
+                      <th scope="col">{tr("Status", "Soorat-e-haal")}</th>
+                      <th scope="col">
+                        <span className="sr-only">{tr("Review", "Jaiza")}</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <AnimatePresence initial={false}>
+                      {rows.map((row) => {
+                        const name = row.applicant?.name ?? row.fullName ?? "";
+                        return (
+                          <motion.tr
+                            key={row.id}
+                            layout={!reduced}
+                            initial={false}
+                            exit={
+                              reduced
+                                ? { opacity: 0 }
+                                : { opacity: 0, x: 48, transition: { duration: 0.28 } }
+                            }
+                          >
+                            <td>
+                              <div className="flex items-center gap-3">
+                                <Avatar name={name || "?"} />
+                                <div className="min-w-0">
+                                  <p className="truncate font-semibold text-strong">
+                                    {name || tr("Unnamed applicant", "Naam nahi diya")}
                                   </p>
-                                )}
+                                  {row.applicant?.email && (
+                                    <p className="truncate font-mono text-[11px] text-faint">
+                                      {row.applicant.email}
+                                    </p>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          </td>
-                          <td>
-                            {row.specialization ? (
-                              <Badge tone="info">{row.specialization}</Badge>
-                            ) : (
-                              <span className="text-faint">—</span>
-                            )}
-                          </td>
-                          <td className="whitespace-nowrap font-mono text-xs text-muted">
-                            {row.registrationNumber || "—"}
-                          </td>
-                          <td className="whitespace-nowrap text-muted">
-                            {row.submittedAt ? (
-                              <RelativeTime iso={row.submittedAt} />
-                            ) : (
-                              <span className="text-faint">—</span>
-                            )}
-                          </td>
-                          <td>
-                            <StatusChip status={row.status} />
-                          </td>
-                          <td className="text-right">
-                            <Button
-                              variant="secondary"
-                              onClick={() => {
-                                setSelected(row);
-                                setDrawerOpen(true);
-                              }}
-                            >
-                              <Icon name="visibility" className="text-[18px]" />
-                              {tr("Review", "Jaiza lein")}
-                            </Button>
-                          </td>
-                        </motion.tr>
-                      );
-                    })}
-                  </AnimatePresence>
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
+                            </td>
+                            <td>
+                              {row.specialization ? (
+                                <Badge tone="info">{row.specialization}</Badge>
+                              ) : (
+                                <span className="text-faint">—</span>
+                              )}
+                            </td>
+                            <td className="whitespace-nowrap font-mono text-xs text-muted">
+                              {row.registrationNumber || "—"}
+                            </td>
+                            <td className="whitespace-nowrap text-muted">
+                              {row.submittedAt ? (
+                                <RelativeTime iso={row.submittedAt} />
+                              ) : (
+                                <span className="text-faint">—</span>
+                              )}
+                            </td>
+                            <td>
+                              <StatusChip status={row.status} />
+                            </td>
+                            <td className="text-right">
+                              <Button
+                                variant="secondary"
+                                onClick={() => {
+                                  setSelected(row);
+                                  setDrawerOpen(true);
+                                }}
+                              >
+                                <Icon name="visibility" className="text-[18px]" />
+                                {tr("Review", "Jaiza lein")}
+                              </Button>
+                            </td>
+                          </motion.tr>
+                        );
+                      })}
+                    </AnimatePresence>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+        </div>
       </div>
 
       {/* Keyed by applicant: a different row mounts a fresh panel, so last

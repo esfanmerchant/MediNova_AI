@@ -27,15 +27,21 @@ import { useSession } from "@/lib/session";
 // Money and words
 // ---------------------------------------------------------------------------
 
-/** "Rs 1,340" — rupees without paisa, the way a shop prices things. */
+/**
+ * "PKR 1,340" — rupees without paisa, the way a shop prices things.
+ *
+ * Written out as "PKR" rather than Intl's "Rs" because every other money figure
+ * in the app — invoices, revenue, a doctor's earnings — says PKR, and one
+ * amount reading two ways on neighbouring pages looks like two currencies.
+ */
 export function rupees(value: string | number, currency = "PKR"): string {
   const amount = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(amount)) return `${currency} ${value}`;
-  return new Intl.NumberFormat("en-PK", {
-    style: "currency",
-    currency,
+  const figure = new Intl.NumberFormat("en-PK", {
+    minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
     maximumFractionDigits: Number.isInteger(amount) ? 0 : 2,
-  }).format(amount);
+  }).format(Math.abs(amount));
+  return `${amount < 0 ? "−" : ""}${currency} ${figure}`;
 }
 
 export const FORM_ICON: Record<ProductForm, string> = {

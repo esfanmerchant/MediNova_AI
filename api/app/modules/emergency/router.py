@@ -26,7 +26,7 @@ from app.core.errors import forbidden, not_found
 from app.core.ratelimit import limit
 from app.core.security import AccessTokenPayload, sign_access_token
 from app.db.enums import AuditAction, AuditSeverity, EmergencyAccessStatus
-from app.db.models import EmergencyAccess, Session, User
+from app.db.models import EmergencyAccess, Patient, Session, User
 from app.modules.audit.service import AuditEntry, record_audit
 from app.modules.auth.rbac import Permission
 from app.modules.auth.service import access_token_ttl_seconds
@@ -71,6 +71,17 @@ async def _requester_names(db: DbSession, ids: list[str]) -> dict[str, str]:
         return {}
     rows = (await db.execute(select(User.id, User.name).where(User.id.in_(ids)))).all()
     return {row.id: row.name for row in rows}
+
+
+async def _patient_mrns(db: DbSession, ids: list[str]) -> dict[str, str]:
+    if not ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(Patient.id, Patient.medical_record_number).where(Patient.id.in_(ids))
+        )
+    ).all()
+    return {row.id: row.medical_record_number for row in rows}
 
 
 @router.post("/request", status_code=201)
@@ -278,9 +289,17 @@ async def list_grants(
         .all()
     )
     names = await _requester_names(db, [row.requester_id for row in rows])
+    mrns = await _patient_mrns(db, [row.patient_id for row in rows])
 
     return ok(
-        [service.serialize(row, requester_name=names.get(row.requester_id)) for row in rows],
+        [
+            service.serialize(
+                row,
+                requester_name=names.get(row.requester_id),
+                patient_mrn=mrns.get(row.patient_id),
+            )
+            for row in rows
+        ],
         {**page.meta(total), "unreviewed": outstanding},
     )
 
@@ -321,4 +340,11 @@ async def review_grant(
     )
 
     names = await _requester_names(db, [grant.requester_id])
-    return ok(service.serialize(grant, requester_name=names.get(grant.requester_id)))
+    mrns = await _patient_mrns(db, [grant.patient_id])
+    return ok(
+        service.serialize(
+            grant,
+            requester_name=names.get(grant.requester_id),
+            patient_mrn=mrns.get(grant.patient_id),
+        )
+    )

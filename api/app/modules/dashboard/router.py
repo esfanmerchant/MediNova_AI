@@ -285,6 +285,25 @@ async def admin_dashboard(request: Request, auth: CurrentAuth, db: DbSession) ->
         )
     ).scalars().all()
 
+    # Who saw the most patients in the last thirty days. Counted here, in one
+    # grouped query, because the appointment list pages a hundred rows at a time
+    # and a busy month is more than that — a client counting pages would be
+    # counting the first hundred.
+    busiest = (
+        await db.execute(
+            select(Doctor.id, User.name, Doctor.specialization, func.count(Appointment.id).label("visits"))
+            .join(User, User.id == Doctor.user_id)
+            .join(Appointment, Appointment.doctor_id == Doctor.id)
+            .where(
+                Appointment.status == AppointmentStatus.COMPLETED,
+                Appointment.start_time >= now - timedelta(days=30),
+            )
+            .group_by(Doctor.id, User.name, Doctor.specialization)
+            .order_by(func.count(Appointment.id).desc(), User.name)
+            .limit(5)
+        )
+    ).all()
+
     # Reading security events is itself privileged and is therefore logged.
     await record_audit(
         db,
@@ -355,6 +374,10 @@ async def admin_dashboard(request: Request, auth: CurrentAuth, db: DbSession) ->
                     "ipAddress": entry.ip_address,
                 }
                 for entry in recent_security
+            ],
+            "busiestDoctors": [
+                {"doctorId": doctor_id, "name": name, "specialization": specialization, "visits": int(visits)}
+                for doctor_id, name, specialization, visits in busiest
             ],
         }
     )

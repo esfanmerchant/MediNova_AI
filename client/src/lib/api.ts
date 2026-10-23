@@ -567,6 +567,8 @@ export const dashboard = {
         userId: string | null;
         ipAddress: string | null;
       }>;
+      /** Completed visits in the last 30 days, the five busiest doctors. */
+      busiestDoctors: Array<{ doctorId: string; name: string; specialization: string; visits: number }>;
     }>("/dashboard/admin"),
 };
 
@@ -679,6 +681,9 @@ export interface PracticeLocation {
 export const doctors = {
   /** The signed-in doctor's own professional record. */
   me: () => apiRequest<DoctorProfile>("/doctors/me"),
+
+  /** Any doctor's public record — what the directory shows, by id. */
+  get: (id: string) => apiRequest<DoctorProfile>(`/doctors/${id}`),
 
   /**
    * The cities that actually have a bookable doctor, commonest first.
@@ -855,17 +860,41 @@ export const patients = {
     }),
 };
 
+/** One account, as the administration lists it. */
+export interface AccountRow {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+  phone: string | null;
+  status: string;
+  lastLoginAt: string | null;
+  createdAt: string;
+  /** Set when the account is a doctor's. */
+  doctorId: string | null;
+  /** Set when the account is a patient's. */
+  patientId: string | null;
+}
+
 export const users = {
-  list: (query?: { role?: Role; search?: string; limit?: number; offset?: number }) =>
-    apiList<{
-      id: string;
-      name: string;
-      email: string;
-      role: Role;
-      status: string;
-      lastLoginAt: string | null;
-      createdAt: string;
-    }>("/users", query),
+  list: (query?: {
+    role?: Role;
+    status?: "PENDING_VERIFICATION" | "ACTIVE" | "SUSPENDED" | "DEACTIVATED";
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }) =>
+    apiList<AccountRow>("/users", query),
+
+  /**
+   * A staff account, made by an administrator. Without a password the server
+   * generates one and returns it once, as `temporaryPassword`.
+   */
+  create: (input: { name: string; email: string; role: Exclude<Role, "PATIENT">; phone?: string }) =>
+    apiRequest<AccountRow & { temporaryPassword?: string; note?: string }>("/users", {
+      method: "POST",
+      body: input,
+    }),
 
   setStatus: (userId: string, status: string, reason?: string) =>
     apiRequest(`/users/${userId}/status`, { method: "PATCH", body: { status, reason } }),
@@ -1859,6 +1888,9 @@ export interface InvoiceLine {
 export interface Invoice {
   id: string;
   patientId: string;
+  /** Whose bill it is — sent only to staff who can see every patient's invoices. */
+  patientName?: string;
+  medicalRecordNumber?: string;
   appointmentId: string | null;
   /** A doctor's consultation, or medicine from the pharmacy. */
   kind: "CONSULTATION" | "PHARMACY";
@@ -2116,6 +2148,8 @@ export const invoices = {
   list: (query?: {
     status?: InvoiceStatus;
     patientId?: string;
+    /** Staff: an invoice number, a patient's name or MRN. A patient: their own invoice numbers. */
+    search?: string;
     limit?: number;
     offset?: number;
   }) => apiList<Invoice, { outstanding: string }>("/invoices", query),
@@ -2172,6 +2206,8 @@ export interface EmergencyGrant {
   requesterId: string;
   requesterName: string | null;
   patientId: string;
+  /** The opened record's number, on the review queue. Null where the API does not send it. */
+  patientMrn?: string | null;
   reason: string;
   status: EmergencyStatus;
   grantedAt: string;

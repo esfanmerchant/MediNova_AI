@@ -18,88 +18,42 @@ import { useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
-import { PageHeader } from "@/components/PageHeader";
+import { ConsoleHeader, PastelTile } from "@/components/admin/console";
 import {
   PageSectionNav,
   Section,
   type Section as SectionSpec,
 } from "@/components/layout/PageSectionNav";
-import { CategoryBars, TimeBars, type Bar } from "@/components/charts";
-import { Card, ErrorState, SkeletonRows, cx } from "@/components/ui";
+import { CategoryBars, type Bar } from "@/components/charts";
+import { RevenuePanel } from "@/components/admin/RevenueChart";
+import { Card, ErrorState, SkeletonRows } from "@/components/ui";
 import { revenue, type RevenueGrain } from "@/lib/api";
 import { useTr } from "@/lib/lang";
 import { useAsync } from "@/lib/useAsync";
 
-const GRAINS: Array<{ value: RevenueGrain; label: [string, string] }> = [
-  { value: "day", label: ["Daily", "Rozana"] },
-  { value: "week", label: ["Weekly", "Haftawar"] },
-  { value: "month", label: ["Monthly", "Mahana"] },
-];
+function figure(value: string): string {
+  return new Intl.NumberFormat("en-PK", { maximumFractionDigits: 0 }).format(Number(value) || 0);
+}
 
 function amount(value: string, currency: string): string {
-  return `${currency} ${new Intl.NumberFormat("en-PK", { maximumFractionDigits: 0 }).format(
-    Number(value) || 0,
-  )}`;
+  return `${currency} ${figure(value)}`;
 }
 
-function Tile({
-  label,
-  value,
-  hint,
-  emphasis,
-}: {
-  label: string;
-  value: string;
-  hint: string;
-  /** The one figure on the row that is actually income. */
-  emphasis?: boolean;
-}) {
-  return (
-    <div
-      className={cx(
-        "rounded-2xl border p-4",
-        emphasis ? "border-gradient-thick" : "border-line bg-card",
-      )}
-    >
-      <p className="text-[11px] font-bold uppercase tracking-wider text-faint">{label}</p>
-      <p className="mt-1 font-display text-2xl font-bold tabular-nums text-strong">{value}</p>
-      <p className="mt-1 text-xs text-muted">{hint}</p>
-    </div>
-  );
-}
-
-/** How a period reads on a chart axis, at the grain being shown. */
-function periodLabel(iso: string, grain: RevenueGrain): string {
-  const date = new Date(iso);
-  if (grain === "month") {
-    return date.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
-  }
-  return date.toLocaleDateString(undefined, { day: "numeric", month: "short" });
-}
-
-const SECTIONS: SectionSpec[] = [
-  { id: "totals", label: "Totals", icon: "payments" },
-  { id: "over-time", label: "Over time", icon: "bar_chart" },
-  { id: "by-speciality", label: "By speciality", icon: "pie_chart" },
+const SECTIONS: Array<SectionSpec & { words: [string, string] }> = [
+  { id: "totals", label: "", words: ["Totals", "Kul"], icon: "payments" },
+  { id: "over-time", label: "", words: ["Over time", "Waqt ke saath"], icon: "bar_chart" },
+  { id: "by-speciality", label: "", words: ["By speciality", "Speciality ke hisaab se"], icon: "pie_chart" },
 ];
 
 export default function AdminRevenue() {
   const tr = useTr();
-  const [grain, setGrain] = useState<RevenueGrain>("month");
+  const [grain, setGrain] = useState<RevenueGrain>("day");
 
   const summary = useAsync(() => revenue.summary(), []);
   const series = useAsync(() => revenue.series(grain), [grain]);
 
   const totals = summary.data;
   const currency = totals?.currency ?? "PKR";
-
-  const bars: Bar[] = (series.data?.points ?? []).map((point) => ({
-    label: periodLabel(point.period, grain),
-    value: point.handled,
-    detail: `${periodLabel(point.period, grain)} · ${point.invoices} ${
-      point.invoices === 1 ? "invoice" : "invoices"
-    }`,
-  }));
 
   const specialities: Bar[] = (series.data?.bySpeciality ?? []).map((row) => ({
     label: row.label,
@@ -109,28 +63,43 @@ export default function AdminRevenue() {
   return (
     <AppShell role="ADMIN">
       <div id="main" className="space-y-6">
-        <PageHeader
-          eyebrow={tr("Admin portal", "Intezami portal")}
+        <ConsoleHeader
+          icon="monitoring"
+          eyebrow={tr("Money that has actually been paid", "Woh raqam jo waqai ada ho chuki")}
           title={tr("Revenue", "Aamdani")}
-          subtitle={tr(
-            "Money that has actually been paid, and whose it is.",
-            "Woh raqam jo waqai ada ho chuki, aur woh kis ki hai.",
+        >
+          {totals ? (
+            <p>
+              {tr("MediNova AI has earned ", "MediNova AI ne ab tak ")}
+              <b>{amount(totals.allTime.earned, currency)}</b>
+              {tr(" all time, ", " kamaye, ")}
+              <b>{amount(totals.thisMonth.earned, currency)}</b>
+              {tr(" of it this month. Another ", " is mahine. Mazeed ")}
+              <b>{amount(totals.allTime.toDoctors, currency)}</b>
+              {tr(" passed straight through to doctors.", " seedha doctors ko gaye.")}
+            </p>
+          ) : (
+            <p>{tr("Money that has actually been paid, and whose it is.", "Woh raqam jo waqai ada ho chuki, aur woh kis ki hai.")}</p>
           )}
-        />
+        </ConsoleHeader>
 
         {summary.loading && <SkeletonRows rows={2} />}
         {summary.error && <ErrorState message={summary.error.message} onRetry={summary.reload} />}
 
         {totals && (
           <>
-            <PageSectionNav mode="jump" label="Sections" sections={SECTIONS} />
+            <PageSectionNav
+              mode="jump"
+              label={tr("Sections", "Hisse")}
+              sections={SECTIONS.map(({ words, ...section }) => ({ ...section, label: tr(...words) }))}
+            />
 
             <Section id="totals">
 <Card>
               <p className="text-[11px] font-bold uppercase tracking-wider text-faint">
                 {tr("Handled all time", "Ab tak kul raqam")}
               </p>
-              <p className="font-display text-5xl font-bold tabular-nums text-strong">
+              <p className="font-display text-[2.4rem] font-bold whitespace-nowrap tabular-nums text-strong sm:text-5xl">
                 {amount(totals.allTime.handled, currency)}
               </p>
               <p className="mt-1 text-sm text-muted">
@@ -141,56 +110,66 @@ export default function AdminRevenue() {
               </p>
 
               {/* Ordered as an argument: what came in, what left, what stayed. */}
-              <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <Tile
+              <div className="stagger mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <PastelTile
+                  pastel="sky"
+                  icon="stethoscope"
                   label={tr("Paid to doctors", "Doctors ko gaya")}
-                  value={amount(totals.allTime.toDoctors, currency)}
-                  hint={tr("Consultation fees — never ours.", "Consultation fees — kabhi hamari nahi.")}
+                  unit={currency}
+                  value={figure(totals.allTime.toDoctors)}
+                  note={tr("Consultation fees — never ours.", "Consultation fees — kabhi hamari nahi.")}
                 />
-                <Tile
+                <PastelTile
+                  pastel="lilac"
+                  icon="account_balance"
                   label={tr("Held for tax", "Tax ke liye roka")}
-                  value={amount(totals.allTime.tax, currency)}
-                  hint={tr(
-                    "Collected for the state, not income.",
-                    "Riyasat ke liye jama, aamdani nahi.",
-                  )}
+                  unit={currency}
+                  value={figure(totals.allTime.tax)}
+                  note={tr("Collected for the state, not income.", "Riyasat ke liye jama, aamdani nahi.")}
                 />
-                <Tile
-                  emphasis
+                <PastelTile
+                  pastel="mint"
+                  icon="monitoring"
                   label={tr("MediNova AI earned", "MediNova AI ki kamai")}
-                  value={amount(totals.allTime.earned, currency)}
-                  hint={tr(
-                    "Platform fees and late charges.",
-                    "Platform fees aur der ke charges.",
-                  )}
+                  unit={currency}
+                  value={figure(totals.allTime.earned)}
+                  note={tr("Platform fees and late charges.", "Platform fees aur der ke charges.")}
+                  chip={{ text: tr("Ours", "Hamari"), tone: "good" }}
                 />
-                <Tile
+                <PastelTile
+                  pastel="butter"
+                  icon="account_balance_wallet"
                   label={tr("Owed to doctors", "Doctors ko dena hai")}
-                  value={amount(totals.owedToDoctors, currency)}
-                  hint={tr(
-                    "Credited but not yet withdrawn.",
-                    "Credit ho chuka, abhi nikala nahi.",
-                  )}
+                  unit={currency}
+                  value={figure(totals.owedToDoctors)}
+                  note={tr("Credited but not yet withdrawn.", "Credit ho chuka, abhi nikala nahi.")}
+                  href="/admin/withdrawals"
                 />
               </div>
 
               {/* The second business. Kept as its own line rather than folded
                   into "earned": medicine sales are gross takings, and the
                   margin on them is the pharmacy's dashboard's question. */}
-              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Tile
-                  emphasis
+              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <PastelTile
+                  pastel="blush"
+                  icon="medication"
                   label={tr("Pharmacy sales", "Pharmacy ki farokht")}
-                  value={amount(totals.allTime.pharmacySales, currency)}
-                  hint={tr(
+                  unit={currency}
+                  value={figure(totals.allTime.pharmacySales)}
+                  note={tr(
                     `${totals.allTime.pharmacyOrders} paid orders · ${amount(totals.thisMonth.pharmacySales, currency)} this month`,
                     `${totals.allTime.pharmacyOrders} ada shuda orders · is mahine ${amount(totals.thisMonth.pharmacySales, currency)}`,
                   )}
+                  href="/admin/pharmacy"
                 />
-                <Tile
+                <PastelTile
+                  pastel="mint"
+                  icon="savings"
                   label={tr("Platform revenue", "Platform ki aamdani")}
-                  value={amount(totals.allTime.platformRevenue, currency)}
-                  hint={tr(
+                  unit={currency}
+                  value={figure(totals.allTime.platformRevenue)}
+                  note={tr(
                     "Fees, late charges and medicine sales — before costs.",
                     "Fees, der ke charges aur dawaon ki farokht — kharche se pehle.",
                   )}
@@ -202,52 +181,16 @@ export default function AdminRevenue() {
             </Section>
 
             <Section id="over-time">
-<Card
-              icon="bar_chart"
-              title={tr("Over time", "Waqt ke saath")}
-              action={
-                // One row of filters above the chart.
-                <div
-                  role="group"
-                  aria-label={tr("Period", "Muddat")}
-                  className="inline-flex rounded-lg border border-line p-0.5"
-                >
-                  {GRAINS.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      aria-pressed={grain === option.value}
-                      onClick={() => setGrain(option.value)}
-                      className={cx(
-                        "min-h-11 rounded-md px-3 text-xs font-bold transition-colors sm:min-h-8",
-                        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                        grain === option.value
-                          ? "bg-primary text-primary-on"
-                          : "text-muted hover:text-strong",
-                      )}
-                    >
-                      {tr(...option.label)}
-                    </button>
-                  ))}
-                </div>
-              }
-            >
-              {series.loading && <SkeletonRows rows={2} />}
-              {series.error && (
-                <ErrorState message={series.error.message} onRetry={series.reload} />
-              )}
-              {series.data && (
-                <TimeBars
-                  bars={bars}
-                  currency={currency}
-                  label={tr(
-                    "Money paid, by period",
-                    "Ada shuda raqam, muddat ke hisaab se",
-                  )}
-                />
-              )}
-            </Card>
-
+              <RevenuePanel
+                className="mt-6"
+                grain={grain}
+                onGrain={setGrain}
+                currency={currency}
+                points={series.data?.points}
+                loading={series.loading}
+                error={series.error}
+                onRetry={series.reload}
+              />
             </Section>
 
             <Section id="by-speciality">

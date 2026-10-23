@@ -14,7 +14,7 @@ import { Suspense, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
-import { PageHeader } from "@/components/PageHeader";
+import { ConsoleHeader, FinishedState, MedicinePack } from "@/components/admin/console";
 import { PharmacyAdminTabs } from "@/components/pharmacy/AdminTabs";
 import { OrderStatusBadge, rupees } from "@/components/pharmacy/shared";
 import { Badge, Card, EmptyState, ErrorState, Input, Loading, SkeletonRows, cx } from "@/components/ui";
@@ -26,6 +26,9 @@ type Filter =
   | { kind: "all" }
   | { kind: "queue"; queue: "rx-review" | "refunds" | "open" }
   | { kind: "status"; status: OrderStatus };
+
+/** Filters that are somebody's work rather than a record: empty means done. */
+const WORK_QUEUES = new Set(["rx-review", "CONFIRMED", "PACKED", "refunds"]);
 
 const FILTERS: { key: string; label: [string, string]; filter: Filter }[] = [
   { key: "open", label: ["Open", "Khule"], filter: { kind: "queue", queue: "open" } },
@@ -107,6 +110,11 @@ function OrdersBoard() {
         <SkeletonRows rows={4} />
       ) : list.error ? (
         <ErrorState message={list.error.message} onRetry={list.reload} />
+      ) : rows.length === 0 && WORK_QUEUES.has(active.key) && !search.trim() ? (
+        <FinishedState
+          title={tr("Nothing waiting here", "Yahan kuchh baqi nahi")}
+          description={tr("Orders that reach this step will appear here.", "Is marhale par aane wale orders yahan aayenge.")}
+        />
       ) : rows.length === 0 ? (
         <EmptyState icon="inbox" title={tr("Nothing here", "Yahan kuchh nahi")} description={tr("Orders that match will appear here.", "Milte julte orders yahan nazar aayenge.")} />
       ) : (
@@ -118,6 +126,8 @@ function OrdersBoard() {
                   href={`/admin/pharmacy/orders/${order.id}`}
                   className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-4 transition-colors hover:bg-gradient-soft focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
                 >
+                  {/* The first item's pack: what is in the bag, before the words. */}
+                  {order.items[0] && <MedicinePack form={order.items[0].form} />}
                   <div className="min-w-0 flex-1">
                     <p className="flex flex-wrap items-center gap-2 font-semibold tabular-nums text-strong">
                       {order.orderNumber}
@@ -128,7 +138,14 @@ function OrdersBoard() {
                     </p>
                     <p className="truncate text-sm text-muted">
                       {order.patientName ?? order.recipientName} · {order.city} ·{" "}
-                      {order.items.length} {order.items.length === 1 ? tr("item", "cheez") : tr("items", "cheezein")}
+                      {order.items[0]
+                        ? order.items.length > 1
+                          ? tr(
+                              `${order.items[0].productName} + ${order.items.length - 1} more`,
+                              `${order.items[0].productName} + ${order.items.length - 1} aur`,
+                            )
+                          : order.items[0].productName
+                        : tr("No items", "Koi cheez nahi")}
                     </p>
                     <p className="text-xs tabular-nums text-faint">
                       {new Date(order.createdAt).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
@@ -153,14 +170,47 @@ function OrdersBoard() {
 
 export default function PharmacyOrders() {
   const tr = useTr();
+  const summary = useAsync(() => pharmacy.dashboard(), [], { refreshMs: PAGE_REFRESH_MS });
+  const data = summary.data;
+  const toPack = data?.ordersByStatus.CONFIRMED ?? 0;
   return (
     <AppShell role="ADMIN">
       <div id="main">
-        <PageHeader
+        <ConsoleHeader
+          icon="local_shipping"
           eyebrow={tr("Pharmacy", "Pharmacy")}
           title={tr("Orders", "Orders")}
-          subtitle={tr("Check prescriptions, pack, dispatch and deliver.", "Nuskhe check karein, pack, rawana aur deliver karein.")}
-        />
+        >
+          {data ? (
+            <p>
+              <b>
+                {data.openOrders} {tr(data.openOrders === 1 ? "order" : "orders", "orders")}
+              </b>{" "}
+              {tr("on the move.", "chal rahe hain.")}{" "}
+              {data.prescriptionsToCheck > 0 && (
+                <>
+                  <Link href="/admin/pharmacy/orders?queue=rx-review">
+                    {tr(
+                      `${data.prescriptionsToCheck} ${data.prescriptionsToCheck === 1 ? "prescription" : "prescriptions"} to check`,
+                      `${data.prescriptionsToCheck} nuskhe check karne hain`,
+                    )}
+                  </Link>
+                  {toPack > 0 ? tr(", ", ", ") : ". "}
+                </>
+              )}
+              {toPack > 0 && (
+                <>
+                  <Link href="/admin/pharmacy/orders?status=CONFIRMED">
+                    {tr(`${toPack} to pack`, `${toPack} pack karne hain`)}
+                  </Link>
+                  .
+                </>
+              )}
+            </p>
+          ) : (
+            <p>{tr("Check prescriptions, pack, dispatch and deliver.", "Nuskhe check karein, pack, rawana aur deliver karein.")}</p>
+          )}
+        </ConsoleHeader>
         <div className="mt-6">
           <PharmacyAdminTabs />
         </div>

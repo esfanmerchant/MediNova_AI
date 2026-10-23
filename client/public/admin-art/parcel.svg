@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160">
+  <defs>
+    <linearGradient id="l" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#E9C99A"/><stop offset="1" stop-color="#D2A86E"/></linearGradient>
+    <linearGradient id="r" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#C79A5E"/><stop offset="1" stop-color="#AE8248"/></linearGradient>
+    <linearGradient id="t" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#F6DEB6"/><stop offset="1" stop-color="#E8C590"/></linearGradient>
+    <linearGradient id="tag" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1A8FC7"/><stop offset="1" stop-color="#0B3FA8"/></linearGradient>
+    <radialGradient id="s" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#0B1630" stop-opacity=".22"/><stop offset="1" stop-color="#0B1630" stop-opacity="0"/></radialGradient>
+  </defs>
+  <ellipse cx="80" cy="140" rx="58" ry="9" fill="url(#s)"/>
+  <path d="M80 136L24 108V54l56 28z" fill="url(#l)"/>
+  <path d="M80 136l56-28V54L80 82z" fill="url(#r)"/>
+  <path d="M24 54l56-28 56 28-56 28z" fill="url(#t)"/>
+  <path d="M52 40l56 28v20l-12 6V74L40 46z" fill="#FFFFFF" fill-opacity=".55"/>
+  <path d="M38 88l26 13v18l-26-13z" fill="url(#tag)"/>
+  <path d="M48 96v12M43 100l10 5" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="122" cy="40" r="16" fill="#FFFFFF"/>
+  <circle cx="122" cy="40" r="16" fill="none" stroke="#14C4C1" stroke-width="3"/>
+  <path d="M114 40.5l5.5 5.5 10-10" fill="none" stroke="#0B7F8B" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

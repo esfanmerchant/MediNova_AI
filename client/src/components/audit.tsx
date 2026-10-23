@@ -27,6 +27,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Fragment, useState, type ReactNode } from "react";
 
 import { Icon } from "@/components/Icon";
+import { Art } from "@/components/admin/console";
 import {
   Badge,
   Button,
@@ -152,7 +153,29 @@ function JsonBlock({ value }: { value: unknown }) {
 // Tamper check
 // ---------------------------------------------------------------------------
 
-function ChainStatus() {
+/** Seven linked blocks, the last one this check: what "a chain" means, drawn. */
+function ChainLinks({ broken }: { broken: boolean }) {
+  return (
+    <span aria-hidden className="flex items-center">
+      {Array.from({ length: 7 }, (_, index) => (
+        <span key={index} className="flex items-center">
+          {index > 0 && (
+            <span className={cx("h-0.5 w-3", broken && index === 5 ? "bg-critical [mask:repeating-linear-gradient(90deg,#000_0_3px,transparent_3px_5px)]" : "bg-stable/50")} />
+          )}
+          <span
+            className={cx(
+              "pop-scale h-5 w-6 rounded-md border-2",
+              broken && index >= 5 ? "border-critical bg-critical-soft" : "border-stable bg-stable-soft",
+            )}
+            style={{ animationDelay: `${index * 0.05}s` }}
+          />
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function ChainStatus({ entries }: { entries: number | null }) {
   const tr = useTr();
   const [result, setResult] = useState<ChainVerification | null>(null);
   const [busy, setBusy] = useState(false);
@@ -164,7 +187,7 @@ function ChainStatus() {
     try {
       setResult(await auditApi.verify(1000));
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "Could not verify the chain.");
+      setError(caught instanceof ApiError ? caught.message : tr("Could not verify the chain.", "Chain verify nahi ho saki."));
     } finally {
       setBusy(false);
     }
@@ -187,12 +210,25 @@ function ChainStatus() {
       {error && <ErrorState message={error} />}
 
       {!result && !error && (
-        <p className="text-sm leading-relaxed text-muted">
-          {tr(
-            "Each entry is hashed together with the one before it, so an entry altered or removed directly in the database no longer verifies. This is what makes “append-only” checkable rather than merely stated.",
-            "Har entry apni pichhli entry ke saath hash hoti hai — database mein seedha badli ya hataayi gayi entry verify nahi hoti. Yehi cheez “append-only” ko sirf daawa nahi, jaanchne ke qabil banati hai.",
-          )}
-        </p>
+        <div className="flex flex-wrap items-center gap-5">
+          <Art name="shield" size={88} className="shrink-0" />
+          <div className="flex min-w-[16rem] flex-1 flex-col gap-1.5">
+            {entries !== null && (
+              <p className="font-display text-lg font-bold text-strong tabular-nums">
+                {tr(
+                  `${new Intl.NumberFormat("en-PK").format(entries)} entries in the trail`,
+                  `Trail mein ${new Intl.NumberFormat("en-PK").format(entries)} entries`,
+                )}
+              </p>
+            )}
+            <p className="text-sm leading-relaxed text-muted">
+              {tr(
+                "Each entry is hashed together with the one before it, so an entry altered or removed directly in the database no longer verifies. This is what makes “append-only” checkable rather than merely stated. Checking is recorded in the trail too.",
+                "Har entry apni pichhli entry ke saath hash hoti hai — database mein seedha badli ya hataayi gayi entry verify nahi hoti. Yehi cheez “append-only” ko sirf daawa nahi, jaanchne ke qabil banati hai. Jaanch bhi trail mein darj hoti hai.",
+              )}
+            </p>
+          </div>
+        </div>
       )}
 
       {result && (
@@ -215,7 +251,8 @@ function ChainStatus() {
             <Icon name={result.valid ? "verified_user" : "gpp_bad"} filled className="text-[24px]" />
           </span>
           <div className="min-w-0">
-            <p className={cx("font-display font-bold", result.valid ? "text-stable" : "text-critical")}>
+            <ChainLinks broken={!result.valid} />
+            <p className={cx("mt-2 font-display font-bold", result.valid ? "text-stable" : "text-critical")}>
               {result.detail}
             </p>
             <p className={cx("mt-1 text-sm tabular-nums", result.valid ? "text-stable" : "text-strong")}>
@@ -415,7 +452,9 @@ export function AuditPanel() {
 
   return (
     <div className="space-y-6">
-      <ChainStatus />
+      {/* The total is the unfiltered list's; with the security filter on, the
+          count would be only part of the trail. */}
+      <ChainStatus entries={securityOnly ? null : (fetched.data?.meta.total ?? null)} />
 
       <Card
         icon="history"

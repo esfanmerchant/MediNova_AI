@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160">
+  <defs>
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#8C4610"/><stop offset=".35" stop-color="#D88A2E"/><stop offset=".7" stop-color="#B9661A"/><stop offset="1" stop-color="#7A3B0C"/></linearGradient>
+    <linearGradient id="cap" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#C9D6EA"/><stop offset=".4" stop-color="#FFFFFF"/><stop offset="1" stop-color="#B9C9E2"/></linearGradient>
+    <linearGradient id="label" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#DCE6F2"/><stop offset=".35" stop-color="#FFFFFF"/><stop offset="1" stop-color="#D3DEEE"/></linearGradient>
+    <linearGradient id="band" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#0B3FA8"/><stop offset="1" stop-color="#1A8FC7"/></linearGradient>
+    <radialGradient id="s" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#0B1630" stop-opacity=".24"/><stop offset="1" stop-color="#0B1630" stop-opacity="0"/></radialGradient>
+  </defs>
+  <ellipse cx="80" cy="143" rx="44" ry="8" fill="url(#s)"/>
+  <rect x="64" y="36" width="32" height="22" rx="5" fill="#7A3B0C"/>
+  <rect x="50" y="52" width="60" height="88" rx="17" fill="url(#amber)"/>
+  <rect x="58" y="16" width="44" height="26" rx="6" fill="url(#cap)"/>
+  <path d="M64 20v18M71 20v18M78 20v18M85 20v18M92 20v18" stroke="#A9BEDF" stroke-width="1.6" stroke-opacity=".7"/>
+  <rect x="50" y="80" width="60" height="42" fill="url(#label)"/>
+  <rect x="50" y="80" width="60" height="11" fill="url(#band)"/>
+  <rect x="58" y="98" width="38" height="5.5" rx="2.75" fill="#B9C9E2"/>
+  <rect x="58" y="108" width="26" height="4.5" rx="2.25" fill="#D3DEEE"/>
+  <path d="M58 62v12M58 128v4" stroke="#FFFFFF" stroke-opacity=".45" stroke-width="5" stroke-linecap="round"/>
+</svg>

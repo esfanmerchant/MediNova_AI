@@ -19,6 +19,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useState, useSyncExternalStore } from "react";
 
 import { PageHeader } from "@/components/PageHeader";
+import { ConsoleHeader } from "@/components/admin/console";
 import { Segmented } from "@/components/forms";
 import { AppearanceTab } from "@/components/settings/AppearanceTab";
 import { DataTab } from "@/components/settings/DataTab";
@@ -136,14 +137,26 @@ export function AccountSettings({ role }: { role: Role }) {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        eyebrow={tr("Account", "Account")}
-        title={tr("Settings", "Settings")}
-        subtitle={tr(
-          "Your details, how you sign in, what you are told about, and how it all looks.",
-          "Aap ki tafseelat, sign-in ka tareeqa, kis cheez ki ittila milti hai, aur yeh sab dikhta kaisa hai.",
-        )}
-      />
+      {/* The console opens every page with its own header; the portals keep theirs. */}
+      {role === "ADMIN" ? (
+        <ConsoleHeader icon="settings" eyebrow={tr("Your account", "Aap ka account")} title={tr("Settings", "Settings")}>
+          <p>
+            {tr(
+              "Your details, how you sign in, what you are told about, and how it all looks.",
+              "Aap ki tafseelat, sign-in ka tareeqa, kis cheez ki ittila milti hai, aur yeh sab dikhta kaisa hai.",
+            )}
+          </p>
+        </ConsoleHeader>
+      ) : (
+        <PageHeader
+          eyebrow={tr("Account", "Account")}
+          title={tr("Settings", "Settings")}
+          subtitle={tr(
+            "Your details, how you sign in, what you are told about, and how it all looks.",
+            "Aap ki tafseelat, sign-in ka tareeqa, kis cheez ki ittila milti hai, aur yeh sab dikhta kaisa hai.",
+          )}
+        />
+      )}
 
       <div className="-mx-1 overflow-x-auto px-1 pb-1">
         <Segmented

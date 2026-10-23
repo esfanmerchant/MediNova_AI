@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -14,20 +15,25 @@ import {
   type ReactNode,
 } from "react";
 
-import { CommandPalette, type PaletteItem } from "@/components/CommandPalette";
+import { CommandPalette, type PaletteItem, type PaletteSearch } from "@/components/CommandPalette";
 import { Icon } from "@/components/Icon";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { NotificationBell } from "@/components/NotificationBell";
+import { OfflineBanner } from "@/components/OfflineBanner";
+import { ConsoleTabBar } from "@/components/admin/ConsoleTabBar";
+import { NEW_ACTIONS, NewMenu } from "@/components/admin/NewMenu";
+import { holdInvoice } from "@/components/admin/InvoiceDrawer";
+import { holdPerson } from "@/components/admin/PersonDrawer";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { CircuitNodes } from "@/components/brand/CircuitNodes";
 import { Logo } from "@/components/brand/Logo";
 import { PageTransition } from "@/components/motion";
 import { useMotionPreference, useReadingPreferences } from "@/components/settings/preferences";
-import { Avatar, Button, Loading, Unauthorized, cx } from "@/components/ui";
+import { Avatar, Button, ConsoleSurface, Loading, Unauthorized, cx } from "@/components/ui";
 import { useTr } from "@/lib/lang";
 import { SPRING, TRANSITION, prefersCalm } from "@/lib/motion";
 import { homePathFor, useSession } from "@/lib/session";
-import { doctorRequests, type Role } from "@/lib/api";
+import { doctorRequests, invoices, pharmacy, users, type Role } from "@/lib/api";
 import { useAsync } from "@/lib/useAsync";
 
 // Loaded only where it renders: the widget pulls in the whole conversation
@@ -116,17 +122,38 @@ const NAV: Record<Role, NavGroup[]> = {
       items: [{ href: "/doctor/settings", label: ["Settings", "Settings"], icon: "settings" }],
     },
   ],
+  // Grouped by what an administrator is looking after rather than by kind of
+  // screen: the hospital, the care it gives, the pharmacy, the money, and the
+  // trust that holds it together. The same five words head the console's
+  // design, so a page found in one is where the other says it is.
   ADMIN: [
     {
-      label: ["Main", "Aam"],
-      items: [{ href: "/admin", label: ["Dashboard", "Dashboard"], icon: "dashboard" }],
+      label: ["Hospital", "Hospital"],
+      items: [
+        { href: "/admin", label: ["Overview", "Jaiza"], icon: "dashboard" },
+        { href: "/admin/users", label: ["People", "Log"], icon: "group" },
+      ],
     },
     {
-      label: ["Operations", "Intezam"],
+      label: ["Care", "Ilaaj"],
       items: [
         { href: "/admin/appointments", label: ["Appointments", "Appointments"], icon: "calendar_today" },
-        { href: "/admin/users", label: ["People", "Log"], icon: "group" },
-        { href: "/admin/pharmacy", label: ["Pharmacy", "Pharmacy"], icon: "local_pharmacy" },
+        {
+          href: "/admin/doctor-requests",
+          // "Doctor ki darkhwastein" did not fit beside the badge; the group already says Care.
+          label: ["Doctor requests", "Darkhwastein"],
+          icon: "how_to_reg",
+          badge: "pendingDoctorApplications",
+        },
+      ],
+    },
+    {
+      label: ["Pharmacy", "Pharmacy"],
+      items: [{ href: "/admin/pharmacy", label: ["Pharmacy", "Pharmacy"], icon: "local_pharmacy" }],
+    },
+    {
+      label: ["Money", "Paisa"],
+      items: [
         { href: "/admin/revenue", label: ["Revenue", "Aamdani"], icon: "monitoring" },
         { href: "/admin/billing", label: ["Billing", "Billing"], icon: "payments" },
         {
@@ -138,21 +165,12 @@ const NAV: Record<Role, NavGroup[]> = {
       ],
     },
     {
-      label: ["Security", "Hifazat"],
+      label: ["Trust", "Aitmaad"],
       items: [
-        {
-          href: "/admin/doctor-requests",
-          label: ["Doctor requests", "Doctor ki darkhwastein"],
-          icon: "how_to_reg",
-          badge: "pendingDoctorApplications",
-        },
         { href: "/admin/emergency", label: ["Emergency access", "Emergency access"], icon: "e911_emergency" },
         { href: "/admin/audit", label: ["Audit trail", "Audit trail"], icon: "policy" },
+        { href: "/admin/settings", label: ["Settings", "Settings"], icon: "settings" },
       ],
-    },
-    {
-      label: ["Account", "Account"],
-      items: [{ href: "/admin/settings", label: ["Settings", "Settings"], icon: "settings" }],
     },
   ],
   NURSE: [
@@ -519,6 +537,7 @@ function AccountMenu({
   onNavigate,
   variant,
   collapsed = false,
+  onDark = false,
 }: {
   user: { name: string; email: string; role: Role; avatarUrl: string | null };
   onSignOut: () => void;
@@ -526,6 +545,8 @@ function AccountMenu({
   /** `card` is the rail's foot (opens upward); `avatar` is the header. */
   variant: "card" | "avatar";
   collapsed?: boolean;
+  /** The card sits on the console's navy rail rather than a light one. */
+  onDark?: boolean;
 }) {
   const tr = useTr();
   const [open, setOpen] = useState(false);
@@ -573,7 +594,9 @@ function AccountMenu({
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
           variant === "card"
             ? cx(
-                "bg-gradient-soft hover-lift-sm flex w-full items-center gap-3 rounded-2xl border border-line/70 p-3 text-left",
+                onDark
+                  ? "flex w-full items-center gap-3 rounded-2xl p-2.5 text-left transition-colors hover:bg-white/[0.07]"
+                  : "bg-gradient-soft hover-lift-sm flex w-full items-center gap-3 rounded-2xl border border-line/70 p-3 text-left",
                 collapsed && "justify-center p-2",
               )
             : "flex items-center gap-2.5 rounded-full p-1 pr-2 transition-[background-color,transform] hover:scale-[1.02] hover:bg-gradient-soft",
@@ -587,8 +610,14 @@ function AccountMenu({
 
         {variant === "card" && !collapsed && (
           <span className="min-w-0">
-            <span className="block truncate text-sm font-semibold text-strong">{user.name}</span>
-            <RoleChip role={user.role} className="mt-0.5" />
+            <span className={cx("block truncate text-sm font-semibold", onDark ? "text-white" : "text-strong")}>
+              {user.name}
+            </span>
+            {onDark ? (
+              <span className="block text-xs text-[#8EA1C2]">{tr(...ROLE_LABEL[user.role])}</span>
+            ) : (
+              <RoleChip role={user.role} className="mt-0.5" />
+            )}
           </span>
         )}
         {variant === "avatar" && (
@@ -730,6 +759,10 @@ function Rail({
 }) {
   const tr = useTr();
   const accent = ROLE_ACCENT[user.role];
+  // The administration console sits on a floating navy panel instead of the
+  // light rail the portals share: it is the one shell that is open all day on
+  // a desk, and the dark frame keeps the eye on the work in the middle.
+  const onDark = user.role === "ADMIN";
   const navRef = useRef<HTMLElement | null>(null);
   const pillRef = useRef<HTMLSpanElement | null>(null);
   // A section's own pages count as being in it — an order's page is still the
@@ -781,8 +814,10 @@ function Rail({
       aria-expanded={!collapsed}
       onClick={onToggle}
       className={cx(
-        "grid h-9 w-9 shrink-0 place-items-center rounded-full text-faint transition-colors",
-        "hover:bg-gradient-soft hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+        "grid h-9 w-9 shrink-0 place-items-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2",
+        onDark
+          ? "text-[#8EA1C2] hover:bg-white/10 hover:text-white focus-visible:outline-[#5EEAD4]"
+          : "text-faint hover:bg-gradient-soft hover:text-primary focus-visible:outline-primary",
         collapsed && "mx-auto mb-3",
       )}
     >
@@ -800,14 +835,21 @@ function Rail({
     // Not `overflow-hidden`: the collapsed tooltips and the account dropdown are
     // both wider than the rail and have to escape it. The one thing that does
     // need clipping — the circuit field — clips itself.
-    <div className="relative flex h-full flex-col">
-      <div className={cx("flex items-center py-5", collapsed ? "justify-center px-3" : "justify-between px-4")}>
+    <div className={cx("relative flex h-full flex-col", onDark && "console-rail")}>
+      {onDark && <span aria-hidden className="console-rail-glow" />}
+      <div
+        className={cx(
+          "relative flex items-center",
+          onDark ? "py-4" : "py-5",
+          collapsed ? "justify-center px-3" : "justify-between px-4",
+        )}
+      >
         <Link
           href="/"
           onClick={onNavigate}
           className="rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
-          <Logo variant={collapsed ? "mark" : "full"} size={collapsed ? "sm" : "md"} />
+          <Logo variant={collapsed ? "mark" : onDark ? "white" : "full"} size={collapsed ? "sm" : "md"} />
         </Link>
         {!collapsed && collapseButton}
       </div>
@@ -815,14 +857,18 @@ function Rail({
       {collapsed && collapseButton}
 
       {emergencyHref && (
-        <div className={cx("mb-4", collapsed ? "px-3" : "px-4")}>
+        <div className={cx(onDark ? "mb-3" : "mb-4", collapsed ? "px-3" : "px-4")}>
           {/* The one red thing in the rail — the fastest route to the screen
               somebody needs when there is no time to navigate. */}
           <Link
             href={emergencyHref}
             onClick={onNavigate}
             title={tr("Emergency access", "Emergency access")}
-            className="group flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-critical text-sm font-bold text-white shadow-md transition-[transform,opacity] hover:scale-[1.03] hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-critical"
+            className={cx(
+              "group flex w-full items-center justify-center gap-2 rounded-xl bg-critical text-sm font-bold text-white shadow-md",
+              "transition-[transform,opacity] hover:scale-[1.03] hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-critical",
+              onDark ? "min-h-10" : "min-h-11",
+            )}
           >
             <Icon name="warning" filled className="icon-wiggle text-[20px]" />
             {!collapsed && tr("Emergency access", "Emergency access")}
@@ -832,7 +878,7 @@ function Rail({
 
       <nav ref={navRef} aria-label="Main" className="relative min-h-0 flex-1 overflow-y-auto px-3">
         {groups.map((group) => (
-          <div key={group.label[0]} className="mb-4">
+          <div key={group.label[0]} className={onDark ? "mb-2.5" : "mb-4"}>
             <AnimatePresence initial={false} mode="popLayout">
               {!collapsed ? (
                 <motion.p
@@ -840,7 +886,7 @@ function Rail({
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1, transition: { ...TRANSITION.base, delay: 0.06 } }}
                   exit={{ opacity: 0, transition: TRANSITION.fast }}
-                  className="mono-caps mb-1.5 px-3 text-[0.68rem] text-faint"
+                  className={cx("mono-caps px-3 text-[0.68rem]", onDark ? "mb-1 text-[#6F82A6]" : "mb-1.5 text-faint")}
                 >
                   {tr(...group.label)}
                 </motion.p>
@@ -851,7 +897,7 @@ function Rail({
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1, transition: TRANSITION.base }}
                   exit={{ opacity: 0, transition: TRANSITION.fast }}
-                  className="mx-3 mb-2 h-px bg-line"
+                  className={cx("mx-3 mb-2 h-px", onDark ? "bg-white/10" : "bg-line")}
                 />
               )}
             </AnimatePresence>
@@ -864,14 +910,20 @@ function Rail({
                       <span
                         ref={pillRef}
                         aria-hidden
-                        className="bg-gradient-soft absolute inset-0 rounded-xl"
+                        className={
+                          onDark
+                            ? "absolute inset-0 rounded-[14px] bg-[#5EEAD4] shadow-[0_14px_28px_-14px_rgba(94,234,212,0.85)]"
+                            : "bg-gradient-soft absolute inset-0 rounded-xl"
+                        }
                       >
-                        <span
-                          className={cx(
-                            "absolute inset-y-1.5 left-0 w-[3px] rounded-r-full",
-                            accent.bar,
-                          )}
-                        />
+                        {!onDark && (
+                          <span
+                            className={cx(
+                              "absolute inset-y-1.5 left-0 w-[3px] rounded-r-full",
+                              accent.bar,
+                            )}
+                          />
+                        )}
                       </span>
                     )}
                     <Link
@@ -880,12 +932,20 @@ function Rail({
                       onClick={onNavigate}
                       title={collapsed ? tr(...item.label) : undefined}
                       className={cx(
-                        "group relative flex min-h-11 items-center gap-3 rounded-xl py-2.5 text-[0.9375rem] transition-[color,background-color] duration-200",
-                        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                        "group relative flex items-center gap-3 rounded-xl text-[0.9375rem] transition-[color,background-color] duration-200",
+                        // Twelve destinations and five headings have to fit a
+                        // 900px laptop screen without the console's rail scrolling.
+                        onDark ? "min-h-[38px] py-1.5" : "min-h-11 py-2.5",
+                        "focus-visible:outline-2 focus-visible:outline-offset-2",
+                        onDark ? "focus-visible:outline-[#5EEAD4]" : "focus-visible:outline-primary",
                         collapsed ? "justify-center px-0" : "px-3.5",
                         active
-                          ? cx("font-semibold", accent.text)
-                          : "font-medium text-muted hover:bg-sunken hover:text-strong",
+                          ? onDark
+                            ? "font-bold text-[#04212A]"
+                            : cx("font-semibold", accent.text)
+                          : onDark
+                            ? "font-medium text-[#B9C7DD] hover:bg-white/[0.07] hover:text-white"
+                            : "font-medium text-muted hover:bg-sunken hover:text-strong",
                       )}
                     >
                       <Icon name={item.icon} filled={active} className="icon-wiggle text-[20px]" />
@@ -909,7 +969,12 @@ function Rail({
                       {item.badge === "pendingDoctorApplications" && pendingApplications > 0 && (
                         <span
                           className={cx(
-                            "bg-gradient-brand ml-auto rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums text-white shadow-sm",
+                            "ml-auto rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums",
+                            onDark
+                              ? active
+                                ? "bg-[#04212A] text-[#5EEAD4]"
+                                : "bg-white/10 text-white"
+                              : "bg-gradient-brand text-white shadow-sm",
                             collapsed &&
                               "absolute right-1 top-1 ml-0 px-1.5 py-0 text-[10px] leading-4",
                           )}
@@ -942,9 +1007,17 @@ function Rail({
       {/* Who is signed in, at the foot of the rail where the eye checks it
           last — the same place every desk-side terminal puts it. The circuit
           field behind is the logo's own motif, faded out upward so it never
-          competes with the navigation above it. The bottom padding is for the
-          dev-mode badge, which otherwise sits on top of the card. */}
-      <div className={cx("relative mt-2 pb-12 pt-6", collapsed ? "px-3" : "px-4")}>
+          competes with the navigation above it. The deep bottom padding is for
+          the dev-mode badge, which otherwise sits on top of the card; a
+          production build has no badge and does not need it. */}
+      <div
+        className={cx(
+          "relative mt-2",
+          onDark ? "pt-4" : "pt-6",
+          process.env.NODE_ENV === "development" ? "pb-12" : "pb-4",
+          collapsed ? "px-3" : "px-4",
+        )}
+      >
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0 overflow-hidden"
@@ -961,6 +1034,7 @@ function Rail({
             user={user}
             variant="card"
             collapsed={collapsed}
+            onDark={onDark}
             onSignOut={onSignOut}
             onNavigate={onNavigate}
           />
@@ -1099,8 +1173,8 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
   // and only actually fetches for an administrator.
   const pendingApplications = usePendingDoctorApplications(user?.role ?? "PATIENT");
   const paletteItems = useMemo<PaletteItem[]>(
-    () =>
-      groups.flatMap((group) =>
+    () => [
+      ...groups.flatMap((group) =>
         group.items.map((item) => ({
           href: item.href,
           icon: item.icon,
@@ -1108,7 +1182,58 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
           section: tr(...group.label),
         })),
       ),
-    [groups, tr],
+      // The console's "+ New" entries, so they are a few keystrokes away too.
+      ...(user?.role === "ADMIN"
+        ? NEW_ACTIONS.map((action) => ({
+            href: action.href,
+            icon: action.icon,
+            label: tr(...action.label),
+            detail: tr(...action.note),
+            section: tr("Actions", "Kaam"),
+          }))
+        : []),
+    ],
+    [groups, tr, user?.role],
+  );
+
+  // The console also looks records up: people by name or email, pharmacy
+  // orders by number, name, phone or city, invoices by number or by whose
+  // they are. Each is a read the API already offers the administrator; a
+  // failure in one leaves the others' results.
+  const adminSearch = useCallback<PaletteSearch>(
+    async (query) => {
+      const [people, orders, bills] = await Promise.all([
+        users.list({ search: query, limit: 5 }).catch(() => null),
+        pharmacy.orders({ search: query, limit: 5 }).catch(() => null),
+        invoices.list({ search: query, limit: 5 }).catch(() => null),
+      ]);
+      return [
+        ...(people?.data ?? []).map((person) => ({
+          href: "/admin/users",
+          icon: "person",
+          label: person.name,
+          detail: `${tr(...ROLE_LABEL[person.role])} · ${person.email}`,
+          section: tr("People", "Log"),
+          onPick: () => holdPerson(person),
+        })),
+        ...(orders?.data ?? []).map((order) => ({
+          href: `/admin/pharmacy/orders/${order.id}`,
+          icon: "local_shipping",
+          label: order.orderNumber,
+          detail: [order.patientName ?? order.recipientName, order.city].filter(Boolean).join(" · "),
+          section: tr("Orders", "Orders"),
+        })),
+        ...(bills?.data ?? []).map((invoice) => ({
+          href: "/admin/billing",
+          icon: "receipt_long",
+          label: invoice.invoiceNumber,
+          detail: [invoice.patientName, `${invoice.currency} ${invoice.totalAmount}`].filter(Boolean).join(" · "),
+          section: tr("Invoices", "Invoices"),
+          onPick: () => holdInvoice(invoice),
+        })),
+      ];
+    },
+    [tr],
   );
 
   const toggleRail = () => setRail(!collapsed);
@@ -1141,7 +1266,13 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
   }
 
   const emergencyHref = EMERGENCY_HREF[user.role];
-  const searchLabel = tr("Search pages", "Safhaat mein dhoondein");
+  const searchLabel =
+    user.role === "ADMIN"
+      ? tr("Search people, orders, pages", "Log, orders, safhaat dhoondein")
+      : tr("Search pages", "Safhaat mein dhoondein");
+  // The console's rail floats inside a 14px margin rather than running edge to
+  // edge, so its column is that much wider than the portals' at either size.
+  const consoleShell = user.role === "ADMIN";
 
   return (
     // A person who has asked for less motion gets it from Framer too, not only
@@ -1152,12 +1283,15 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
             of reach. Its width animates rather than snapping. */}
         <motion.aside
           initial={false}
-          animate={{ width: collapsed ? 84 : 264 }}
+          animate={{ width: (collapsed ? 84 : 264) + (consoleShell ? 14 : 0) }}
           transition={SPRING}
           // `z-30`: the account card's dropdown opens out over the page, and
           // the frosted rail is its own stacking context — without this it
           // would be painted under any positioned element in the content.
-          className="sticky top-0 z-30 hidden h-screen shrink-0 border-r border-line bg-card/85 shadow-card backdrop-blur-xl lg:block"
+          className={cx(
+            "sticky top-0 z-30 hidden h-screen shrink-0 lg:block",
+            consoleShell ? "py-3.5 pl-3.5" : "border-r border-line bg-card/85 shadow-card backdrop-blur-xl",
+          )}
         >
           <Rail
             groups={groups}
@@ -1178,7 +1312,7 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
             <div className="fixed inset-0 z-50 lg:hidden">
               <motion.button
                 type="button"
-                aria-label="Close navigation"
+                aria-label={tr("Close navigation", "Menu band karein")}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -1191,7 +1325,10 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
                 animate={{ x: 0 }}
                 exit={{ x: "-100%" }}
                 transition={SPRING}
-                className="relative h-full w-[268px] max-w-[85%] bg-card shadow-overlay"
+                className={cx(
+                  "relative h-full w-[268px] max-w-[85%] shadow-overlay",
+                  consoleShell ? "p-2" : "bg-card",
+                )}
               >
                 <Rail
                   groups={groups}
@@ -1227,7 +1364,7 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 <button
                   type="button"
-                  aria-label="Open navigation"
+                  aria-label={tr("Open navigation", "Menu kholein")}
                   aria-expanded={railOpen}
                   className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-muted transition-colors hover:bg-gradient-soft hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary lg:hidden"
                   onClick={() => setRailOpen(true)}
@@ -1296,19 +1433,39 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
                 <div className="hidden shrink-0 sm:block">
                   <ThemeToggle />
                 </div>
+                {user.role === "ADMIN" && <NewMenu />}
                 <NotificationBell role={user.role} />
                 <AccountMenu user={user} variant="avatar" onSignOut={() => void signOut()} />
               </div>
             </header>
 
             <SessionMeter />
+            <OfflineBanner />
             <span aria-hidden className="topbar-shadow" />
           </div>
 
-          <main id="main" className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 sm:px-8 sm:py-8">
-            <PageTransition>{children}</PageTransition>
+          <main
+            id="main"
+            className={cx(
+              "mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 sm:px-8 sm:py-8",
+              // Room under the last card for the phone's tab bar.
+              consoleShell && "pb-32 sm:pb-32 lg:pb-8",
+            )}
+          >
+            <ConsoleSurface.Provider value={consoleShell}>
+              <PageTransition>{children}</PageTransition>
+            </ConsoleSurface.Provider>
           </main>
         </div>
+
+        {consoleShell && (
+          <ConsoleTabBar
+            pathname={pathname}
+            pendingApplications={pendingApplications}
+            onMore={() => setRailOpen(true)}
+            moreOpen={railOpen}
+          />
+        )}
 
         {user.role === "PATIENT" && pathname !== "/patient/assistant" && <AssistantWidget />}
 
@@ -1316,6 +1473,12 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
           open={paletteOpen}
           onClose={() => setPaletteOpen(false)}
           items={paletteItems}
+          search={user.role === "ADMIN" ? adminSearch : undefined}
+          placeholder={
+            user.role === "ADMIN"
+              ? tr("A name, an email, an order or invoice number, or a page…", "Naam, email, order ya invoice number, ya safha…")
+              : undefined
+          }
         />
       </div>
     </MotionConfig>

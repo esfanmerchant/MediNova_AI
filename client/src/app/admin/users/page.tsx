@@ -24,11 +24,21 @@
  * the actor and the timestamp.
  */
 
-import { useCallback, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
-import { PageHeader } from "@/components/PageHeader";
+import { ConsoleHeader, HeaderPill } from "@/components/admin/console";
+import {
+  PERSON_HELD,
+  PersonDrawer,
+  ROLE_LABEL,
+  STATUS_LABEL,
+  peekHeldPerson,
+  takeHeldPerson,
+} from "@/components/admin/PersonDrawer";
+import { StaffAccountDialog } from "@/components/admin/StaffAccountDialog";
 import { RemoveAccount } from "@/components/admin/RemoveAccount";
 import { useToast } from "@/components/overlays";
 import {
@@ -43,20 +53,12 @@ import {
   SkeletonRows,
   cx,
 } from "@/components/ui";
-import { ApiError, users, type Role } from "@/lib/api";
+import { ApiError, users, type AccountRow, type Role } from "@/lib/api";
 import { useTr } from "@/lib/lang";
 import { useSession } from "@/lib/session";
 import { useAsync } from "@/lib/useAsync";
 
-type Row = {
-  id: string;
-  name: string;
-  email: string;
-  role: Role;
-  status: string;
-  lastLoginAt: string | null;
-  createdAt: string;
-};
+type Row = AccountRow;
 
 const ROLES: Array<{ value: Role | ""; label: [string, string] }> = [
   { value: "", label: ["Everyone", "Sab"] },
@@ -65,7 +67,7 @@ const ROLES: Array<{ value: Role | ""; label: [string, string] }> = [
   { value: "ADMIN", label: ["Admins", "Admins"] },
 ];
 
-function Person({ row, onChanged }: { row: Row; onChanged: () => void }) {
+function Person({ row, onChanged, onOpen }: { row: Row; onChanged: () => void; onOpen: () => void }) {
   const tr = useTr();
   const { user } = useSession();
   const isSelf = user?.id === row.id;
@@ -112,8 +114,10 @@ function Person({ row, onChanged }: { row: Row; onChanged: () => void }) {
   return (
     <li
       className={cx(
-        "rounded-2xl border border-line bg-card p-4 shadow-card",
-        !active && "opacity-80",
+        "rounded-2xl border p-4 shadow-card",
+        // Marked by its ground and its red status badge rather than by fading
+        // the row, which took the words below a readable contrast.
+        active ? "border-line bg-card" : "border-critical/30 bg-sunken/50",
       )}
     >
       {/* On a phone the actions take their own line, and take it by rule
@@ -128,9 +132,15 @@ function Person({ row, onChanged }: { row: Row; onChanged: () => void }) {
         <Avatar name={row.name} />
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-2">
-            <span className="font-display text-base font-bold text-strong">{row.name}</span>
-            <Badge tone="neutral">{row.role}</Badge>
-            {!active && <Badge tone="critical">{row.status}</Badge>}
+            <button
+              type="button"
+              onClick={onOpen}
+              className="rounded font-display text-base font-bold text-strong underline-offset-4 hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              {row.name}
+            </button>
+            <Badge tone="neutral">{tr(...(ROLE_LABEL[row.role] ?? [row.role, row.role]))}</Badge>
+            {!active && <Badge tone="critical">{tr(...(STATUS_LABEL[row.status] ?? [row.status, row.status]))}</Badge>}
           </p>
           <p className="truncate text-sm text-muted">{row.email}</p>
         </div>
@@ -245,19 +255,72 @@ export default function AdminUsers() {
     [role, search, refresh],
   );
 
-  const rows = (list.data?.data ?? []) as Row[];
+  const rows = list.data?.data ?? [];
+
+  // A person search picked: held before the page arrived, or while it was
+  // already showing. Read once on mount, then spent.
+  const [opened, setOpened] = useState<AccountRow | null>(() => peekHeldPerson());
+  useEffect(() => {
+    takeHeldPerson();
+    const onHeld = () => setOpened(takeHeldPerson());
+    window.addEventListener(PERSON_HELD, onHeld);
+    return () => window.removeEventListener(PERSON_HELD, onHeld);
+  }, []);
+  // The header's sentence. Counts only — one row each — so it costs the
+  // server three COUNTs, not three pages of people.
+  const tally = useAsync(
+    () =>
+      Promise.all([
+        users.list({ role: "PATIENT", limit: 1 }),
+        users.list({ role: "DOCTOR", limit: 1 }),
+        users.list({ status: "SUSPENDED", limit: 1 }),
+      ]).then(([patients, doctors, suspended]) => ({
+        patients: patients.meta.total,
+        doctors: doctors.meta.total,
+        suspended: suspended.meta.total,
+      })),
+    [refresh],
+  );
 
   return (
     <AppShell role="ADMIN">
       <div id="main" className="space-y-6">
-        <PageHeader
-          eyebrow={tr("Admin portal", "Intezami portal")}
+        <ConsoleHeader
+          icon="group"
+          eyebrow={tr("Everybody on the platform", "Platform par sab log")}
           title={tr("People", "Log")}
-          subtitle={tr(
-            "Everybody on the platform, and who may still use it.",
-            "Platform par sab log, aur kaun ab bhi istemal kar sakta hai.",
+          actions={
+            <HeaderPill href="/admin/users?new=staff" icon="person_add" tone="primary">
+              {tr("Add a staff account", "Staff account banayein")}
+            </HeaderPill>
+          }
+        >
+          {tally.data ? (
+            <p>
+              <b>
+                {tally.data.patients} {tr(tally.data.patients === 1 ? "patient" : "patients", "mareez")}
+              </b>{" "}
+              {tr("and", "aur")}{" "}
+              <b>
+                {tally.data.doctors} {tr(tally.data.doctors === 1 ? "doctor" : "doctors", "doctors")}
+              </b>
+              .{" "}
+              {tally.data.suspended > 0
+                ? tr(
+                    `${tally.data.suspended} ${tally.data.suspended === 1 ? "account is" : "accounts are"} suspended and cannot sign in.`,
+                    `${tally.data.suspended} accounts muattal hain aur sign in nahi kar sakte.`,
+                  )
+                : tr("Every account can sign in.", "Har account sign in kar sakta hai.")}
+            </p>
+          ) : (
+            <p>
+              {tr(
+                "Everybody on the platform, and who may still use it.",
+                "Platform par sab log, aur kaun ab bhi istemal kar sakta hai.",
+              )}
+            </p>
           )}
-        />
+        </ConsoleHeader>
 
         <Card>
           <div className="flex flex-wrap items-center gap-3">
@@ -304,19 +367,41 @@ export default function AdminUsers() {
           {list.data && rows.length === 0 && (
             <EmptyState
               icon="person_search"
-              title={tr("Nobody matches", "Koi nahi mila")}
-              description={tr("Try a different search.", "Koi aur talash karein.")}
+              title={search ? tr(`Nobody called “${search}”`, `“${search}” naam ka koi nahi`) : tr("Nobody here yet", "Abhi yahan koi nahi")}
+              description={tr(
+                "Search finds a name or an email address. Try part of either, or a different role above. Removed accounts stay in the audit trail.",
+                "Talash naam ya email dhoondti hai. In ka koi hissa likhein, ya upar koi aur kirdar chunein. Hataye gaye accounts audit trail mein rehte hain.",
+              )}
             />
           )}
           {rows.length > 0 && (
             <ul className="space-y-3">
               {rows.map((row) => (
-                <Person key={row.id} row={row} onChanged={reload} />
+                <Person key={row.id} row={row} onChanged={reload} onOpen={() => setOpened(row)} />
               ))}
             </ul>
           )}
         </Card>
+
+        <PersonDrawer person={opened} onClose={() => setOpened(null)} />
+        {/* useSearchParams needs a Suspense boundary of its own. */}
+        <Suspense fallback={null}>
+          <StaffFromLink onCreated={reload} />
+        </Suspense>
       </div>
     </AppShell>
+  );
+}
+
+/** The staff dialog, open while the URL says ?new=staff — which is how "+ New" reaches it. */
+function StaffFromLink({ onCreated }: { onCreated: () => void }) {
+  const params = useSearchParams();
+  const router = useRouter();
+  return (
+    <StaffAccountDialog
+      open={params.get("new") === "staff"}
+      onClose={() => router.replace("/admin/users")}
+      onCreated={onCreated}
+    />
   );
 }

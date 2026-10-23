@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160">
+  <defs>
+    <linearGradient id="card" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#E3EDFA"/></linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#A9BEDF"/><stop offset="1" stop-color="#8099C6"/></linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0B3FA8"/><stop offset=".55" stop-color="#1A8FC7"/><stop offset="1" stop-color="#14C4C1"/></linearGradient>
+    <radialGradient id="s" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#0B1630" stop-opacity=".22"/><stop offset="1" stop-color="#0B1630" stop-opacity="0"/></radialGradient>
+  </defs>
+  <ellipse cx="80" cy="144" rx="52" ry="8" fill="url(#s)"/>
+  <rect x="32" y="30" width="96" height="110" rx="18" fill="url(#edge)"/>
+  <rect x="32" y="24" width="96" height="110" rx="18" fill="url(#card)"/>
+  <rect x="66" y="14" width="28" height="16" rx="6" fill="url(#brand)"/>
+  <circle cx="80" cy="62" r="20" fill="url(#brand)"/>
+  <circle cx="80" cy="56" r="8" fill="#FFFFFF" fill-opacity=".92"/>
+  <path d="M66 76c3-8 8-11 14-11s11 3 14 11" fill="#FFFFFF" fill-opacity=".92"/>
+  <rect x="50" y="92" width="60" height="7" rx="3.5" fill="#C9D6EA"/>
+  <rect x="58" y="105" width="44" height="6" rx="3" fill="#DCE6F2"/>
+  <circle cx="114" cy="112" r="15" fill="#FFFFFF"/>
+  <circle cx="114" cy="112" r="15" fill="none" stroke="#14C4C1" stroke-width="3"/>
+  <path d="M114 104v16M106 112h16" stroke="#0B7F8B" stroke-width="4" stroke-linecap="round"/>
+</svg>

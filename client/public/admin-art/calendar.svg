@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160">
+  <defs>
+    <linearGradient id="face" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#E4EEFB"/></linearGradient>
+    <linearGradient id="side" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9FB7DE"/><stop offset="1" stop-color="#7C97C8"/></linearGradient>
+    <linearGradient id="band" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0B3FA8"/><stop offset=".55" stop-color="#1A8FC7"/><stop offset="1" stop-color="#14C4C1"/></linearGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F1F6FD"/><stop offset="1" stop-color="#B9C9E2"/></linearGradient>
+    <linearGradient id="tick" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5EEAD4"/><stop offset="1" stop-color="#14C4C1"/></linearGradient>
+    <radialGradient id="shadow" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#0B1630" stop-opacity=".22"/><stop offset="1" stop-color="#0B1630" stop-opacity="0"/></radialGradient>
+  </defs>
+  <ellipse cx="80" cy="140" rx="54" ry="9" fill="url(#shadow)"/>
+  <rect x="24" y="34" width="112" height="102" rx="22" fill="url(#side)"/>
+  <rect x="24" y="28" width="112" height="102" rx="22" fill="url(#face)"/>
+  <path d="M46 28h68a22 22 0 0 1 22 22v8H24v-8a22 22 0 0 1 22-22z" fill="url(#band)"/>
+  <path d="M40 34h80" stroke="#FFFFFF" stroke-opacity=".35" stroke-width="3" stroke-linecap="round"/>
+  <rect x="50" y="18" width="10" height="22" rx="5" fill="url(#ring)"/>
+  <rect x="100" y="18" width="10" height="22" rx="5" fill="url(#ring)"/>
+  <g fill="#C9D6EA">
+    <rect x="40" y="70" width="14" height="12" rx="4"/><rect x="60" y="70" width="14" height="12" rx="4"/><rect x="80" y="70" width="14" height="12" rx="4"/><rect x="100" y="70" width="14" height="12" rx="4"/>
+    <rect x="40" y="88" width="14" height="12" rx="4"/><rect x="60" y="88" width="14" height="12" rx="4"/><rect x="100" y="88" width="14" height="12" rx="4"/>
+    <rect x="40" y="106" width="14" height="12" rx="4"/><rect x="60" y="106" width="14" height="12" rx="4"/><rect x="80" y="106" width="14" height="12" rx="4"/>
+  </g>
+  <rect x="80" y="88" width="14" height="12" rx="4" fill="#1A8FC7"/>
+  <circle cx="118" cy="114" r="20" fill="url(#tick)"/>
+  <circle cx="118" cy="114" r="20" fill="none" stroke="#FFFFFF" stroke-width="3"/>
+  <path d="M109 114.5l6 6 11-12" fill="none" stroke="#04363A" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

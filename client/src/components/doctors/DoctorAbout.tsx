@@ -87,12 +87,10 @@ export function DoctorAbout({
   const tr = useTr();
   if (!doctor) return null;
 
-  const money = new Intl.NumberFormat("en-PK", {
-    style: "currency",
-    currency: "PKR",
-    maximumFractionDigits: 0,
-  });
-  const fee = money.format(doctor.consultationFee);
+  // "PKR", as every other fee in the app is written — Intl would say "Rs".
+  const money = (value: number) =>
+    `PKR ${new Intl.NumberFormat("en-PK", { maximumFractionDigits: 0 }).format(value)}`;
+  const fee = money(doctor.consultationFee);
 
   return (
     <Dialog
@@ -166,7 +164,7 @@ export function DoctorAbout({
 
           {doctor.offersOnline && typeof doctor.effectiveOnlineFee === "number" && (
             <Fact icon="videocam" label={tr("Online consultation", "Online consultation")}>
-              <span className="tabular-nums">{money.format(doctor.effectiveOnlineFee)}</span>
+              <span className="tabular-nums">{money(doctor.effectiveOnlineFee)}</span>
               <span className="text-muted"> {tr("for 30 minutes", "30 minute ke liye")}</span>
             </Fact>
           )}

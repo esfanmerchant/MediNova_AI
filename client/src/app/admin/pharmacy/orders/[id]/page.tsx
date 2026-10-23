@@ -15,11 +15,11 @@ import { useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
-import { PageHeader } from "@/components/PageHeader";
+import { Art, ConsoleHeader, MedicinePack } from "@/components/admin/console";
 import { Dialog } from "@/components/overlays";
-import { FORM_ICON, OrderStatusBadge, OrderTimeline, rupees } from "@/components/pharmacy/shared";
+import { OrderStatusBadge, OrderTimeline, rupees } from "@/components/pharmacy/shared";
 import { Badge, Button, Card, ErrorState, Field, Input, SkeletonRows, Textarea } from "@/components/ui";
-import { ApiError, pharmacy, type Order, type ProductForm } from "@/lib/api";
+import { ApiError, pharmacy, type Order } from "@/lib/api";
 import { useTr } from "@/lib/lang";
 import { useAsync } from "@/lib/useAsync";
 
@@ -52,14 +52,28 @@ export default function AdminOrder() {
           </div>
         ) : order.data ? (
           <>
-            <PageHeader
-              eyebrow={tr("Pharmacy order", "Pharmacy order")}
-              title={order.data.orderNumber}
-              subtitle={`${order.data.patientName ?? order.data.recipientName} · ${rupees(order.data.total)} · ${
-                order.data.paymentMethod === "COD" ? tr("Cash on delivery", "Cash on delivery") : tr("Online transfer", "Online transfer")
-              }`}
-              actions={<OrderStatusBadge status={order.data.status} />}
-            />
+            <div className="mt-2">
+              <ConsoleHeader
+                icon="local_pharmacy"
+                eyebrow={tr("Pharmacy order", "Pharmacy order")}
+                title={order.data.orderNumber}
+                actions={<OrderStatusBadge status={order.data.status} />}
+              >
+                <p>
+                  <b>{order.data.patientName ?? order.data.recipientName}</b>{" "}
+                  {tr(
+                    `ordered ${order.data.items.length} ${order.data.items.length === 1 ? "medicine" : "medicines"} for`,
+                    `ne ${order.data.items.length} dawaiyan mangwayin,`,
+                  )}{" "}
+                  <b>{rupees(order.data.total)}</b>
+                  {tr(", ", ", ")}
+                  {order.data.paymentMethod === "COD"
+                    ? tr("cash on delivery", "cash on delivery")
+                    : tr("paid by transfer", "transfer se")}
+                  {tr(`, going to ${order.data.city}.`, `, ${order.data.city} jana hai.`)}
+                </p>
+              </ConsoleHeader>
+            </div>
 
             <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
               <div className="min-w-0 space-y-6">
@@ -69,9 +83,7 @@ export default function AdminOrder() {
                   <ul className="divide-y divide-line">
                     {order.data.items.map((item) => (
                       <li key={item.id} className="flex items-center gap-3 px-5 py-3">
-                        <span aria-hidden className="bg-gradient-soft grid h-10 w-10 shrink-0 place-items-center rounded-xl text-primary">
-                          <Icon name={FORM_ICON[item.form as ProductForm] ?? "medication"} className="text-[20px]" />
-                        </span>
+                        <MedicinePack form={item.form} />
                         <div className="min-w-0 flex-1">
                           <p className="font-semibold text-strong">
                             {[item.productName, item.strength].filter(Boolean).join(" ")} × {item.quantity}
@@ -275,10 +287,13 @@ function Actions({ order, onChanged }: { order: Order; onChanged: () => void }) 
         )}
 
         {order.status === "DELIVERED" && (
-          <p className="flex items-center gap-2 text-sm font-semibold text-stable">
-            <Icon name="check_circle" filled className="text-[20px]" />
-            {tr("Delivered and paid. Nothing more to do.", "Pahunch gaya aur ada ho gaya. Mazeed kuchh nahi.")}
-          </p>
+          <div className="flex items-center gap-4">
+            <Art name="parcel" size={88} className="shrink-0" />
+            <p className="flex items-center gap-2 text-sm font-semibold text-stable">
+              <Icon name="check_circle" filled className="text-[20px]" />
+              {tr("Delivered and paid. Nothing more to do.", "Pahunch gaya aur ada ho gaya. Mazeed kuchh nahi.")}
+            </p>
+          </div>
         )}
 
         {order.status === "CANCELLED" && (

@@ -16,10 +16,10 @@ import { Suspense, useRef, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
-import { PageHeader } from "@/components/PageHeader";
+import { ConsoleHeader, MedicinePack } from "@/components/admin/console";
 import { Dialog, useToast } from "@/components/overlays";
 import { PharmacyAdminTabs } from "@/components/pharmacy/AdminTabs";
-import { FORM_ICON, FORM_LABEL, productTitle, rupees } from "@/components/pharmacy/shared";
+import { FORM_LABEL, productTitle, rupees } from "@/components/pharmacy/shared";
 import { Switch } from "@/components/forms";
 import {
   Badge,
@@ -78,6 +78,14 @@ function Catalog() {
     else next.delete(name);
     router.replace(`${pathname}?${next.toString()}`);
   };
+
+  // "+ New" opens this page with ?new=1 or ?import=1. Read from the URL rather
+  // than copied into state, so the dialog also opens when the menu is used
+  // while this page is already showing; closing it takes the flag back off.
+  const adding = params.get("new") === "1";
+  const importingFromLink = params.get("import") === "1";
+  const product = editing ?? (adding ? "new" : null);
+  const showImport = importing || importingFromLink;
 
   const list = useAsync(
     () =>
@@ -177,7 +185,7 @@ function Catalog() {
                     <tr key={product.id} className={cx(!product.active && "opacity-60")}>
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-3">
-                          <Icon name={FORM_ICON[product.form]} className="shrink-0 text-[20px] text-primary" />
+                          <MedicinePack form={product.form} />
                           <div className="min-w-0">
                             <p className="font-semibold text-strong">{productTitle(product)}</p>
                             <p className="text-xs text-muted">
@@ -223,13 +231,17 @@ function Catalog() {
         </Card>
       )}
 
-      {editing && (
+      {product && (
         <ProductDialog
-          key={editing === "new" ? "new" : editing.id}
-          product={editing === "new" ? null : editing}
-          onClose={() => setEditing(null)}
+          key={product === "new" ? "new" : product.id}
+          product={product === "new" ? null : product}
+          onClose={() => {
+            setEditing(null);
+            if (adding) setFlag("new", false);
+          }}
           onSaved={() => {
             setEditing(null);
+            if (adding) setFlag("new", false);
             reload();
           }}
         />
@@ -245,9 +257,12 @@ function Catalog() {
           }}
         />
       )}
-      {importing && (
+      {showImport && (
         <ImportDialog
-          onClose={() => setImporting(false)}
+          onClose={() => {
+            setImporting(false);
+            if (importingFromLink) setFlag("import", false);
+          }}
           onImported={() => reload()}
         />
       )}
@@ -549,11 +564,14 @@ export default function PharmacyCatalog() {
   return (
     <AppShell role="ADMIN">
       <div id="main">
-        <PageHeader
-          eyebrow={tr("Pharmacy", "Pharmacy")}
-          title={tr("Catalog", "Catalog")}
-          subtitle={tr("Medicines, prices and stock.", "Dawaiyan, qeematein aur stock.")}
-        />
+        <ConsoleHeader icon="inventory_2" eyebrow={tr("Pharmacy", "Pharmacy")} title={tr("Catalog", "Catalog")}>
+          <p>
+            {tr(
+              "Every medicine the pharmacy sells: its price, its stock, and whether it needs a prescription.",
+              "Pharmacy ki har dawa: qeemat, stock, aur kya nuskha zaroori hai.",
+            )}
+          </p>
+        </ConsoleHeader>
         <div className="mt-6">
           <PharmacyAdminTabs />
         </div>

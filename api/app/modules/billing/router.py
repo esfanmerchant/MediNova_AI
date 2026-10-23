@@ -21,7 +21,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.api.deps import CurrentAuth, DbSession, client_ip, require_permission
 from app.api.responses import Page, ok, pagination
@@ -185,6 +185,7 @@ async def list_invoices(
     page: Annotated[Page, Depends(pagination)],
     status: InvoiceStatus | None = None,
     patient_id: Annotated[str | None, Query(alias="patientId", max_length=64)] = None,
+    search: Annotated[str | None, Query(max_length=100)] = None,
 ) -> dict[str, Any]:
     """Invoice history, newest first.
 
@@ -200,6 +201,19 @@ async def list_invoices(
             # better than silently returning their own rows.
             raise forbidden("You can only view your own invoices.")
         filters.append(Invoice.patient_id == patient_id)
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        if auth.has(Permission.INVOICE_READ_ANY):
+            # Staff find a bill the way it reaches them: by its number, or by
+            # whose it is. A patient's own search only ever narrows their own.
+            whose = (
+                select(Patient.id)
+                .join(User, User.id == Patient.user_id)
+                .where(or_(User.name.ilike(term), Patient.medical_record_number.ilike(term)))
+            )
+            filters.append(or_(Invoice.invoice_number.ilike(term), Invoice.patient_id.in_(whose)))
+        else:
+            filters.append(Invoice.invoice_number.ilike(term))
 
     total = (
         await db.execute(select(func.count()).select_from(Invoice).where(*filters))
@@ -228,8 +242,29 @@ async def list_invoices(
     ).scalar_one()
 
     waiting = await under_review(db, [row.id for row in rows])
+
+    # Whose bill each one is, for the staff who see everybody's. A ledger of
+    # numbers with no names is one an administrator cannot act on; a patient
+    # reading their own list already knows whose it is, so they are not sent it.
+    whose: dict[str, tuple[str, str]] = {}
+    if rows and auth.has(Permission.INVOICE_READ_ANY):
+        found = (
+            await db.execute(
+                select(Patient.id, User.name, Patient.medical_record_number)
+                .join(User, User.id == Patient.user_id)
+                .where(Patient.id.in_({row.patient_id for row in rows}))
+            )
+        ).all()
+        whose = {patient_id: (name, mrn) for patient_id, name, mrn in found}
+
+    def with_patient(row: Invoice) -> dict[str, Any]:
+        body = service.serialize(row, awaiting_review=row.id in waiting)
+        if row.patient_id in whose:
+            body["patientName"], body["medicalRecordNumber"] = whose[row.patient_id]
+        return body
+
     return ok(
-        [service.serialize(row, awaiting_review=row.id in waiting) for row in rows],
+        [with_patient(row) for row in rows],
         {**page.meta(total), "outstanding": str(outstanding)},
     )
 

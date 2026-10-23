@@ -32,11 +32,12 @@
  * still explain March's numbers after somebody edits the rates in April.
  */
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
-import { PageHeader } from "@/components/PageHeader";
+import { ConsoleHeader } from "@/components/admin/console";
 import { Segmented } from "@/components/forms";
 import {
   Badge,
@@ -170,6 +171,9 @@ export default function TransactionsPage() {
     [rows],
   );
 
+  const awaiting = rows.filter((row) => row.status === "SUBMITTED").length;
+  const money = new Intl.NumberFormat("en-PK", { maximumFractionDigits: 0 });
+
   const options: { value: Tab; label: string; icon?: string }[] = [
     { value: "all", label: tr("All", "Sab") },
     { value: "SUCCEEDED", label: tr("Confirmed", "Tasdeeq shuda"), icon: "task_alt" },
@@ -180,14 +184,36 @@ export default function TransactionsPage() {
   return (
     <AppShell role="ADMIN">
       <div id="main" className="space-y-6">
-        <PageHeader
-          eyebrow={tr("Administration", "Intezamia")}
+        <ConsoleHeader
+          icon="swap_horiz"
+          eyebrow={tr("Every transfer patients have reported", "Har transfer jo mareezon ne bataya")}
           title={tr("Transactions", "Transactions")}
-          subtitle={tr(
-            "Every transfer patients have reported, who it came from and where it went.",
-            "Har transfer jo mareezon ne bataya — kis se aaya aur kahan gaya.",
+        >
+          {ledger.data && tab === "all" ? (
+            <p>
+              <b>{rows.length}</b> {tr(rows.length === 1 ? "transfer" : "transfers", "transfers")}
+              {tr(", ", ", ")}
+              <b>{money.format(received)}</b> {tr("confirmed as received.", "wasool hona tasdeeq shuda.")}{" "}
+              {awaiting > 0 &&
+                <>
+                  <Link href="/admin/billing#to-confirm">
+                    {tr(
+                      `${awaiting} still ${awaiting === 1 ? "needs" : "need"} checking`,
+                      `${awaiting} ki jaanch baqi`,
+                    )}
+                  </Link>
+                  .
+                </>}
+            </p>
+          ) : (
+            <p>
+              {tr(
+                "Who each transfer came from and where it went.",
+                "Har transfer kis se aaya aur kahan gaya.",
+              )}
+            </p>
           )}
-        />
+        </ConsoleHeader>
 
         <Segmented
           options={options}

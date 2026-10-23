@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160">
+  <defs>
+    <linearGradient id="top" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7FF2E0"/><stop offset="1" stop-color="#14C4C1"/></linearGradient>
+    <linearGradient id="side" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#0E8F8C"/><stop offset=".5" stop-color="#11A8A5"/><stop offset="1" stop-color="#0B7F7D"/></linearGradient>
+    <linearGradient id="note" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1462C4"/><stop offset="1" stop-color="#0B3FA8"/></linearGradient>
+    <radialGradient id="s" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#0B1630" stop-opacity=".22"/><stop offset="1" stop-color="#0B1630" stop-opacity="0"/></radialGradient>
+  </defs>
+  <ellipse cx="80" cy="142" rx="58" ry="8" fill="url(#s)"/>
+  <g transform="rotate(-12 96 62)">
+    <rect x="58" y="30" width="78" height="46" rx="10" fill="url(#note)"/>
+    <circle cx="97" cy="53" r="12" fill="none" stroke="#FFFFFF" stroke-opacity=".55" stroke-width="3"/>
+    <path d="M66 38h14M114 68h14" stroke="#FFFFFF" stroke-opacity=".45" stroke-width="3" stroke-linecap="round"/>
+  </g>
+  <g>
+    <path d="M30 112v14c0 7 15 12 34 12s34-5 34-12v-14z" fill="url(#side)"/>
+    <ellipse cx="64" cy="112" rx="34" ry="12" fill="url(#top)"/>
+    <path d="M30 96v14c0 7 15 12 34 12s34-5 34-12V96z" fill="url(#side)"/>
+    <ellipse cx="64" cy="96" rx="34" ry="12" fill="url(#top)"/>
+    <path d="M30 80v14c0 7 15 12 34 12s34-5 34-12V80z" fill="url(#side)"/>
+    <ellipse cx="64" cy="80" rx="34" ry="12" fill="url(#top)"/>
+    <ellipse cx="64" cy="80" rx="22" ry="7" fill="none" stroke="#FFFFFF" stroke-opacity=".6" stroke-width="2.5"/>
+    <path d="M44 76c6-3 14-4 20-4" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-opacity=".8"/>
+  </g>
+  <circle cx="122" cy="108" r="17" fill="#FFFFFF"/>
+  <circle cx="122" cy="108" r="17" fill="none" stroke="#DCE6F2" stroke-width="2"/>
+  <path d="M122 116v-16M115 107l7-7 7 7" fill="none" stroke="#0E8A60" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -61,7 +61,7 @@
   /* ---- text ---- */
   --text-strong: #0e1b33;
   --text-muted: #5c6b85;
-  --text-faint: #93a1b8;
+  --text-faint: #5e6d86; /* was #93a1b8: 2.6:1 on white; this passes on every light ground */
   --text-on-rail: #ffffff;
 
   /* ---- lines ---- */
@@ -74,11 +74,11 @@
   --ms-critical: #e5484d;
   --ms-info: #1a8fc7;
 
-  --status-stable: #0e9f6e;
+  --status-stable: #047857; /* was #0e9f6e: 3.0:1 as text on its own soft tint */
   --status-stable-soft: #e2f7ee;
   --status-warning: #b45309;
   --status-warning-soft: #fef3dd;
-  --status-critical: #d13438;
+  --status-critical: #c42b31; /* was #d13438: 4.3:1 as text on its own soft tint */
   --status-critical-soft: #fdeaea;
   --status-info: #1173a3;
   --status-info-soft: #e2f0fa;
@@ -109,6 +109,17 @@
   --motion-slow: 600ms;
   --motion-stagger: 60ms;
   --ease-motion: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* ---- console pastels ----
+     The administration console's summary tiles. Five quiet grounds, one per
+     kind of figure, so a row of numbers reads as separate things at a glance
+     without any of them shouting. Ink is the text that sits on all five. */
+  --pastel-mint: #cdefe9;
+  --pastel-sky: #d4e6fa;
+  --pastel-lilac: #e0e2fb;
+  --pastel-butter: #f8ebc4;
+  --pastel-blush: #f7dad5;
+  --pastel-ink: #0b1630;
 }
 
 .dark {
@@ -134,7 +145,7 @@
 
   --text-strong: #eaf1fb;
   --text-muted: #9db0cc;
-  --text-faint: #6b7f9e;
+  --text-faint: #8296b3; /* was #6b7f9e: 3.8:1 on the sunken navy */
 
   --line: #1b2c52;
   --line-strong: #2b4272;
@@ -156,6 +167,13 @@
 
   --glow-a: rgb(11 63 168 / 0.35);
   --glow-b: rgb(20 196 193 / 0.16);
+
+  --pastel-mint: #123b3a;
+  --pastel-sky: #132e52;
+  --pastel-lilac: #1e2350;
+  --pastel-butter: #3a3112;
+  --pastel-blush: #40201f;
+  --pastel-ink: #eaf1fb;
 }
 
 @theme inline {
@@ -196,6 +214,13 @@
   --color-critical-soft: var(--status-critical-soft);
   --color-info: var(--status-info);
   --color-info-soft: var(--status-info-soft);
+
+  --color-pastel-mint: var(--pastel-mint);
+  --color-pastel-sky: var(--pastel-sky);
+  --color-pastel-lilac: var(--pastel-lilac);
+  --color-pastel-butter: var(--pastel-butter);
+  --color-pastel-blush: var(--pastel-blush);
+  --color-pastel-ink: var(--pastel-ink);
 
   /* The brand radii, mapped onto the utilities the components already use. */
   --radius-sm: var(--ms-radius-sm);
@@ -1470,6 +1495,7 @@ html.theme-fading *::after {
   .bar-grow,
   .bar-grow-x,
   .chart-dot,
+  .art-settle,
   .timeline::before {
     animation: none !important;
   }
@@ -1777,16 +1803,16 @@ html {
 
   --text-strong: #0e1b33;
   --text-muted: #5c6b85;
-  --text-faint: #93a1b8;
+  --text-faint: #5e6d86; /* was #93a1b8: 2.6:1 on white; this passes on every light ground */
 
   --line: #dce6f2;
   --line-strong: #c2d1e6;
 
-  --status-stable: #0e9f6e;
+  --status-stable: #047857; /* was #0e9f6e: 3.0:1 as text on its own soft tint */
   --status-stable-soft: #e2f7ee;
   --status-warning: #b45309;
   --status-warning-soft: #fef3dd;
-  --status-critical: #d13438;
+  --status-critical: #c42b31; /* was #d13438: 4.3:1 as text on its own soft tint */
   --status-critical-soft: #fdeaea;
   --status-info: #1173a3;
   --status-info-soft: #e2f0fa;
@@ -1822,7 +1848,7 @@ html {
 
   --text-strong: #eaf1fb;
   --text-muted: #9db0cc;
-  --text-faint: #6b7f9e;
+  --text-faint: #8296b3; /* was #6b7f9e: 3.8:1 on the sunken navy */
 
   --line: #1b2c52;
   --line-strong: #2b4272;
@@ -1940,4 +1966,76 @@ video-player-container.consult-stage video-player[data-role="self"] {
     aspect-ratio: 9 / 16;
     bottom: 6rem;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   The administration console.
+
+   One floating navy panel for the rail, and three places art is allowed: the
+   banner at the top of a page (one per page, blended in, standing on its
+   bottom edge), art that is itself data (a medicine's pack, drawn by its
+   form), and the moment a queue is finished. Nothing sits in the corner of a
+   card that holds numbers, and nothing floats forever — art arrives once and
+   then stays still. The reasoning, with the research behind it, is on the
+   design canvas's "Art rules" board.
+   --------------------------------------------------------------------------- */
+.console-rail {
+  border-radius: 28px;
+  background: linear-gradient(180deg, #0c2150 0%, #081736 46%, #061029 100%);
+  box-shadow: 0 30px 60px -30px rgb(8 22 51 / 0.75);
+  color: #b9c7dd;
+}
+/* Its own clipping box: the rail itself must not clip, because the collapsed
+   tooltips and the account menu both open out past its edge. */
+.console-rail-glow {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+}
+.console-rail-glow::before {
+  content: "";
+  position: absolute;
+  right: -60px;
+  top: -60px;
+  width: 200px;
+  height: 200px;
+  border-radius: 9999px;
+  background: radial-gradient(circle, rgb(20 196 193 / 0.25), transparent 70%);
+}
+
+/* The banner every console page may open with: the brand's navy, deepened. */
+.console-banner {
+  background: linear-gradient(135deg, #0a2a72 0%, #0b3fa8 60%, #0e5c86 100%);
+  box-shadow: 0 30px 60px -32px rgb(10 42 114 / 0.8);
+}
+
+/* Banner art melts into the banner from the left and the top instead of
+   showing its box; its bottom edge stands on the banner's figures. */
+.art-melt {
+  -webkit-mask-image:
+    linear-gradient(90deg, transparent 0%, #000 26%),
+    linear-gradient(180deg, transparent 0%, #000 22%);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(90deg, transparent 0%, #000 26%),
+    linear-gradient(180deg, transparent 0%, #000 22%);
+  mask-composite: intersect;
+}
+
+/* The one entrance art gets. Covered by both reduced-motion rules, the
+   system's and the console's own setting. */
+@keyframes art-settle {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.art-settle {
+  animation: art-settle 1s var(--ease-motion) 0.15s backwards;
 }
