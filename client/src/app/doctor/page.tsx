@@ -158,7 +158,7 @@ export default function DoctorDashboard() {
                   {new Date().toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long" })}
                 </p>
                 <h2 className="mt-1 font-display text-3xl font-bold leading-tight sm:text-4xl">
-                  {greeting(tr)}, <span className="text-gradient-medical">Dr. {user.name.split(/\s+/)[0]}</span>
+                  {greeting(tr)}, <span className="text-gradient-medical">Dr. {user.name.replace(/^Dr\.?\s+/i, "").split(/\s+/)[0]}</span>
                 </h2>
                 <p className="mt-3 max-w-lg text-[15px] text-white/80">
                   {data

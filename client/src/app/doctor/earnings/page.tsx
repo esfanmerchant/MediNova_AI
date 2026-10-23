@@ -27,6 +27,7 @@ import {
 } from "@/components/layout/PageSectionNav";
 import { WithdrawDialog } from "@/components/WithdrawDialog";
 import { useToast } from "@/components/overlays";
+import { consoleMoney } from "@/components/admin/console";
 import {
   Badge,
   Button,
@@ -40,8 +41,9 @@ import { earnings, type LedgerEntry, type Withdrawal } from "@/lib/api";
 import { useTr } from "@/lib/lang";
 import { useAsync } from "@/lib/useAsync";
 
+/** "PKR 38,000" — grouped, and paisa only when there are some. */
 function money(amount: string, currency: string): string {
-  return `${currency} ${amount}`;
+  return consoleMoney(amount, currency);
 }
 
 /** Signed amounts read better with the sign made explicit than inferred. */
@@ -81,7 +83,7 @@ function Movement({ entry }: { entry: LedgerEntry }) {
         )}
       >
         {credit ? "+" : ""}
-        {entry.amount}
+        {consoleMoney(entry.amount, "PKR").replace("PKR ", "")}
       </span>
     </li>
   );
