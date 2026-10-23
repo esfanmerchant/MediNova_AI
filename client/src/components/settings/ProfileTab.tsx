@@ -18,11 +18,12 @@
  */
 
 import Link from "next/link";
+import { useContext } from "react";
 
 import { Icon } from "@/components/Icon";
 import { EcgLine } from "@/components/brand/EcgLine";
 import { AvatarEditor } from "@/components/settings/AvatarEditor";
-import { Badge, Card, cx } from "@/components/ui";
+import { Badge, Card, ConsoleSurface, cx } from "@/components/ui";
 import { useTr } from "@/lib/lang";
 import { useSession } from "@/lib/session";
 import type { Role } from "@/lib/api";
@@ -68,6 +69,7 @@ function Detail({
 export function ProfileTab({ role }: { role: Role }) {
   const tr = useTr();
   const { user, refreshUser } = useSession();
+  const inConsole = useContext(ConsoleSurface);
   if (!user) return null;
 
   const active = user.status === "ACTIVE";
@@ -99,7 +101,8 @@ export function ProfileTab({ role }: { role: Role }) {
           </div>
         </div>
 
-        <EcgLine height={26} speed={2.8} className="my-2 opacity-40" />
+        {/* The portals keep their pulse line; the console is plain. */}
+        {inConsole ? <div className="my-4 h-px bg-line" /> : <EcgLine height={26} speed={2.8} className="my-2 opacity-40" />}
 
         <div className="divide-y divide-line">
           <Detail

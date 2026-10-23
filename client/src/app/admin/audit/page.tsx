@@ -19,21 +19,22 @@ export default function AdminAudit() {
   return (
     <AppShell role="ADMIN">
       <div id="main">
-        <ConsoleHeader mark="audit"
-          icon="verified_user"
+        <ConsoleHeader
+          mark="audit"
           eyebrow={tr("Who saw what, and when", "Kis ne kya dekha, aur kab")}
           title={tr("Audit trail", "Audit trail")}
           actions={
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-muted shadow-card">
-              <Icon name="lock" filled className="text-[16px] text-accent" />
-              {tr("Append-only", "Sirf izafa")}
+            // The seal, said once for the whole trail rather than on every row.
+            <span className="inline-flex h-8 items-center gap-1.5 rounded-full bg-stable-soft px-3.5 text-[13px] font-semibold text-stable">
+              <Icon name="lock" filled className="text-[15px]" />
+              {tr("Sealed · append-only", "Mohr-band · sirf izafa")}
             </span>
           }
         >
           <p>
             {tr(
-              "Every sensitive action, in order. Nobody can edit or remove an entry, and opening this page is recorded too.",
-              "Har hassas amal, tarteeb se. Koi entry badal ya mita nahi sakta, aur yeh safha kholna bhi darj hota hai.",
+              "Every sensitive action, newest first. Nobody can edit or remove an entry, and opening this page is recorded too.",
+              "Har hassas amal, naya pehle. Koi entry badal ya mita nahi sakta, aur yeh safha kholna bhi darj hota hai.",
             )}
           </p>
         </ConsoleHeader>

@@ -164,7 +164,7 @@ export function AccountSettings({ role }: { role: Role }) {
           value={tab}
           onChange={pick}
           size="sm"
-          className="w-max min-w-full"
+          className={role === "ADMIN" ? "w-max" : "w-max min-w-full"}
           options={available.map((value) => ({
             value,
             label: tr(...labels[value]),
