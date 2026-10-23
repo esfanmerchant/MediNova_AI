@@ -80,6 +80,33 @@ function TwoFactorForm() {
     return () => window.clearTimeout(id);
   }, [leaving, done, reduced, router]);
 
+  if (!challengeId && inConsole) {
+    // The console's own voice for the dead end, and its navy pill out of it.
+    return (
+      <div className="flex w-full flex-col gap-[22px]">
+        <div className="flex flex-col gap-2">
+          <p className="font-mono text-[11px] tracking-[0.16em] text-faint uppercase">{tr("Two-step sign-in", "Do-marhala login")}</p>
+          <h2 className="font-display text-[2rem] leading-[normal] font-bold tracking-[-0.02em] text-strong">
+            {tr("This sign-in has expired", "Yeh login khatam ho chuka hai")}
+          </h2>
+          <p className="text-[15px] leading-[1.55] text-muted">
+            {tr(
+              "A code request only stays open for a few minutes. Start again and we will send a new one.",
+              "Code ki darkhwast sirf chand minute khuli rehti hai. Dobara shuru karein, naya code aa jayega.",
+            )}
+          </p>
+        </div>
+        <Link
+          href={back}
+          className="inline-flex h-[50px] w-full items-center justify-center gap-2 rounded-full bg-[#0B3FA8] text-[15px] font-semibold text-white shadow-[0_10px_22px_-12px_rgba(11,63,168,0.8)] transition-colors hover:bg-[#0A3796] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:bg-[#3B6FE0] dark:hover:bg-[#4A7BEA]"
+        >
+          {tr("Back to sign in", "Login par wapas")}
+          <Icon name="arrow_forward" className="text-[18px]" />
+        </Link>
+      </div>
+    );
+  }
+
   if (!challengeId) {
     return (
       <div className="w-full">
