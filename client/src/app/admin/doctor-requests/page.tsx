@@ -449,7 +449,7 @@ export default function DoctorRequestsPage() {
                   </tbody>
                 </table>
               </div>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line px-[18px] py-3 text-[12.5px] text-muted">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line px-[22px] py-3 text-[12.5px] text-muted">
                 <span className="inline-flex items-center gap-[7px]">
                   <span aria-hidden className="grid h-[18px] w-[18px] place-items-center rounded-md bg-stable-soft text-stable">
                     <Icon name="check" className="text-[12px]" />
