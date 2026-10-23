@@ -357,7 +357,8 @@ export function OrderStatusBadge({ status }: { status: OrderStatus }) {
   );
 }
 
-const STEP_LABEL: Record<OrderStep["key"], [string, string]> = {
+/** Each step of an order, as the patient and the counter both read it. */
+export const STEP_LABEL: Record<OrderStep["key"], [string, string]> = {
   PLACED: ["Order placed", "Order diya gaya"],
   PRESCRIPTION: ["Prescription approved", "Nuskha manzoor"],
   PAID: ["Payment confirmed", "Payment confirm"],

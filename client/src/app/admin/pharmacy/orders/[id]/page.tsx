@@ -11,17 +11,30 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
-import { Art, ConsoleHeader, MedicinePack } from "@/components/admin/console";
+import { Art, ConsoleCard, ConsoleHeader, MedicinePack, StatusPill, consoleStamp } from "@/components/admin/console";
 import { Dialog } from "@/components/overlays";
-import { OrderStatusBadge, OrderTimeline, rupees } from "@/components/pharmacy/shared";
-import { Badge, Button, Card, ErrorState, Field, Input, SkeletonRows, Textarea } from "@/components/ui";
+import { AdminOrderStatus } from "@/components/pharmacy/AdminTabs";
+import { STEP_LABEL, rupees } from "@/components/pharmacy/shared";
+import { Button, ErrorState, Field, Input, SkeletonRows, Textarea, cx } from "@/components/ui";
 import { ApiError, pharmacy, type Order } from "@/lib/api";
 import { useTr } from "@/lib/lang";
 import { useAsync } from "@/lib/useAsync";
+
+/** The step an order is waiting on, drawn by what it is. */
+const STEP_ICON: Record<Order["timeline"][number]["key"], string> = {
+  PLACED: "receipt_long",
+  PRESCRIPTION: "prescriptions",
+  PAID: "payments",
+  CONFIRMED: "check",
+  PACKED: "inventory_2",
+  DISPATCHED: "local_shipping",
+  DELIVERED: "task_alt",
+  CANCELLED: "close",
+};
 
 /** Couriers Pakistani pharmacies commonly hand parcels to. Free text is allowed too. */
 const COURIERS = ["TCS", "Leopards", "M&P", "Trax", "PostEx", "BlueEx", "Call Courier", "Own rider"];
@@ -30,19 +43,20 @@ export default function AdminOrder() {
   const { id } = useParams<{ id: string }>();
   const tr = useTr();
   const order = useAsync(() => pharmacy.order(id), [id], { refreshMs: 30_000 });
+  const data = order.data;
 
   return (
     <AppShell role="ADMIN">
       <div id="main">
         <Link
           href="/admin/pharmacy/orders"
-          className="group inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-primary hover:underline"
+          className="group inline-flex h-8 items-center gap-1 rounded-full px-1.5 text-[12.5px] font-semibold text-primary hover:bg-sunken focus-visible:outline-2 focus-visible:outline-primary"
         >
-          <Icon name="arrow_back" className="text-[18px] transition-transform group-hover:-translate-x-0.5" />
+          <Icon name="chevron_left" className="text-[18px] transition-transform group-hover:-translate-x-0.5" />
           {tr("All orders", "Tamam orders")}
         </Link>
 
-        {order.loading && !order.data ? (
+        {order.loading && !data ? (
           <div className="mt-4">
             <SkeletonRows rows={4} />
           </div>
@@ -50,106 +64,132 @@ export default function AdminOrder() {
           <div className="mt-4">
             <ErrorState message={order.error.message} onRetry={order.reload} />
           </div>
-        ) : order.data ? (
+        ) : data ? (
           <>
             <div className="mt-2">
-              <ConsoleHeader mark="orders"
-                icon="local_pharmacy"
-                eyebrow={tr("Pharmacy order", "Pharmacy order")}
-                title={order.data.orderNumber}
-                actions={<OrderStatusBadge status={order.data.status} />}
+              <ConsoleHeader
+                mark="orders"
+                mono
+                eyebrow={tr(`Pharmacy order · placed ${consoleStamp(data.createdAt)}`, `Pharmacy order · ${consoleStamp(data.createdAt)}`)}
+                title={data.orderNumber}
+                actions={<AdminOrderStatus status={data.status} large />}
               >
                 <p>
-                  <b>{order.data.patientName ?? order.data.recipientName}</b>{" "}
+                  <b>{data.patientName ?? data.recipientName}</b>{" "}
                   {tr(
-                    `ordered ${order.data.items.length} ${order.data.items.length === 1 ? "medicine" : "medicines"} for`,
-                    `ne ${order.data.items.length} dawaiyan mangwayin,`,
+                    `ordered ${data.items.length} ${data.items.length === 1 ? "medicine" : "medicines"} for`,
+                    `ne ${data.items.length} dawaiyan mangwayin,`,
                   )}{" "}
-                  <b>{rupees(order.data.total)}</b>
-                  {tr(", ", ", ")}
-                  {order.data.paymentMethod === "COD"
-                    ? tr("cash on delivery", "cash on delivery")
-                    : tr("paid by transfer", "transfer se")}
-                  {tr(`, going to ${order.data.city}.`, `, ${order.data.city} jana hai.`)}
+                  <b>{rupees(data.total)}</b>
+                  {", "}
+                  {data.paymentMethod === "COD" ? tr("cash on delivery", "cash on delivery") : tr("paid by transfer", "transfer se")}
+                  {tr(`, going to ${data.city}.`, `, ${data.city} jana hai.`)}
                 </p>
               </ConsoleHeader>
             </div>
 
-            <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-              <div className="min-w-0 space-y-6">
-                <Actions order={order.data} onChanged={order.reload} />
+            <Progress order={data} />
 
-                <Card icon="medication" title={tr("Items", "Cheezein")} flush>
-                  <ul className="divide-y divide-line">
-                    {order.data.items.map((item) => (
-                      <li key={item.id} className="flex items-center gap-3 px-5 py-3">
-                        <MedicinePack form={item.form} />
+            <div className="mt-6 grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+              <div className="min-w-0 space-y-6">
+                <NextStep order={data} onChanged={order.reload} />
+
+                <ConsoleCard
+                  icon="medication"
+                  title={tr("Medicines", "Dawaiyan")}
+                  subtitle={tr(`${data.items.length} ${data.items.length === 1 ? "item" : "items"}`, `${data.items.length} cheezein`)}
+                >
+                  <ul>
+                    {data.items.map((item) => (
+                      <li key={item.id} className="flex items-center gap-3 border-t border-line px-5 py-3 sm:px-6">
+                        <MedicinePack form={item.form} size={34} />
                         <div className="min-w-0 flex-1">
                           <p className="font-semibold text-strong">
-                            {[item.productName, item.strength].filter(Boolean).join(" ")} × {item.quantity}
+                            {[item.productName, item.strength].filter(Boolean).join(" ")}{" "}
+                            <span className="font-medium text-muted tabular-nums">× {item.quantity}</span>
                           </p>
-                          <p className="text-xs text-muted">
+                          <p className="text-[12.5px] text-muted">
                             {item.genericName} · {item.packSize}
                           </p>
                         </div>
                         {item.rxRequired && (
-                          <Badge tone={item.coveredByPrescription ? "good" : "warning"}>
+                          <StatusPill tone={item.coveredByPrescription ? "good" : "warning"}>
                             {item.coveredByPrescription ? tr("Prescribed on MediNova", "MediNova par likhi gayi") : "Rx"}
-                          </Badge>
+                          </StatusPill>
                         )}
-                        <span className="w-24 text-right font-semibold tabular-nums text-strong">{rupees(item.lineTotal)}</span>
+                        <span className="w-24 text-right font-semibold text-strong tabular-nums">{rupees(item.lineTotal)}</span>
                       </li>
                     ))}
                   </ul>
-                  <dl className="space-y-1.5 border-t border-line px-5 py-4 text-sm">
-                    <div className="flex justify-between"><dt className="text-muted">{tr("Medicines", "Dawaiyan")}</dt><dd className="tabular-nums">{rupees(order.data.subtotal)}</dd></div>
-                    <div className="flex justify-between"><dt className="text-muted">{tr("Delivery", "Delivery")}</dt><dd className="tabular-nums">{rupees(order.data.deliveryFee)}</dd></div>
-                    <div className="flex justify-between text-base"><dt className="font-semibold text-strong">{tr("Total", "Kul")}</dt><dd className="font-display font-bold tabular-nums">{rupees(order.data.total)}</dd></div>
+                  <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1.5 border-t border-line px-5 pt-3.5 pb-5 text-sm sm:px-6">
+                    <dt className="text-muted">{tr("Medicines", "Dawaiyan")}</dt>
+                    <dd className="text-right tabular-nums">{rupees(data.subtotal)}</dd>
+                    <dt className="text-muted">{tr("Delivery", "Delivery")}</dt>
+                    <dd className="text-right tabular-nums">{rupees(data.deliveryFee)}</dd>
+                    <dt className="text-[15px] font-semibold text-strong">{tr("Total", "Kul")}</dt>
+                    <dd className="text-right font-display text-[17px] font-bold tabular-nums">{rupees(data.total)}</dd>
                   </dl>
-                </Card>
+                </ConsoleCard>
               </div>
 
-              <aside className="space-y-6">
-                <Card icon="home_pin" title={tr("Deliver to", "Yahan bhejein")}>
-                  <p className="font-semibold text-strong">{order.data.recipientName}</p>
-                  <p className="text-sm text-muted">{order.data.addressLine}</p>
-                  <p className="text-sm text-muted">{order.data.city}</p>
-                  {order.data.phone && (
-                    <a href={`tel:${order.data.phone}`} className="mt-2 inline-flex items-center gap-1.5 font-semibold tabular-nums text-primary hover:underline">
-                      <Icon name="call" className="text-[18px]" />
-                      {order.data.phone}
+              <div className="space-y-6">
+                <SideCard label={tr("Deliver to", "Yahan bhejein")}>
+                  <p className="text-[15px] font-semibold text-strong">{data.recipientName}</p>
+                  <p className="text-[13.5px] leading-normal text-muted">
+                    {data.addressLine}
+                    <br />
+                    {data.city}
+                  </p>
+                  {data.phone && (
+                    <a
+                      href={`tel:${data.phone}`}
+                      className="mt-1 inline-flex w-fit items-center gap-1.5 text-[13.5px] font-semibold text-primary tabular-nums hover:underline"
+                    >
+                      <Icon name="call" className="text-[17px]" />
+                      {data.phone}
                     </a>
                   )}
-                  {order.data.deliveryNotes && (
-                    <p className="mt-2 rounded-lg bg-sunken px-3 py-2 text-sm text-strong">“{order.data.deliveryNotes}”</p>
+                  {data.deliveryNotes && (
+                    <p className="mt-1.5 rounded-xl bg-sunken/70 px-3 py-2.5 text-[13px] text-strong">“{data.deliveryNotes}”</p>
                   )}
-                </Card>
-                <Card icon="route" title={tr("Progress", "Pesh-raft")}>
-                  <OrderTimeline steps={order.data.timeline} />
-                  {order.data.trackingNumber && (
-                    <p className="mt-4 rounded-xl bg-sunken px-3 py-2 text-sm">
-                      {order.data.courier} <span className="font-mono font-semibold">{order.data.trackingNumber}</span>
+                </SideCard>
+                {data.trackingNumber && (
+                  <SideCard label={tr("Courier", "Courier")}>
+                    <p className="text-[13.5px] text-strong">
+                      {data.courier} <span className="font-mono font-semibold">{data.trackingNumber}</span>
                     </p>
-                  )}
-                </Card>
-                {order.data.invoice && (
-                  <Card icon="receipt_long" title={tr("Invoice", "Invoice")}>
-                    <p className="text-sm tabular-nums text-strong">{order.data.invoice.invoiceNumber}</p>
-                    <p className="mt-1 text-sm text-muted">
-                      {order.data.invoice.status === "PAID"
+                  </SideCard>
+                )}
+                {data.invoice ? (
+                  <SideCard label={tr("Invoice", "Invoice")}>
+                    <p className="font-mono text-[13.5px] font-semibold text-strong">{data.invoice.invoiceNumber}</p>
+                    <p className="text-[13.5px] text-muted">
+                      {data.invoice.status === "PAID"
                         ? tr("Paid", "Ada shuda")
-                        : order.data.invoice.awaitingReview
+                        : data.invoice.awaitingReview
                           ? tr("A payment is waiting for you in Transactions", "Aik payment Transactions mein aap ka intezar kar rahi hai")
-                          : order.data.invoice.status}
+                          : data.invoice.status}
                     </p>
-                    {order.data.invoice.awaitingReview && (
-                      <Link href="/admin/transactions" className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline">
+                    {data.invoice.awaitingReview && (
+                      <Link href="/admin/transactions" className="inline-flex w-fit items-center gap-1 text-[13.5px] font-semibold text-primary hover:underline">
                         {tr("Review the payment", "Payment dekhein")} <Icon name="arrow_forward" className="text-[16px]" />
                       </Link>
                     )}
-                  </Card>
+                  </SideCard>
+                ) : (
+                  data.paymentMethod === "COD" &&
+                  (data.status === "CONFIRMED" || data.status === "PACKED") && (
+                    <SideCard label={tr("Invoice", "Invoice")}>
+                      <p className="text-[13.5px] text-muted">
+                        {tr(
+                          "Issued when the order is handed to the courier. The rider collects the cash.",
+                          "Courier ke hawale karte waqt jaari hoga. Rider cash wasool karega.",
+                        )}
+                      </p>
+                    </SideCard>
+                  )
                 )}
-              </aside>
+              </div>
             </div>
           </>
         ) : null}
@@ -158,7 +198,76 @@ export default function AdminOrder() {
   );
 }
 
-function Actions({ order, onChanged }: { order: Order; onChanged: () => void }) {
+function SideCard({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <section aria-label={label} className="flex flex-col gap-1.5 rounded-3xl border border-line bg-card px-[22px] py-5 shadow-card">
+      <h2 className="font-mono text-[11px] tracking-[0.14em] text-faint uppercase">{label}</h2>
+      {children}
+    </section>
+  );
+}
+
+/**
+ * Where the order has got to, left to right. The step it is waiting on is
+ * ringed; a cancelled order shows only what happened, ending in red.
+ */
+function Progress({ order }: { order: Order }) {
+  const tr = useTr();
+  const cancelled = order.timeline.some((step) => step.key === "CANCELLED");
+  const steps = cancelled ? order.timeline.filter((step) => step.done || step.failed) : order.timeline;
+  const next = cancelled ? -1 : steps.findIndex((step) => !step.done);
+  return (
+    <section
+      aria-label={tr("Progress", "Pesh-raft")}
+      className="rise-in mt-6 overflow-x-auto rounded-3xl border border-line bg-card px-6 py-5 shadow-card"
+    >
+      <ol className="grid min-w-[40rem]" style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}>
+        {steps.map((step, index) => {
+          const bad = step.failed || step.key === "CANCELLED";
+          const now = index === next;
+          const label = step.failed ? (["Prescription not accepted", "Nuskha manzoor nahi hua"] as [string, string]) : STEP_LABEL[step.key];
+          return (
+            <li key={step.key} className="flex flex-col gap-2" aria-current={now ? "step" : undefined}>
+              <span className="flex items-center">
+                <span
+                  aria-hidden
+                  className={cx(
+                    "grid h-7 w-7 shrink-0 place-items-center rounded-full",
+                    bad
+                      ? "bg-critical-soft text-critical ring-2 ring-critical ring-inset"
+                      : step.done
+                        ? "bg-[#0B3FA8] text-white dark:bg-[#3B6FE0]"
+                        : now
+                          ? "bg-card text-primary ring-2 ring-[#0B3FA8] ring-inset outline-4 outline-pastel-sky dark:ring-[#7DA2FF]"
+                          : "bg-card text-faint ring-2 ring-line-strong ring-inset",
+                  )}
+                >
+                  <Icon name={bad ? "close" : step.done ? "check" : now ? STEP_ICON[step.key] : "more_horiz"} className="text-[15px]" />
+                </span>
+                {index < steps.length - 1 && (
+                  <span
+                    aria-hidden
+                    className={cx("mx-2 h-0.5 flex-1 rounded-full", step.done && !bad ? "bg-[#0B3FA8] dark:bg-[#3B6FE0]" : "bg-line-strong")}
+                  />
+                )}
+              </span>
+              <span className="flex flex-col gap-0.5 pr-3">
+                <span className={cx("text-[13.5px] font-semibold", step.done || now || bad ? "text-strong" : "text-faint")}>
+                  {tr(...label)}
+                </span>
+                <span className="text-[12px] text-muted tabular-nums">
+                  {step.at ? consoleStamp(step.at) : now ? tr("Next", "Agla") : ""}
+                </span>
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
+function NextStep({ order, onChanged }: { order: Order; onChanged: () => void }) {
   const tr = useTr();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -210,115 +319,180 @@ function Actions({ order, onChanged }: { order: Order; onChanged: () => void }) 
     }
   };
 
+  const cod = order.paymentMethod === "COD";
+  // What the strip says, and what it offers, for where the order is.
+  let icon = "inventory_2";
+  let title = "";
+  let detail = "";
+  let actions: ReactNode = null;
+  let tone: "sky" | "mint" | "blush" = "sky";
+
+  if (order.status === "PENDING_RX" && order.rxRoute === "UPLOAD" && order.hasRxUpload) {
+    icon = "prescriptions";
+    title = tr("Check the prescription", "Nuskha check karein");
+    detail = tr(
+      "A real prescription, for this patient, naming these medicines, signed and dated.",
+      "Asli nuskha, isi mareez ka, inhi dawaon ke saath, dastakhat aur tareekh shuda.",
+    );
+    actions = (
+      <>
+        <Button variant="secondary" loading={busy === "view"} onClick={() => void viewPrescription()}>
+          <Icon name="open_in_new" className="text-[18px]" />
+          {tr("View prescription", "Nuskha dekhein")}
+        </Button>
+        <Button loading={busy === "approve"} onClick={() => void run("approve", () => pharmacy.reviewPrescription(order.id, "APPROVE"))}>
+          <Icon name="check" className="text-[18px]" />
+          {tr("Approve", "Manzoor")}
+        </Button>
+        <Button variant="ghost" onClick={() => setRejecting(true)}>
+          {tr("Not acceptable…", "Qabil-e-qubool nahi…")}
+        </Button>
+      </>
+    );
+  } else if (order.status === "PENDING_RX" && order.rxRoute === "UPLOAD") {
+    icon = "hourglass_top";
+    title = tr("Waiting for the prescription", "Nuskhe ka intezar");
+    detail = tr("The patient has not uploaded it yet.", "Mareez ne abhi upload nahi kiya.");
+  } else if (order.status === "PENDING_RX") {
+    icon = "hourglass_top";
+    title = tr("Waiting for the doctor", "Doctor ka intezar");
+    detail = tr(`Waiting for ${order.rxDoctorName ?? "the doctor"} to approve.`, `${order.rxDoctorName ?? "Doctor"} ki manzoori ka intezar.`);
+  } else if (order.status === "AWAITING_PAYMENT") {
+    icon = "payments";
+    title = tr("Waiting for the payment", "Payment ka intezar");
+    detail = tr(
+      "Confirm the patient's transfer from Transactions when it arrives.",
+      "Mareez ka transfer aane par Transactions se confirm karein.",
+    );
+    actions = (
+      <Link
+        href="/admin/transactions"
+        className="inline-flex min-h-10 items-center gap-2 rounded-full border border-line-strong bg-card px-[18px] text-[13.5px] font-semibold text-strong hover:bg-sunken focus-visible:outline-2 focus-visible:outline-primary"
+      >
+        {tr("Open transactions", "Transactions kholein")}
+      </Link>
+    );
+  } else if (order.status === "CONFIRMED") {
+    title = tr("Pack it, then hand it to the courier", "Pack karein, phir courier ke hawale");
+    detail = cod
+      ? tr(
+          `Paid on delivery, so nothing to wait for. The rider collects ${rupees(order.total)}.`,
+          `Delivery par adaigi, intezar ki zaroorat nahi. Rider ${rupees(order.total)} wasool karega.`,
+        )
+      : tr("Paid, so nothing to wait for.", "Ada ho chuka, intezar ki zaroorat nahi.");
+    actions = (
+      <Button loading={busy === "pack"} onClick={() => void run("pack", () => pharmacy.advance(order.id, "PACKED"))}>
+        <Icon name="inventory_2" className="text-[18px]" />
+        {tr("Mark as packed", "Pack ho gaya")}
+      </Button>
+    );
+  } else if (order.status === "PACKED") {
+    icon = "local_shipping";
+    title = tr("Hand it to the courier", "Courier ke hawale karein");
+    detail = tr("Add the courier and, if there is one, the tracking number.", "Courier aur, agar ho, tracking number likhein.");
+    actions = (
+      <Button onClick={() => setDispatching(true)}>
+        <Icon name="local_shipping" className="text-[18px]" />
+        {tr("Hand to the courier", "Courier ke hawale")}
+      </Button>
+    );
+  } else if (order.status === "DISPATCHED") {
+    icon = "local_shipping";
+    title = tr("Out for delivery", "Delivery ke liye rawana");
+    detail = order.courier
+      ? tr(`With ${order.courier}${order.trackingNumber ? `, ${order.trackingNumber}` : ""}.`, `${order.courier} ke paas${order.trackingNumber ? `, ${order.trackingNumber}` : ""}.`)
+      : tr("With the courier.", "Courier ke paas.");
+    actions = (
+      <Button loading={busy === "deliver"} onClick={() => void run("deliver", () => pharmacy.advance(order.id, "DELIVERED"))}>
+        <Icon name="task_alt" className="text-[18px]" />
+        {cod
+          ? tr(`Delivered — ${rupees(order.total)} cash collected`, `Pahunch gaya — ${rupees(order.total)} cash wasool`)
+          : tr("Mark as delivered", "Pahunch gaya")}
+      </Button>
+    );
+  } else if (order.status === "DELIVERED") {
+    tone = "mint";
+    icon = "task_alt";
+    title = tr("Delivered", "Pahunch gaya");
+    detail = tr("Delivered and paid. Nothing more to do.", "Pahunch gaya aur ada ho gaya. Mazeed kuchh nahi.");
+  } else if (order.status === "CANCELLED") {
+    tone = "blush";
+    icon = "cancel";
+    title = tr("Cancelled", "Mansookh");
+    detail = order.cancelReason ?? "";
+    if (order.refundDue) {
+      actions = (
+        <Button variant="secondary" onClick={() => setRefunding(true)}>
+          <Icon name="currency_exchange" className="text-[18px]" />
+          {tr("Record the refund", "Wapsi darj karein")}
+        </Button>
+      );
+    }
+  }
+
   return (
-    <Card icon="bolt" title={tr("Next step", "Agla qadam")}>
-      <div className="space-y-4">
-        {order.status === "PENDING_RX" && order.rxRoute === "UPLOAD" && (
-          order.hasRxUpload ? (
-            <div className="space-y-3">
-              <p className="text-sm text-strong">
-                {tr(
-                  "Check the photo: a real prescription, for this patient, naming these medicines, signed and dated.",
-                  "Photo check karein: asli nuskha, isi mareez ka, inhi dawaon ke saath, dastakhat aur tareekh shuda.",
-                )}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="secondary" loading={busy === "view"} onClick={() => void viewPrescription()}>
-                  <Icon name="open_in_new" className="text-[20px]" />
-                  {tr("View prescription", "Nuskha dekhein")}
-                </Button>
-                <Button loading={busy === "approve"} onClick={() => void run("approve", () => pharmacy.reviewPrescription(order.id, "APPROVE"))}>
-                  <Icon name="check" className="text-[20px]" />
-                  {tr("Approve", "Manzoor")}
-                </Button>
-                <Button variant="ghost" onClick={() => setRejecting(true)}>
-                  {tr("Not acceptable…", "Qabil-e-qubool nahi…")}
-                </Button>
-              </div>
-              {rejecting && (
-                <div className="space-y-3 rounded-2xl border border-line bg-sunken/60 p-4">
-                  <Field label={tr("Why? The patient reads this.", "Kyun? Mareez yeh parhe ga.")} htmlFor="rx-note">
-                    <Textarea id="rx-note" rows={2} maxLength={300} value={note} onChange={(event) => setNote(event.target.value)} placeholder={tr("e.g. The photo is unreadable — please upload a clearer one.", "maslan Photo parhi nahi ja rahi — saaf photo bhejein.")} />
-                  </Field>
-                  <Button variant="danger" disabled={!note.trim()} loading={busy === "reject"} onClick={() => void run("reject", () => pharmacy.reviewPrescription(order.id, "REJECT", note.trim()))}>
-                    {tr("Refuse and cancel the order", "Inkaar aur order cancel")}
-                  </Button>
-                </div>
-              )}
-            </div>
-          ) : (
-            <p className="text-sm text-muted">{tr("Waiting for the patient to upload their prescription.", "Mareez ke nuskha upload karne ka intezar.")}</p>
-          )
+    <section
+      aria-label={tr("Next step", "Agla qadam")}
+      className={cx(
+        "rise-in flex flex-col gap-4 rounded-3xl p-5 text-pastel-ink sm:px-[22px]",
+        tone === "sky" && "bg-pastel-sky",
+        tone === "mint" && "bg-pastel-mint",
+        tone === "blush" && "bg-pastel-blush",
+      )}
+    >
+      <div className="flex flex-wrap items-center gap-4">
+        {order.status === "DELIVERED" ? (
+          <Art name="parcel" size={56} className="shrink-0" />
+        ) : (
+          <span aria-hidden className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-card text-primary">
+            <Icon name={icon} className="text-[22px]" />
+          </span>
         )}
-
-        {order.status === "PENDING_RX" && order.rxRoute === "DOCTOR" && (
-          <p className="text-sm text-muted">
-            {tr(`Waiting for ${order.rxDoctorName ?? "the doctor"} to approve.`, `${order.rxDoctorName ?? "Doctor"} ki manzoori ka intezar.`)}
-          </p>
-        )}
-
-        {order.status === "AWAITING_PAYMENT" && (
-          <p className="text-sm text-muted">
-            {tr("Waiting for the patient's transfer. Confirm it from Transactions when it arrives.", "Mareez ke transfer ka intezar. Aane par Transactions se confirm karein.")}
-          </p>
-        )}
-
-        {order.status === "CONFIRMED" && (
-          <Button loading={busy === "pack"} onClick={() => void run("pack", () => pharmacy.advance(order.id, "PACKED"))}>
-            <Icon name="inventory_2" className="text-[20px]" />
-            {tr("Mark as packed", "Pack ho gaya")}
-          </Button>
-        )}
-
-        {order.status === "PACKED" && (
-          <Button onClick={() => setDispatching(true)}>
-            <Icon name="local_shipping" className="text-[20px]" />
-            {tr("Hand to the courier", "Courier ke hawale")}
-          </Button>
-        )}
-
-        {order.status === "DISPATCHED" && (
-          <Button loading={busy === "deliver"} onClick={() => void run("deliver", () => pharmacy.advance(order.id, "DELIVERED"))}>
-            <Icon name="task_alt" className="text-[20px]" />
-            {order.paymentMethod === "COD"
-              ? tr(`Delivered — ${rupees(order.total)} cash collected`, `Pahunch gaya — ${rupees(order.total)} cash wasool`)
-              : tr("Mark as delivered", "Pahunch gaya")}
-          </Button>
-        )}
-
-        {order.status === "DELIVERED" && (
-          <div className="flex items-center gap-4">
-            <Art name="parcel" size={88} className="shrink-0" />
-            <p className="flex items-center gap-2 text-sm font-semibold text-stable">
-              <Icon name="check_circle" filled className="text-[20px]" />
-              {tr("Delivered and paid. Nothing more to do.", "Pahunch gaya aur ada ho gaya. Mazeed kuchh nahi.")}
-            </p>
-          </div>
-        )}
-
-        {order.status === "CANCELLED" && (
-          <div className="space-y-3 text-sm">
-            <p className="text-muted">{order.cancelReason}</p>
-            {order.refundDue && (
-              <Button variant="secondary" onClick={() => setRefunding(true)}>
-                <Icon name="currency_exchange" className="text-[20px]" />
-                {tr("Record the refund", "Wapsi darj karein")}
+        <div className="flex min-w-[15rem] flex-1 flex-col gap-0.5">
+          <span className="font-mono text-[11px] tracking-[0.14em] uppercase opacity-80">{tr("Next step", "Agla qadam")}</span>
+          <span className="font-display text-[17px] font-bold">{title}</span>
+          {detail && <span className="text-[13px] opacity-85">{detail}</span>}
+        </div>
+        {(actions || order.canCancel) && (
+          <div className="flex flex-wrap items-center gap-2">
+            {actions}
+            {order.canCancel && (
+              <Button variant="ghost" onClick={() => setCancelling(true)}>
+                {tr("Cancel order", "Order cancel karein")}
               </Button>
             )}
           </div>
         )}
-
-        {order.canCancel && (
-          <div className="border-t border-line pt-4">
-            <Button variant="ghost" onClick={() => setCancelling(true)}>
-              <Icon name="cancel" className="text-[20px]" />
-              {tr("Cancel order", "Order cancel karein")}
-            </Button>
-          </div>
-        )}
-
-        {error && <p role="alert" className="text-sm font-medium text-critical">{error}</p>}
       </div>
+
+      {rejecting && (
+        <div className="space-y-3 rounded-2xl border border-line bg-card p-4">
+          <Field label={tr("Why? The patient reads this.", "Kyun? Mareez yeh parhe ga.")} htmlFor="rx-note">
+            <Textarea
+              id="rx-note"
+              rows={2}
+              maxLength={300}
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              placeholder={tr("e.g. The photo is unreadable — please upload a clearer one.", "maslan Photo parhi nahi ja rahi — saaf photo bhejein.")}
+            />
+          </Field>
+          <Button
+            variant="danger"
+            disabled={!note.trim()}
+            loading={busy === "reject"}
+            onClick={() => void run("reject", () => pharmacy.reviewPrescription(order.id, "REJECT", note.trim()))}
+          >
+            {tr("Refuse and cancel the order", "Inkaar aur order cancel")}
+          </Button>
+        </div>
+      )}
+
+      {error && (
+        <p role="alert" className="text-sm font-medium text-critical">
+          {error}
+        </p>
+      )}
 
       <Dialog
         open={dispatching}
@@ -326,17 +500,23 @@ function Actions({ order, onChanged }: { order: Order; onChanged: () => void }) 
         icon="local_shipping"
         title={tr("Hand to the courier", "Courier ke hawale")}
         description={
-          order.paymentMethod === "COD"
+          cod
             ? tr(`The rider collects ${rupees(order.total)} in cash. The invoice is issued now.`, `Rider ${rupees(order.total)} cash wasool karega. Invoice abhi jaari hoga.`)
             : tr("The patient is told who is bringing it.", "Mareez ko bataya jaye ga ke kaun la raha hai.")
         }
         footer={
           <>
-            <Button variant="ghost" onClick={() => setDispatching(false)}>{tr("Cancel", "Cancel")}</Button>
+            <Button variant="ghost" onClick={() => setDispatching(false)}>
+              {tr("Cancel", "Cancel")}
+            </Button>
             <Button
               disabled={!courier.trim()}
               loading={busy === "dispatch"}
-              onClick={() => void run("dispatch", () => pharmacy.advance(order.id, "DISPATCHED", { courier: courier.trim(), trackingNumber: tracking.trim() || undefined }))}
+              onClick={() =>
+                void run("dispatch", () =>
+                  pharmacy.advance(order.id, "DISPATCHED", { courier: courier.trim(), trackingNumber: tracking.trim() || undefined }),
+                )
+              }
             >
               {tr("Dispatch", "Rawana karein")}
             </Button>
@@ -347,7 +527,9 @@ function Actions({ order, onChanged }: { order: Order; onChanged: () => void }) 
           <Field label={tr("Courier", "Courier")} htmlFor="courier">
             <Input id="courier" list="couriers" value={courier} maxLength={60} onChange={(event) => setCourier(event.target.value)} />
             <datalist id="couriers">
-              {COURIERS.map((name) => <option key={name} value={name} />)}
+              {COURIERS.map((name) => (
+                <option key={name} value={name} />
+              ))}
             </datalist>
           </Field>
           <Field label={tr("Tracking number (optional)", "Tracking number (ikhtiyari)")} htmlFor="tracking">
@@ -364,15 +546,28 @@ function Actions({ order, onChanged }: { order: Order; onChanged: () => void }) 
         description={tr("The stock goes back on the shelf and the patient is told why.", "Stock wapas shelf par jaye ga aur mareez ko wajah batai jaye gi.")}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setCancelling(false)}>{tr("Keep it", "Rehne dein")}</Button>
-            <Button variant="danger" disabled={!reason.trim()} loading={busy === "cancel"} onClick={() => void run("cancel", () => pharmacy.cancel(order.id, reason.trim()))}>
+            <Button variant="ghost" onClick={() => setCancelling(false)}>
+              {tr("Keep it", "Rehne dein")}
+            </Button>
+            <Button
+              variant="danger"
+              disabled={!reason.trim()}
+              loading={busy === "cancel"}
+              onClick={() => void run("cancel", () => pharmacy.cancel(order.id, reason.trim()))}
+            >
               {tr("Cancel order", "Order cancel karein")}
             </Button>
           </>
         }
       >
         <Field label={tr("Reason", "Wajah")} htmlFor="cancel-why">
-          <Input id="cancel-why" value={reason} maxLength={300} onChange={(event) => setReason(event.target.value)} placeholder={tr("e.g. Out of stock at the supplier", "maslan Supplier ke paas stock khatam")} />
+          <Input
+            id="cancel-why"
+            value={reason}
+            maxLength={300}
+            onChange={(event) => setReason(event.target.value)}
+            placeholder={tr("e.g. Out of stock at the supplier", "maslan Supplier ke paas stock khatam")}
+          />
         </Field>
       </Dialog>
 
@@ -387,17 +582,29 @@ function Actions({ order, onChanged }: { order: Order; onChanged: () => void }) 
         )}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setRefunding(false)}>{tr("Not yet", "Abhi nahi")}</Button>
-            <Button disabled={reason.trim().length < 3} loading={busy === "refund"} onClick={() => void run("refund", () => pharmacy.refund(order.id, reason.trim()))}>
+            <Button variant="ghost" onClick={() => setRefunding(false)}>
+              {tr("Not yet", "Abhi nahi")}
+            </Button>
+            <Button
+              disabled={reason.trim().length < 3}
+              loading={busy === "refund"}
+              onClick={() => void run("refund", () => pharmacy.refund(order.id, reason.trim()))}
+            >
               {tr("Refund sent", "Wapsi bhej di")}
             </Button>
           </>
         }
       >
         <Field label={tr("Reference", "Reference")} htmlFor="refund-ref">
-          <Input id="refund-ref" value={reason} maxLength={300} onChange={(event) => setReason(event.target.value)} placeholder={tr("e.g. EasyPaisa refund TID 1234567890", "maslan EasyPaisa refund TID 1234567890")} />
+          <Input
+            id="refund-ref"
+            value={reason}
+            maxLength={300}
+            onChange={(event) => setReason(event.target.value)}
+            placeholder={tr("e.g. EasyPaisa refund TID 1234567890", "maslan EasyPaisa refund TID 1234567890")}
+          />
         </Field>
       </Dialog>
-    </Card>
+    </section>
   );
 }

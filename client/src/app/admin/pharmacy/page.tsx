@@ -42,6 +42,11 @@ const COLUMNS: Array<{ status: OrderStatus; label: [string, string]; dot: string
   { status: "DISPATCHED", label: ["On the way", "Raste mein"], dot: "bg-[#0F766E] dark:bg-[#5EEAD4]", empty: ["None out", "Koi raste mein nahi"] },
 ];
 
+/** A figure with the currency left to the tile, which sets it small before. */
+function figure(value: string): string {
+  return new Intl.NumberFormat("en-PK", { maximumFractionDigits: 0 }).format(Number(value) || 0);
+}
+
 /** How many tickets a column shows before it says "+ n more". */
 const COLUMN_DEPTH = 3;
 
@@ -128,13 +133,13 @@ export default function PharmacyOverview() {
   return (
     <AppShell role="ADMIN">
       <div id="main">
-        <ConsoleHeader mark="pharmacy"
-          icon="local_pharmacy"
+        <ConsoleHeader
+          mark="pharmacy"
           eyebrow={tr("Medicine sales, orders and stock", "Dawaon ki farokht, orders aur stock")}
           title={tr("Pharmacy", "Pharmacy")}
           actions={
             <>
-              <HeaderPill href="/admin/pharmacy/catalog?lowStock=1" icon="inventory">
+              <HeaderPill href="/admin/pharmacy/catalog?lowStock=1">
                 {tr("Stock to reorder", "Reorder ka stock")}
               </HeaderPill>
               <HeaderPill href="/admin/pharmacy/catalog" icon="add" tone="primary">
@@ -174,7 +179,7 @@ export default function PharmacyOverview() {
           )}
         </ConsoleHeader>
         <div className="mt-6">
-          <PharmacyAdminTabs />
+          <PharmacyAdminTabs openOrders={data?.openOrders} />
         </div>
 
         {summary.loading && !data ? (
@@ -192,14 +197,19 @@ export default function PharmacyOverview() {
                 pastel="mint"
                 icon="payments"
                 label={tr("Sales today", "Aaj ki farokht")}
-                value={rupees(data.salesToday)}
-                note={tr(`${data.paidOrdersToday} paid`, `${data.paidOrdersToday} ada shuda`)}
+                unit="PKR"
+                value={figure(data.salesToday)}
+                note={tr(
+                  `${data.paidOrdersToday} paid ${data.paidOrdersToday === 1 ? "order" : "orders"}`,
+                  `${data.paidOrdersToday} ada shuda orders`,
+                )}
               />
               <PastelTile
                 pastel="sky"
                 icon="calendar_month"
                 label={tr("This month", "Is mahine")}
-                value={rupees(data.salesThisMonth)}
+                unit="PKR"
+                value={figure(data.salesThisMonth)}
                 note={tr(`${data.paidOrdersThisMonth} paid orders`, `${data.paidOrdersThisMonth} ada shuda orders`)}
               />
               <PastelTile
@@ -214,7 +224,8 @@ export default function PharmacyOverview() {
                 pastel="butter"
                 icon="trending_up"
                 label={tr("Margin this month", "Is mahine ka munafa")}
-                value={rupees(data.marginThisMonth)}
+                unit="PKR"
+                value={figure(data.marginThisMonth)}
                 note={tr(
                   `On ${data.marginCoveragePercent}% of sales with a cost price`,
                   `Cost price wali ${data.marginCoveragePercent}% farokht par`,
@@ -225,19 +236,21 @@ export default function PharmacyOverview() {
             {data.refundsDue > 0 && (
               <Link
                 href="/admin/pharmacy/orders?queue=refunds"
-                className="flex flex-wrap items-center gap-3 rounded-2xl border border-critical/40 bg-critical-soft p-4 text-sm text-strong transition-shadow hover:shadow-card"
+                className="rise-in flex flex-wrap items-center gap-3.5 rounded-[18px] border border-critical/35 bg-critical-soft px-[18px] py-3.5 text-sm text-strong transition-shadow hover:shadow-card focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
-                <Icon name="currency_exchange" filled className="text-[24px] text-critical" />
+                <span aria-hidden className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-card text-critical">
+                  <Icon name="currency_exchange" className="text-[19px]" />
+                </span>
                 <span className="min-w-0 flex-1">
-                  <span className="font-semibold text-critical">
+                  <b className="font-semibold text-critical">
                     {tr(
                       `${data.refundsDue} cancelled ${data.refundsDue === 1 ? "order has" : "orders have"} money to give back.`,
                       `${data.refundsDue} mansookh orders ki raqam wapas karni hai.`,
                     )}
-                  </span>{" "}
+                  </b>{" "}
                   {tr("Record each refund once it has been sent.", "Har wapsi bhejne ke baad darj karein.")}
                 </span>
-                <Icon name="arrow_forward" className="text-[20px]" />
+                <span className="text-[12.5px] font-semibold text-critical">{tr("Record refunds →", "Wapsi darj karein →")}</span>
               </Link>
             )}
 
@@ -338,7 +351,7 @@ export default function PharmacyOverview() {
                           key={column.status}
                           {...dropZone(column.status)}
                           className={cx(
-                            "flex snap-start flex-col gap-2 rounded-2xl p-2.5 transition-colors",
+                            "flex snap-start flex-col gap-2 rounded-[18px] p-2.5 transition-colors",
                             dragging && column.status === "PACKED"
                               ? "bg-[#E8F0FE] outline-2 outline-offset-[-2px] outline-[#0B3FA8]/50 outline-dashed dark:bg-[#132E52]"
                               : "bg-sunken/60",
@@ -347,7 +360,7 @@ export default function PharmacyOverview() {
                           <div className="flex items-center gap-2 px-1 pt-0.5 pb-1">
                             <span aria-hidden className={cx("h-2 w-2 rounded-full", column.dot)} />
                             <span className="flex-1 text-[13px] font-semibold text-strong">{tr(...column.label)}</span>
-                            <span className="rounded-full bg-card px-2 text-[12px] font-bold tabular-nums text-muted">{count}</span>
+                            <span className="rounded-full bg-card px-[7px] py-px font-mono text-[11.5px] font-semibold tabular-nums text-muted">{count}</span>
                           </div>
                           {open.loading && !open.data ? (
                             <SkeletonRows rows={1} title={false} />
@@ -369,7 +382,7 @@ export default function PharmacyOverview() {
                                   }}
                                   onDragEnd={() => setDragging(null)}
                                   className={cx(
-                                    "flex flex-col rounded-xl border border-line bg-card shadow-sm transition-[box-shadow,transform,opacity] hover:-translate-y-0.5 hover:shadow-card",
+                                    "flex flex-col rounded-[14px] border border-line bg-card shadow-sm transition-[box-shadow,transform,opacity] hover:-translate-y-0.5 hover:shadow-card",
                                     column.status === "CONFIRMED" && "cursor-grab active:cursor-grabbing",
                                     (dragging === order.id || packing === order.id) && "opacity-50",
                                   )}
@@ -400,7 +413,7 @@ export default function PharmacyOverview() {
                                       type="button"
                                       disabled={packing !== null}
                                       onClick={() => void pack(order.id)}
-                                      className="mx-2 mb-2 inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-line text-[12.5px] font-semibold text-primary hover:bg-sunken focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50"
+                                      className="mx-3 mb-3 inline-flex h-8 items-center justify-center gap-1.5 rounded-full border border-line-strong bg-card text-[12.5px] font-semibold text-strong hover:bg-sunken focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50"
                                     >
                                       <Icon name="inventory_2" className="text-[16px]" />
                                       {packing === order.id ? tr("Marking…", "Mark ho raha hai…") : tr("Mark packed", "Pack mark karein")}

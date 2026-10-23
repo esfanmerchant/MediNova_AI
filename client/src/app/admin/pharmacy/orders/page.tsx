@@ -14,11 +14,20 @@ import { Suspense, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
-import { ConsoleHeader, FinishedState, MedicinePack } from "@/components/admin/console";
-import { PharmacyAdminTabs } from "@/components/pharmacy/AdminTabs";
-import { OrderStatusBadge, rupees } from "@/components/pharmacy/shared";
-import { Badge, Card, EmptyState, ErrorState, Input, Loading, SkeletonRows, cx } from "@/components/ui";
-import { pharmacy, type OrderStatus } from "@/lib/api";
+import {
+  ConsoleHeader,
+  FinishedState,
+  MedicinePack,
+  Pager,
+  StatusPill,
+  consoleStamp,
+} from "@/components/admin/console";
+import { RowMenu } from "@/components/admin/RowMenu";
+import { Segmented } from "@/components/forms";
+import { AdminOrderStatus, PharmacyAdminTabs } from "@/components/pharmacy/AdminTabs";
+import { rupees } from "@/components/pharmacy/shared";
+import { EmptyState, ErrorState, Loading, SkeletonRows } from "@/components/ui";
+import { pharmacy, type OrderStatus, type PharmacyDashboard } from "@/lib/api";
 import { useTr } from "@/lib/lang";
 import { PAGE_REFRESH_MS, useAsync } from "@/lib/useAsync";
 
@@ -30,141 +39,210 @@ type Filter =
 /** Filters that are somebody's work rather than a record: empty means done. */
 const WORK_QUEUES = new Set(["rx-review", "CONFIRMED", "PACKED", "refunds"]);
 
-const FILTERS: { key: string; label: [string, string]; filter: Filter }[] = [
-  { key: "open", label: ["Open", "Khule"], filter: { kind: "queue", queue: "open" } },
-  { key: "rx-review", label: ["Prescriptions to check", "Nuskhe check karne"], filter: { kind: "queue", queue: "rx-review" } },
-  { key: "CONFIRMED", label: ["To pack", "Pack karna"], filter: { kind: "status", status: "CONFIRMED" } },
-  { key: "PACKED", label: ["To dispatch", "Bhejna"], filter: { kind: "status", status: "PACKED" } },
-  { key: "DISPATCHED", label: ["On the way", "Raste mein"], filter: { kind: "status", status: "DISPATCHED" } },
-  { key: "AWAITING_PAYMENT", label: ["Awaiting payment", "Payment baqi"], filter: { kind: "status", status: "AWAITING_PAYMENT" } },
-  { key: "PENDING_RX", label: ["Waiting on prescription", "Nuskhe ka intezar"], filter: { kind: "status", status: "PENDING_RX" } },
-  { key: "DELIVERED", label: ["Delivered", "Pahunch gaye"], filter: { kind: "status", status: "DELIVERED" } },
-  { key: "refunds", label: ["Refunds due", "Wapsi baqi"], filter: { kind: "queue", queue: "refunds" } },
-  { key: "CANCELLED", label: ["Cancelled", "Mansookh"], filter: { kind: "status", status: "CANCELLED" } },
+/** Twenty to a page; the open queue rarely needs a second. */
+const PAGE = 20;
+
+type Entry = { key: string; label: [string, string]; filter: Filter; count?: (data: PharmacyDashboard) => number };
+
+/** The work, as tabs: what an order is waiting on, in the order it moves. */
+const MAIN: Entry[] = [
+  { key: "open", label: ["Open", "Khule"], filter: { kind: "queue", queue: "open" }, count: (data) => data.openOrders },
+  {
+    key: "rx-review",
+    label: ["Prescriptions to check", "Nuskhe check karne"],
+    filter: { kind: "queue", queue: "rx-review" },
+    count: (data) => data.prescriptionsToCheck,
+  },
+  { key: "CONFIRMED", label: ["To pack", "Pack karna"], filter: { kind: "status", status: "CONFIRMED" }, count: (data) => data.ordersByStatus.CONFIRMED ?? 0 },
+  { key: "PACKED", label: ["To dispatch", "Bhejna"], filter: { kind: "status", status: "PACKED" }, count: (data) => data.ordersByStatus.PACKED ?? 0 },
+  { key: "DISPATCHED", label: ["On the way", "Raste mein"], filter: { kind: "status", status: "DISPATCHED" }, count: (data) => data.ordersByStatus.DISPATCHED ?? 0 },
+];
+
+/** The records, and the waits nobody here can hurry, behind "More". */
+const MORE: Entry[] = [
+  { key: "AWAITING_PAYMENT", label: ["Awaiting payment", "Payment baqi"], filter: { kind: "status", status: "AWAITING_PAYMENT" }, count: (data) => data.ordersByStatus.AWAITING_PAYMENT ?? 0 },
+  { key: "PENDING_RX", label: ["Waiting on prescription", "Nuskhe ka intezar"], filter: { kind: "status", status: "PENDING_RX" }, count: (data) => data.ordersByStatus.PENDING_RX ?? 0 },
+  { key: "DELIVERED", label: ["Delivered", "Pahunch gaye"], filter: { kind: "status", status: "DELIVERED" }, count: (data) => data.ordersByStatus.DELIVERED ?? 0 },
+  { key: "refunds", label: ["Refunds due", "Wapsi baqi"], filter: { kind: "queue", queue: "refunds" }, count: (data) => data.refundsDue },
+  { key: "CANCELLED", label: ["Cancelled", "Mansookh"], filter: { kind: "status", status: "CANCELLED" }, count: (data) => data.ordersByStatus.CANCELLED ?? 0 },
   { key: "all", label: ["All", "Sab"], filter: { kind: "all" } },
 ];
 
-function OrdersBoard() {
+const FILTERS = [...MAIN, ...MORE];
+
+function OrdersBoard({ summary }: { summary: PharmacyDashboard | undefined }) {
   const tr = useTr();
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
   const [search, setSearch] = useState("");
+  const [offset, setOffset] = useState(0);
 
   const key = params.get("queue") ?? params.get("status") ?? "open";
   const active = FILTERS.find((entry) => entry.key === key) ?? FILTERS[0];
   const filter = active.filter;
+  const inMore = MORE.some((entry) => entry.key === active.key);
 
   const list = useAsync(
     () =>
       pharmacy.orders({
-        limit: 50,
+        limit: PAGE,
+        offset,
         search: search.trim() || undefined,
         ...(filter.kind === "queue" ? { queue: filter.queue } : {}),
         ...(filter.kind === "status" ? { status: filter.status } : {}),
       }),
-    [key, search],
+    [key, search, offset],
     { refreshMs: PAGE_REFRESH_MS },
   );
   const rows = list.data?.data ?? [];
 
-  const choose = (entry: (typeof FILTERS)[number]) => {
+  const choose = (entry: Entry) => {
     const next = new URLSearchParams();
     if (entry.filter.kind === "queue") next.set("queue", entry.filter.queue);
     if (entry.filter.kind === "status") next.set("status", entry.filter.status);
     if (entry.filter.kind === "all") next.set("queue", "all");
+    setOffset(0);
     router.replace(`${pathname}?${next.toString()}`);
   };
 
   return (
-    <div className="mt-6 space-y-4">
-      <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
-        {FILTERS.map((entry) => (
-          <button
-            key={entry.key}
-            type="button"
-            aria-pressed={entry.key === active.key}
-            onClick={() => choose(entry)}
-            className={cx(
-              "inline-flex min-h-9 shrink-0 items-center rounded-full px-3.5 text-[13px] font-semibold transition-colors",
-              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-              entry.key === active.key
-                ? "bg-primary text-primary-on"
-                : "border border-line bg-card text-muted hover:border-primary hover:text-strong",
-            )}
-          >
-            {tr(...entry.label)}
-          </button>
-        ))}
+    <section
+      aria-label={tr("Orders", "Orders")}
+      className="rise-in mt-6 overflow-hidden rounded-3xl border border-line bg-card shadow-card"
+    >
+      <div className="flex flex-wrap items-center gap-3 px-[18px] py-4">
+        <Segmented
+          options={MAIN.map((entry) => ({
+            value: entry.key,
+            label: tr(...entry.label),
+            count: summary && entry.count ? entry.count(summary) : undefined,
+          }))}
+          // A choice behind "More" leaves no tab raised.
+          value={inMore ? "" : active.key}
+          onChange={(value) => choose(MAIN.find((entry) => entry.key === value) ?? MAIN[0])}
+          label={tr("Orders to show", "Kaun se orders")}
+        />
+        <RowMenu
+          label={tr("More order lists", "Mazeed order lists")}
+          trigger={inMore ? tr(...active.label) : tr("More", "Mazeed")}
+          active={inMore}
+          align="start"
+          items={MORE.map((entry) => ({
+            label: tr(...entry.label),
+            hint: summary && entry.count ? String(entry.count(summary)) : undefined,
+            onSelect: () => choose(entry),
+          }))}
+        />
+        <label className="flex h-10 w-full items-center gap-2.5 rounded-full border border-line-strong bg-card pr-3 pl-3.5 text-muted focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary sm:ml-auto sm:w-auto sm:max-w-[340px] sm:min-w-[220px] sm:flex-1">
+          <Icon name="search" className="text-[18px]" />
+          <input
+            type="search"
+            aria-label={tr("Search orders", "Orders dhoondein")}
+            placeholder={tr("Order number, name, phone or city", "Order number, naam, phone ya shehar")}
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setOffset(0);
+            }}
+            className="min-w-0 flex-1 bg-transparent text-[13.5px] text-strong outline-none placeholder:text-muted"
+          />
+        </label>
       </div>
 
-      <Input
-        type="search"
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
-        placeholder={tr("Search by order number, name, phone or city", "Order number, naam, phone ya shehar se dhoondein")}
-        aria-label={tr("Search orders", "Orders dhoondein")}
-      />
-
       {list.loading && !list.data ? (
-        <SkeletonRows rows={4} />
+        <div className="px-[18px] pb-5">
+          <SkeletonRows rows={4} title={false} />
+        </div>
       ) : list.error ? (
-        <ErrorState message={list.error.message} onRetry={list.reload} />
+        <div className="px-[18px] pb-5">
+          <ErrorState message={list.error.message} onRetry={list.reload} />
+        </div>
       ) : rows.length === 0 && WORK_QUEUES.has(active.key) && !search.trim() ? (
         <FinishedState
           title={tr("Nothing waiting here", "Yahan kuchh baqi nahi")}
           description={tr("Orders that reach this step will appear here.", "Is marhale par aane wale orders yahan aayenge.")}
         />
       ) : rows.length === 0 ? (
-        <EmptyState icon="inbox" title={tr("Nothing here", "Yahan kuchh nahi")} description={tr("Orders that match will appear here.", "Milte julte orders yahan nazar aayenge.")} />
+        <EmptyState
+          icon="inbox"
+          title={tr("Nothing here", "Yahan kuchh nahi")}
+          description={tr("Orders that match will appear here.", "Milte julte orders yahan nazar aayenge.")}
+        />
       ) : (
-        <Card flush>
-          <ul className="divide-y divide-line">
-            {rows.map((order) => (
-              <li key={order.id}>
-                <Link
-                  href={`/admin/pharmacy/orders/${order.id}`}
-                  className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-4 transition-colors hover:bg-gradient-soft focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
-                >
-                  {/* The first item's pack: what is in the bag, before the words. */}
-                  {order.items[0] && <MedicinePack form={order.items[0].form} />}
-                  <div className="min-w-0 flex-1">
-                    <p className="flex flex-wrap items-center gap-2 font-semibold tabular-nums text-strong">
-                      {order.orderNumber}
-                      {order.refundDue && <Badge tone="critical">{tr("Refund due", "Wapsi baqi")}</Badge>}
-                      {order.status === "PENDING_RX" && order.rxRoute === "UPLOAD" && order.hasRxUpload && (
-                        <Badge tone="warning">{tr("Check prescription", "Nuskha check karein")}</Badge>
-                      )}
-                    </p>
-                    <p className="truncate text-sm text-muted">
-                      {order.patientName ?? order.recipientName} · {order.city} ·{" "}
-                      {order.items[0]
-                        ? order.items.length > 1
-                          ? tr(
-                              `${order.items[0].productName} + ${order.items.length - 1} more`,
-                              `${order.items[0].productName} + ${order.items.length - 1} aur`,
-                            )
-                          : order.items[0].productName
-                        : tr("No items", "Koi cheez nahi")}
-                    </p>
-                    <p className="text-xs tabular-nums text-faint">
-                      {new Date(order.createdAt).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-                      {" · "}
-                      {order.paymentMethod === "COD" ? tr("Cash on delivery", "Cash on delivery") : tr("Online", "Online")}
-                    </p>
-                  </div>
-                  <div className="flex flex-col items-end gap-1.5">
-                    <span className="font-display font-bold tabular-nums text-strong">{rupees(order.total)}</span>
-                    <OrderStatusBadge status={order.status} />
-                  </div>
-                  <Icon name="chevron_right" className="text-[22px] text-faint" />
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </Card>
+        <>
+          <div className="overflow-x-auto">
+            <table className="console-table min-w-[60rem]">
+              <thead>
+                <tr>
+                  <th scope="col">{tr("Order", "Order")}</th>
+                  <th scope="col">{tr("Patient", "Mareez")}</th>
+                  <th scope="col">{tr("Medicines", "Dawaiyan")}</th>
+                  <th scope="col">{tr("Placed", "Diya gaya")}</th>
+                  <th scope="col">{tr("Payment", "Adaigi")}</th>
+                  <th scope="col" className="text-right">
+                    {tr("Total", "Kul")}
+                  </th>
+                  <th scope="col">{tr("Status", "Haalat")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((order) => {
+                  const href = `/admin/pharmacy/orders/${order.id}`;
+                  const checkRx = order.status === "PENDING_RX" && order.rxRoute === "UPLOAD" && order.hasRxUpload;
+                  return (
+                    <tr key={order.id} onClick={() => router.push(href)} className="cursor-pointer">
+                      <td>
+                        <div className="flex items-center gap-[11px]">
+                          {/* The first item's pack: what is in the bag, before the words. */}
+                          {order.items[0] && <MedicinePack form={order.items[0].form} size={28} />}
+                          <span className="flex flex-col items-start gap-[3px]">
+                            <Link
+                              href={href}
+                              onClick={(event) => event.stopPropagation()}
+                              className="rounded font-mono text-[12.5px] font-semibold whitespace-nowrap text-strong hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                            >
+                              {order.orderNumber}
+                            </Link>
+                            {order.refundDue && <StatusPill tone="critical">{tr("Refund due", "Wapsi baqi")}</StatusPill>}
+                            {checkRx && <StatusPill tone="warning">{tr("Check prescription", "Nuskha check karein")}</StatusPill>}
+                          </span>
+                        </div>
+                      </td>
+                      <td>
+                        <span className="block font-semibold whitespace-nowrap">{order.patientName ?? order.recipientName}</span>
+                        <span className="block text-[12.5px] text-muted">{order.city}</span>
+                      </td>
+                      <td className="max-w-[14rem] truncate text-muted">
+                        {order.items[0]
+                          ? order.items.length > 1
+                            ? tr(
+                                `${order.items[0].productName} + ${order.items.length - 1} more`,
+                                `${order.items[0].productName} + ${order.items.length - 1} aur`,
+                              )
+                            : order.items[0].productName
+                          : tr("No items", "Koi cheez nahi")}
+                      </td>
+                      <td className="whitespace-nowrap text-muted tabular-nums">{consoleStamp(order.createdAt)}</td>
+                      <td>
+                        <StatusPill>
+                          {order.paymentMethod === "COD" ? tr("Cash on delivery", "Cash on delivery") : tr("Online", "Online")}
+                        </StatusPill>
+                      </td>
+                      <td className="text-right font-semibold whitespace-nowrap tabular-nums">{rupees(order.total)}</td>
+                      <td>
+                        <AdminOrderStatus status={order.status} />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <Pager offset={offset} limit={PAGE} total={list.data?.meta.total ?? rows.length} onChange={setOffset} />
+        </>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -176,11 +254,7 @@ export default function PharmacyOrders() {
   return (
     <AppShell role="ADMIN">
       <div id="main">
-        <ConsoleHeader mark="orders"
-          icon="local_shipping"
-          eyebrow={tr("Pharmacy", "Pharmacy")}
-          title={tr("Orders", "Orders")}
-        >
+        <ConsoleHeader mark="orders" eyebrow={tr("Pharmacy", "Pharmacy")} title={tr("Orders", "Orders")}>
           {data ? (
             <p>
               <b>
@@ -212,10 +286,10 @@ export default function PharmacyOrders() {
           )}
         </ConsoleHeader>
         <div className="mt-6">
-          <PharmacyAdminTabs />
+          <PharmacyAdminTabs openOrders={data?.openOrders} />
         </div>
         <Suspense fallback={<Loading />}>
-          <OrdersBoard />
+          <OrdersBoard summary={data ?? undefined} />
         </Suspense>
       </div>
     </AppShell>

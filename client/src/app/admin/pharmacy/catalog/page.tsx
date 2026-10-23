@@ -7,8 +7,9 @@
  * an order placed while this screen was open would otherwise be silently
  * undone. Every change carries a reason, which goes to the audit trail.
  *
- * Starter-catalog prices are estimates, and the screen says so beside each one
- * until somebody saves a checked price.
+ * Starter-catalog prices are estimates. The screen says so once, in the price
+ * check above the table, and marks each one with an amber dot until somebody
+ * saves a checked price.
  */
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -16,16 +17,13 @@ import { Suspense, useRef, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
-import { ConsoleHeader, MedicinePack } from "@/components/admin/console";
+import { ConsoleHeader, MedicinePack, Pager, RowButton, StatusPill, TogglePill } from "@/components/admin/console";
 import { Dialog, useToast } from "@/components/overlays";
 import { PharmacyAdminTabs } from "@/components/pharmacy/AdminTabs";
 import { FORM_LABEL, productTitle, rupees } from "@/components/pharmacy/shared";
 import { Switch } from "@/components/forms";
 import {
-  Badge,
   Button,
-  Card,
-  Checkbox,
   EmptyState,
   ErrorState,
   Field,
@@ -55,6 +53,9 @@ function downloadTemplate() {
   URL.revokeObjectURL(url);
 }
 
+/** Twenty to a page, with the header held while the page scrolls. */
+const PAGE = 20;
+
 function Catalog() {
   const tr = useTr();
   const toast = useToast();
@@ -62,6 +63,7 @@ function Catalog() {
   const router = useRouter();
   const pathname = usePathname();
   const [search, setSearch] = useState("");
+  const [offset, setOffset] = useState(0);
   const [editing, setEditing] = useState<Product | "new" | null>(null);
   const [stocking, setStocking] = useState<Product | null>(null);
   const [importing, setImporting] = useState(false);
@@ -72,12 +74,16 @@ function Catalog() {
   const unreviewed = params.get("unreviewed") === "1";
   const includeInactive = params.get("inactive") === "1";
 
-  const setFlag = (name: string, on: boolean) => {
+  const setFlags = (flags: Record<string, boolean>) => {
     const next = new URLSearchParams(params.toString());
-    if (on) next.set(name, "1");
-    else next.delete(name);
+    for (const [name, on] of Object.entries(flags)) {
+      if (on) next.set(name, "1");
+      else next.delete(name);
+    }
+    setOffset(0);
     router.replace(`${pathname}?${next.toString()}`);
   };
+  const setFlag = (name: string, on: boolean) => setFlags({ [name]: on });
 
   // "+ New" opens this page with ?new=1 or ?import=1. Read from the URL rather
   // than copied into state, so the dialog also opens when the menu is used
@@ -94,13 +100,22 @@ function Catalog() {
         includeInactive,
         lowStock,
         unreviewedPrice: unreviewed,
-        limit: 100,
+        limit: PAGE,
+        offset,
       }),
-    [search, includeInactive, lowStock, unreviewed, refresh],
+    [search, includeInactive, lowStock, unreviewed, offset, refresh],
     { live: false },
   );
+  // The sentence and the price check: the dashboard's counts, and the size of
+  // the shelf from a one-row read.
+  const summary = useAsync(() => pharmacy.dashboard(), [refresh], { live: false });
+  const onSale = useAsync(() => pharmacy.products({ limit: 1 }), [refresh], { live: false });
+  const everything = useAsync(() => pharmacy.products({ includeInactive: true, limit: 1 }), [refresh], { live: false });
   const rows = list.data?.data ?? [];
   const reload = () => setRefresh((n) => n + 1);
+  const data = summary.data;
+  const shelf = everything.data?.meta.total ?? 0;
+  const checked = data ? Math.max(0, shelf - data.unreviewedPrices) : 0;
 
   const loadStarter = async () => {
     setLoadingStarter(true);
@@ -121,115 +136,276 @@ function Catalog() {
   };
 
   return (
-    <div className="mt-6 space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={() => setEditing("new")}>
-          <Icon name="add" className="text-[20px]" />
-          {tr("Add medicine", "Dawa shamil karein")}
-        </Button>
-        <Button variant="secondary" onClick={() => setImporting(true)}>
-          <Icon name="upload_file" className="text-[20px]" />
-          {tr("Import CSV", "CSV import")}
-        </Button>
-        <Button variant="ghost" loading={loadingStarter} onClick={() => void loadStarter()}>
-          <Icon name="auto_awesome" className="text-[20px]" />
-          {tr("Load starter catalog", "Starter catalog load karein")}
-        </Button>
+    <>
+      <ConsoleHeader
+        mark="catalog"
+        eyebrow={tr("Pharmacy", "Pharmacy")}
+        title={tr("Catalog", "Catalog")}
+        actions={
+          <>
+            <Button variant="ghost" loading={loadingStarter} onClick={() => void loadStarter()}>
+              {tr("Load starter catalog", "Starter catalog load karein")}
+            </Button>
+            <Button variant="secondary" onClick={() => setImporting(true)}>
+              <Icon name="upload_file" className="text-[18px]" />
+              {tr("Import CSV", "CSV import")}
+            </Button>
+            <Button onClick={() => setEditing("new")}>
+              <Icon name="add" className="text-[18px]" />
+              {tr("Add a medicine", "Dawa shamil karein")}
+            </Button>
+          </>
+        }
+      >
+        {data && onSale.data ? (
+          <p>
+            <b>
+              {onSale.data.meta.total} {tr(onSale.data.meta.total === 1 ? "medicine" : "medicines", "dawaiyan")}
+            </b>{" "}
+            {tr("on sale.", "farokht ke liye.")}{" "}
+            {data.lowStockCount > 0 && (
+              <>
+                <a
+                  href="#medicines"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    setFlags({ lowStock: true, unreviewed: false });
+                  }}
+                >
+                  {tr(`${data.lowStockCount} running low`, `${data.lowStockCount} kam`)}
+                </a>
+                {data.unreviewedPrices > 0 ? tr(", and ", ", aur ") : ". "}
+              </>
+            )}
+            {data.unreviewedPrices > 0 && (
+              <>
+                <a
+                  href="#medicines"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    setFlags({ unreviewed: true, lowStock: false });
+                  }}
+                >
+                  {tr(
+                    `${data.unreviewedPrices} ${data.unreviewedPrices === 1 ? "price" : "prices"} not yet checked`,
+                    `${data.unreviewedPrices} qeematein abhi check nahi`,
+                  )}
+                </a>{" "}
+                {tr("against DRAP.", "DRAP ke mutabiq.")}
+              </>
+            )}
+          </p>
+        ) : (
+          <p>
+            {tr(
+              "Every medicine the pharmacy sells: its price, its stock, and whether it needs a prescription.",
+              "Pharmacy ki har dawa: qeemat, stock, aur kya nuskha zaroori hai.",
+            )}
+          </p>
+        )}
+      </ConsoleHeader>
+      <div className="mt-6">
+        <PharmacyAdminTabs openOrders={data?.openOrders} />
       </div>
 
-      <div className="flex flex-wrap items-center gap-4">
-        <div className="min-w-[14rem] flex-1">
-          <Input
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder={tr("Search by brand, generic or maker", "Brand, generic ya company se dhoondein")}
-            aria-label={tr("Search the catalog", "Catalog dhoondein")}
-          />
-        </div>
-        <Checkbox label={tr("Running low", "Kam stock")} checked={lowStock} onChange={() => setFlag("lowStock", !lowStock)} />
-        <Checkbox label={tr("Price not checked", "Qeemat check nahi")} checked={unreviewed} onChange={() => setFlag("unreviewed", !unreviewed)} />
-        <Checkbox label={tr("Show hidden", "Chhupe dikhayein")} checked={includeInactive} onChange={() => setFlag("inactive", !includeInactive)} />
-      </div>
-
-      {list.loading && !list.data ? (
-        <SkeletonRows rows={6} />
-      ) : list.error ? (
-        <ErrorState message={list.error.message} onRetry={list.reload} />
-      ) : rows.length === 0 ? (
-        <EmptyState
-          icon="inventory_2"
-          title={tr("No medicines here", "Yahan koi dawa nahi")}
-          description={tr(
-            "Load the starter catalog of common Pakistani medicines, import your own CSV, or add one by hand.",
-            "Aam Pakistani dawaon ka starter catalog load karein, apni CSV import karein, ya khud shamil karein.",
+      {data && data.unreviewedPrices > 0 && (
+        // The price check, said once for the whole shelf; each estimate carries
+        // only an amber dot beside its price.
+        <section
+          aria-label={tr("Price check", "Qeemat ki jaanch")}
+          className="rise-in mt-6 flex flex-wrap items-center gap-x-5 gap-y-3.5 rounded-[18px] bg-pastel-butter px-[18px] py-3.5 text-pastel-ink"
+        >
+          <span aria-hidden className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-card/70 text-[#B45309] dark:text-[#FBD27A]">
+            <Icon name="price_check" className="text-[19px]" />
+          </span>
+          <p className="min-w-[16rem] flex-1 text-sm">
+            <b className="font-semibold">
+              {tr(
+                `${data.unreviewedPrices} ${data.unreviewedPrices === 1 ? "price is" : "prices are"} still estimates.`,
+                `${data.unreviewedPrices} qeematein abhi andaze hain.`,
+              )}
+            </b>{" "}
+            {tr(
+              "Each one carries an amber mark until it is saved against the pack's DRAP maximum retail price.",
+              "Har aik par amber nishan rehta hai jab tak pack ki DRAP MRP ke mutabiq save na ho.",
+            )}
+          </p>
+          {shelf > 0 && (
+            <span className="flex items-center gap-2.5">
+              <span
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={shelf}
+                aria-valuenow={checked}
+                aria-label={tr("Prices checked", "Check shuda qeematein")}
+                className="h-2 w-[140px] overflow-hidden rounded-full bg-pastel-ink/10"
+              >
+                <span
+                  className="bar-grow-x block h-full rounded-full bg-[#B45309] dark:bg-[#FBD27A]"
+                  style={{ width: `${(checked / shelf) * 100}%` }}
+                />
+              </span>
+              <b className="text-[12.5px] font-semibold tabular-nums">
+                {tr(`${checked} of ${shelf}`, `${shelf} mein se ${checked}`)}
+              </b>
+            </span>
           )}
-        />
-      ) : (
-        <Card flush>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[46rem] text-sm">
-              <thead>
-                <tr className="border-b border-line text-left text-[11px] font-bold uppercase tracking-wider text-faint">
-                  <th className="px-5 py-3">{tr("Medicine", "Dawa")}</th>
-                  <th className="px-3 py-3">{tr("Category", "Category")}</th>
-                  <th className="px-3 py-3 text-right">{tr("Price", "Qeemat")}</th>
-                  <th className="px-3 py-3 text-right">{tr("Stock", "Stock")}</th>
-                  <th className="px-5 py-3 text-right">{tr("Actions", "Amal")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line">
-                {rows.map((product) => {
-                  const low = (product.stock ?? 0) <= (product.lowStockThreshold ?? 0);
-                  return (
-                    <tr key={product.id} className={cx(!product.active && "opacity-60")}>
-                      <td className="px-5 py-3">
-                        <div className="flex items-center gap-3">
-                          <MedicinePack form={product.form} />
-                          <div className="min-w-0">
-                            <p className="font-semibold text-strong">{productTitle(product)}</p>
-                            <p className="text-xs text-muted">
-                              {product.genericName} · {product.packSize}
-                            </p>
-                            <div className="mt-1 flex flex-wrap gap-1">
-                              {product.rxRequired && <Badge tone="warning">Rx</Badge>}
-                              {!product.active && <Badge tone="neutral">{tr("Hidden", "Chhupa")}</Badge>}
+          <Button size="sm" variant="secondary" onClick={() => setFlags({ unreviewed: true, lowStock: false })}>
+            {tr("Show them", "Dikhayein")}
+          </Button>
+        </section>
+      )}
+
+      <section
+        id="medicines"
+        aria-label={tr("Medicines", "Dawaiyan")}
+        className="rise-in mt-6 scroll-mt-24 overflow-hidden rounded-3xl border border-line bg-card shadow-card"
+      >
+        <div className="flex flex-wrap items-center gap-2.5 px-[18px] py-4">
+          <label className="flex h-10 w-full items-center gap-2.5 rounded-full border border-line-strong bg-card pr-3 pl-3.5 text-muted focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary sm:w-[340px]">
+            <Icon name="search" className="text-[18px]" />
+            <input
+              type="search"
+              aria-label={tr("Search the catalog", "Catalog dhoondein")}
+              placeholder={tr("Brand, generic or maker", "Brand, generic ya company")}
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setOffset(0);
+              }}
+              className="min-w-0 flex-1 bg-transparent text-[13.5px] text-strong outline-none placeholder:text-muted"
+            />
+          </label>
+          <TogglePill pressed={lowStock} onToggle={() => setFlag("lowStock", !lowStock)} dot="bg-[#F59E0B]">
+            {tr("Running low", "Kam stock")}
+          </TogglePill>
+          <TogglePill pressed={unreviewed} onToggle={() => setFlag("unreviewed", !unreviewed)} dot="bg-[#B45309]">
+            {tr("Price not checked", "Qeemat check nahi")}
+          </TogglePill>
+          <TogglePill pressed={includeInactive} onToggle={() => setFlag("inactive", !includeInactive)} dot="bg-faint">
+            {tr("Show hidden", "Chhupe dikhayein")}
+          </TogglePill>
+        </div>
+
+        {list.loading && !list.data ? (
+          <div className="px-[18px] pb-5">
+            <SkeletonRows rows={6} title={false} />
+          </div>
+        ) : list.error ? (
+          <div className="px-[18px] pb-5">
+            <ErrorState message={list.error.message} onRetry={list.reload} />
+          </div>
+        ) : rows.length === 0 ? (
+          <EmptyState
+            icon="inventory_2"
+            title={tr("No medicines here", "Yahan koi dawa nahi")}
+            description={tr(
+              "Load the starter catalog of common Pakistani medicines, import your own CSV, or add one by hand.",
+              "Aam Pakistani dawaon ka starter catalog load karein, apni CSV import karein, ya khud shamil karein.",
+            )}
+          />
+        ) : (
+          <>
+            {/* Scrolls inside itself so the column names stay in sight. */}
+            <div className="max-h-[760px] overflow-auto">
+              <table className="console-table min-w-[50rem] [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-10">
+                <thead>
+                  <tr>
+                    <th scope="col">{tr("Medicine", "Dawa")}</th>
+                    <th scope="col">{tr("Category", "Category")}</th>
+                    <th scope="col" className="text-right">
+                      {tr("Price", "Qeemat")}
+                    </th>
+                    <th scope="col" className="w-[220px]">
+                      {tr("Stock", "Stock")}
+                    </th>
+                    <th scope="col" className="text-right">
+                      <span className="sr-only">{tr("Actions", "Amal")}</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((product) => {
+                    const left = product.stock ?? 0;
+                    const level = product.lowStockThreshold ?? 0;
+                    const out = left === 0;
+                    const short = left <= level;
+                    return (
+                      <tr key={product.id}>
+                        <td>
+                          <div className="flex items-center gap-3">
+                            <MedicinePack form={product.form} size={32} />
+                            <div className="min-w-0">
+                              <p className="flex flex-wrap items-center gap-1.5">
+                                <span className="font-semibold text-strong">{productTitle(product)}</span>
+                                {product.rxRequired && <StatusPill tone="warning">Rx</StatusPill>}
+                                {!product.active && <StatusPill>{tr("Hidden", "Chhupa")}</StatusPill>}
+                              </p>
+                              <p className="text-[12.5px] text-muted">
+                                {product.genericName} · {product.packSize}
+                              </p>
                             </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-3 py-3 text-muted">{product.category}</td>
-                      <td className="px-3 py-3 text-right">
-                        <span className="font-semibold tabular-nums text-strong">{rupees(product.price)}</span>
-                        {product.priceReviewed === false && (
-                          <span className="block text-[11px] font-semibold text-warning">{tr("Estimate", "Andaza")}</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-3 text-right">
-                        <span className={cx("font-semibold tabular-nums", low ? "text-warning" : "text-strong")}>
-                          {product.stock}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3">
-                        <div className="flex justify-end gap-1">
-                          <Button variant="ghost" onClick={() => setStocking(product)}>
-                            <Icon name="inventory" className="text-[18px]" />
-                            {tr("Stock", "Stock")}
-                          </Button>
-                          <Button variant="ghost" onClick={() => setEditing(product)}>
-                            <Icon name="edit" className="text-[18px]" />
-                            {tr("Edit", "Edit")}
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
+                        </td>
+                        <td className="text-muted">{product.category}</td>
+                        <td className="text-right whitespace-nowrap tabular-nums">
+                          <span className="inline-flex items-center gap-[7px]">
+                            {product.priceReviewed === false && (
+                              <span
+                                title={tr("Estimate — not yet checked against DRAP", "Andaza — DRAP se abhi check nahi")}
+                                className="h-2 w-2 rounded-full bg-[#F59E0B]"
+                              >
+                                <span className="sr-only">{tr("Estimate", "Andaza")}</span>
+                              </span>
+                            )}
+                            <span className="font-semibold text-strong">{rupees(product.price)}</span>
+                          </span>
+                        </td>
+                        <td>
+                          <span className="flex items-center gap-2.5">
+                            <span aria-hidden className="h-1.5 max-w-[120px] flex-1 overflow-hidden rounded-full bg-sunken">
+                              <span
+                                className={cx(
+                                  "bar-grow-x block h-full rounded-full",
+                                  out ? "bg-critical" : short ? "bg-[#F59E0B]" : "bg-stable",
+                                )}
+                                style={{ width: `${out ? 0 : Math.max(4, Math.min(100, (left / Math.max(1, level * 4)) * 100))}%` }}
+                              />
+                            </span>
+                            <span
+                              className={cx(
+                                "w-9 text-right font-semibold tabular-nums",
+                                out ? "text-critical" : short ? "text-warning" : "text-strong",
+                              )}
+                            >
+                              {out ? tr("Out", "Khatam") : left}
+                            </span>
+                          </span>
+                        </td>
+                        <td>
+                          <div className="flex justify-end gap-1.5">
+                            <RowButton
+                              label={tr(`Change the stock of ${productTitle(product)}`, `${productTitle(product)} ka stock badlein`)}
+                              icon="inventory"
+                              onClick={() => setStocking(product)}
+                            />
+                            <RowButton
+                              label={tr(`Edit ${productTitle(product)}`, `${productTitle(product)} edit karein`)}
+                              icon="edit"
+                              onClick={() => setEditing(product)}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <Pager offset={offset} limit={PAGE} total={list.data?.meta.total ?? rows.length} onChange={setOffset} />
+          </>
+        )}
+      </section>
 
       {product && (
         <ProductDialog
@@ -266,7 +442,7 @@ function Catalog() {
           onImported={() => reload()}
         />
       )}
-    </div>
+    </>
   );
 }
 
@@ -560,21 +736,9 @@ function ImportDialog({ onClose, onImported }: { onClose: () => void; onImported
 }
 
 export default function PharmacyCatalog() {
-  const tr = useTr();
   return (
     <AppShell role="ADMIN">
       <div id="main">
-        <ConsoleHeader mark="catalog" icon="inventory_2" eyebrow={tr("Pharmacy", "Pharmacy")} title={tr("Catalog", "Catalog")}>
-          <p>
-            {tr(
-              "Every medicine the pharmacy sells: its price, its stock, and whether it needs a prescription.",
-              "Pharmacy ki har dawa: qeemat, stock, aur kya nuskha zaroori hai.",
-            )}
-          </p>
-        </ConsoleHeader>
-        <div className="mt-6">
-          <PharmacyAdminTabs />
-        </div>
         <Suspense fallback={<Loading />}>
           <Catalog />
         </Suspense>

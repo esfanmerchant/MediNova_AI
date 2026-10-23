@@ -10,7 +10,16 @@
  * when the thing it belongs to moves away from under it.
  */
 
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 
 import { Icon } from "@/components/Icon";
 import { Floating } from "@/components/overlays";
@@ -18,15 +27,32 @@ import { cx } from "@/components/ui";
 
 export interface RowMenuItem {
   label: string;
-  icon: string;
   onSelect: () => void;
   /** Red, and set apart by a line above it. */
   danger?: boolean;
+  /** Quiet text at the end of the item — a count. */
+  hint?: string;
+  icon?: string;
 }
 
 const WIDTH = 210;
 
-export function RowMenu({ label, items }: { label: string; items: RowMenuItem[] }) {
+export function RowMenu({
+  label,
+  items,
+  trigger,
+  active = false,
+  align = "end",
+}: {
+  label: string;
+  items: RowMenuItem[];
+  /** A worded pill in place of the ⋯ — "More", or the choice it holds. */
+  trigger?: ReactNode;
+  /** The pill holds the current choice, so it is drawn as chosen. */
+  active?: boolean;
+  /** Which edge of the button the menu lines up with. */
+  align?: "start" | "end";
+}) {
   const [open, setOpen] = useState(false);
   const [place, setPlace] = useState<{ top: number; left: number } | null>(null);
   const button = useRef<HTMLButtonElement>(null);
@@ -45,9 +71,9 @@ export function RowMenu({ label, items }: { label: string; items: RowMenuItem[] 
     const below = rect.bottom + 6 + height <= window.innerHeight;
     setPlace({
       top: below ? rect.bottom + 6 : Math.max(8, rect.top - 6 - height),
-      left: Math.max(8, Math.min(window.innerWidth - WIDTH - 8, rect.right - WIDTH)),
+      left: Math.max(8, Math.min(window.innerWidth - WIDTH - 8, align === "start" ? rect.left : rect.right - WIDTH)),
     });
-  }, [open]);
+  }, [open, align]);
 
   useEffect(() => {
     if (!open) return;
@@ -90,7 +116,7 @@ export function RowMenu({ label, items }: { label: string; items: RowMenuItem[] 
       <button
         ref={button}
         type="button"
-        aria-label={label}
+        aria-label={trigger ? undefined : label}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? id : undefined}
@@ -99,12 +125,23 @@ export function RowMenu({ label, items }: { label: string; items: RowMenuItem[] 
           setOpen((value) => !value);
         }}
         className={cx(
-          "grid h-8 w-8 place-items-center rounded-full border border-line-strong text-strong transition-colors",
+          "rounded-full border transition-colors",
           "hover:bg-sunken focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+          trigger
+            ? "inline-flex h-8 items-center gap-1.5 px-[13px] text-[12.5px] font-semibold whitespace-nowrap"
+            : "grid h-8 w-8 place-items-center text-strong",
+          active ? "border-[#0B3FA8] text-primary dark:border-[#7DA2FF]" : "border-line-strong text-strong",
           open ? "bg-sunken" : "bg-card",
         )}
       >
-        <Icon name="more_horiz" className="text-[20px]" />
+        {trigger ? (
+          <>
+            {trigger}
+            <Icon name="expand_more" className={cx("text-[18px] transition-transform", open && "rotate-180")} />
+          </>
+        ) : (
+          <Icon name="more_horiz" className="text-[20px]" />
+        )}
       </button>
       {open && (
         <Floating>
@@ -134,8 +171,9 @@ export function RowMenu({ label, items }: { label: string; items: RowMenuItem[] 
                     item.danger ? "font-semibold text-critical" : "font-medium text-strong",
                   )}
                 >
-                  <Icon name={item.icon} className="text-[18px]" />
-                  {item.label}
+                  {item.icon && <Icon name={item.icon} className="text-[18px]" />}
+                  <span className="flex-1">{item.label}</span>
+                  {item.hint && <span className="text-[12px] font-normal text-muted tabular-nums">{item.hint}</span>}
                 </button>
               </div>
             ))}

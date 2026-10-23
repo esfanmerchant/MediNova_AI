@@ -216,6 +216,7 @@ export function ConsoleHeader({
   icon,
   mark,
   title,
+  mono = false,
   children,
   actions,
 }: {
@@ -225,6 +226,8 @@ export function ConsoleHeader({
   /** The page's pictogram, beside the title (see Pictogram.tsx). */
   mark?: PictogramName;
   title: string;
+  /** For a title that is a code — an order or invoice number. */
+  mono?: boolean;
   /** The data sentence. */
   children?: ReactNode;
   actions?: ReactNode;
@@ -240,7 +243,14 @@ export function ConsoleHeader({
             {eyebrow}
           </p>
         )}
-        <h1 className="font-display text-[2.1rem] leading-[1.05] font-bold tracking-[-0.03em] text-strong sm:text-[2.6rem]">
+        <h1
+          className={cx(
+            "leading-[1.05] font-bold text-strong",
+            mono
+              ? "!font-mono text-[1.75rem] tracking-[-0.01em] sm:text-[2.1rem]"
+              : "font-display text-[2.1rem] tracking-[-0.03em] sm:text-[2.6rem]",
+          )}
+        >
           <RevealText text={title} at={0.04} />
         </h1>
         {children && (
@@ -722,5 +732,55 @@ export function Pager({
         </div>
       )}
     </div>
+  );
+}
+
+/** A round 32px action on a table row — an icon, named for a screen reader and a pointer. */
+export function RowButton({ label, icon, onClick }: { label: string; icon: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line-strong bg-card text-strong transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+    >
+      <Icon name={icon} className="text-[17px]" />
+    </button>
+  );
+}
+
+/** A filter that is on or off, beside a table's tabs: a dot of its colour, and its name. */
+export function TogglePill({
+  pressed,
+  onToggle,
+  dot,
+  tone = "primary",
+  children,
+}: {
+  pressed: boolean;
+  onToggle: () => void;
+  /** The dot's colour, as a background class. */
+  dot: string;
+  /** How it looks when on: navy for a view, red for a warning. */
+  tone?: "primary" | "critical";
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={pressed}
+      onClick={onToggle}
+      className={cx(
+        "inline-flex h-8 items-center gap-2 rounded-full border px-[13px] text-[12.5px] font-semibold whitespace-nowrap transition-colors",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+        !pressed && "border-line-strong bg-card text-strong hover:bg-sunken",
+        pressed && tone === "critical" && "border-critical bg-critical-soft text-critical",
+        pressed && tone === "primary" && "border-[#0B3FA8] bg-pastel-sky text-primary dark:border-[#7DA2FF]",
+      )}
+    >
+      <span aria-hidden className={cx("h-[7px] w-[7px] shrink-0 rounded-full", dot)} />
+      {children}
+    </button>
   );
 }
