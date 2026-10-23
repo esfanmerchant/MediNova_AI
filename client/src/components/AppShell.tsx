@@ -807,7 +807,7 @@ function AccountMenu({
               <ThemeToggle menu={inConsole} />
             </div>
 
-            <div aria-hidden className="my-1 h-px bg-line/70" />
+            <div aria-hidden className={cx("h-px bg-line/70", inConsole ? "mt-1" : "my-1")} />
 
             {/* Findable after the fact. Somebody who agreed to these months ago
                 needs a way back to them that is not the registration form. */}
@@ -816,7 +816,7 @@ function AccountMenu({
               {tr("Terms and guidelines", "Shara-it aur guidelines")}
             </Link>
 
-            <div aria-hidden className="my-1 h-px bg-line/70" />
+            <div aria-hidden className={cx("h-px bg-line/70", inConsole ? "mt-1" : "my-1")} />
 
             <button
               type="button"
