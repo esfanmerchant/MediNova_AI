@@ -10,7 +10,7 @@
  * today, which is the clinic's today for anyone working in the hospital.
  */
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { Icon } from "@/components/Icon";
 import { ConsoleCard } from "@/components/admin/console";
@@ -60,7 +60,14 @@ export const CHIP: Record<Kind, string> = {
   off: "border-l-[#9DB0CC] bg-sunken text-faint line-through decoration-faint/60",
 };
 
-export function AppointmentWeek({ onPickDay }: { onPickDay: (date: string) => void }) {
+export function AppointmentWeek({
+  onPickDay,
+  lead,
+}: {
+  onPickDay: (date: string) => void;
+  /** Set in the card's header before the week's arrows — the page's view switch. */
+  lead?: ReactNode;
+}) {
   const tr = useTr();
   const today = localToday();
   const [offset, setOffset] = useState(0);
@@ -85,7 +92,7 @@ export function AppointmentWeek({ onPickDay }: { onPickDay: (date: string) => vo
 
   return (
     <ConsoleCard
-      icon="calendar_view_week"
+      icon="calendar_month"
       title={`${fmt(monday, { day: "numeric", month: "short" })} – ${fmt(sunday, { day: "numeric", month: "short" })}`}
       subtitle={
         week.data
@@ -96,7 +103,8 @@ export function AppointmentWeek({ onPickDay }: { onPickDay: (date: string) => vo
           : tr("Loading the week…", "Hafta load ho raha hai…")
       }
       action={
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {lead && <div className="mr-1.5">{lead}</div>}
           <button
             type="button"
             aria-label={tr("Previous week", "Pichhla hafta")}
@@ -131,7 +139,7 @@ export function AppointmentWeek({ onPickDay }: { onPickDay: (date: string) => vo
               ["done", tr("Done", "Mukammal")],
               ["booked", tr("Confirmed", "Confirm")],
               ["ask", tr("Needs a yes", "Haan chahiye")],
-              ["off", tr("Cancelled or no-show", "Cancel ya nahi aaye")],
+              ["off", tr("Cancelled or did not come", "Cancel ya nahi aaye")],
             ] as const
           ).map(([kind, text]) => (
             <span key={kind} className="inline-flex items-center gap-1.5">

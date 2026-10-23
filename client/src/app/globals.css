@@ -2054,3 +2054,45 @@ video-player-container.consult-stage video-player[data-role="self"] {
 .art-settle {
   animation: art-settle 1s var(--ease-motion) 0.15s backwards;
 }
+
+/* The console's dense table: a quiet header on the soft ground, 44px rows,
+   the whole row lighting on hover. Wrap it in `overflow-x-auto`. */
+.console-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13.5px;
+  color: var(--text-strong);
+}
+.console-table thead th {
+  background: color-mix(in srgb, var(--surface-sunken) 50%, var(--surface-card));
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.console-table tbody td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+.console-table th:first-child,
+.console-table td:first-child {
+  padding-left: 18px;
+}
+.console-table th:last-child,
+.console-table td:last-child {
+  padding-right: 18px;
+}
+.console-table tbody tr {
+  transition: background-color 0.15s ease;
+}
+.console-table tbody tr:hover > td {
+  background: color-mix(in srgb, var(--surface-sunken) 50%, var(--surface-card));
+}
+.console-table tbody tr:last-child > td {
+  border-bottom: 0;
+}

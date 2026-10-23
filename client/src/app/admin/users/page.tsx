@@ -29,7 +29,16 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
-import { ConsoleHeader, HeaderPill } from "@/components/admin/console";
+import { Segmented } from "@/components/forms";
+import {
+  ConsoleHeader,
+  HeaderPill,
+  Pager,
+  StatusPill,
+  consoleDay,
+  consoleStamp,
+  type PillTone,
+} from "@/components/admin/console";
 import {
   PERSON_HELD,
   PersonDrawer,
@@ -38,46 +47,56 @@ import {
   peekHeldPerson,
   takeHeldPerson,
 } from "@/components/admin/PersonDrawer";
+import { RowMenu } from "@/components/admin/RowMenu";
 import { StaffAccountDialog } from "@/components/admin/StaffAccountDialog";
 import { RemoveAccount } from "@/components/admin/RemoveAccount";
 import { useToast } from "@/components/overlays";
-import {
-  Avatar,
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  ErrorState,
-  Field,
-  Input,
-  SkeletonRows,
-  cx,
-} from "@/components/ui";
+import { Button, EmptyState, ErrorState, Field, Input, SkeletonRows, cx } from "@/components/ui";
 import { ApiError, users, type AccountRow, type Role } from "@/lib/api";
 import { useTr } from "@/lib/lang";
 import { useSession } from "@/lib/session";
 import { useAsync } from "@/lib/useAsync";
 
 type Row = AccountRow;
+type RoleTab = Role | "ALL";
 
-const ROLES: Array<{ value: Role | ""; label: [string, string] }> = [
-  { value: "", label: ["Everyone", "Sab"] },
-  { value: "PATIENT", label: ["Patients", "Mareez"] },
-  { value: "DOCTOR", label: ["Doctors", "Doctors"] },
-  { value: "ADMIN", label: ["Admins", "Admins"] },
-];
+/** Ten to a page: a roster is scanned, and ten rows fit a laptop screen whole. */
+const PAGE = 10;
 
-function Person({ row, onChanged, onOpen }: { row: Row; onChanged: () => void; onOpen: () => void }) {
+const STATUS_TONE: Record<string, PillTone> = {
+  ACTIVE: "good",
+  SUSPENDED: "critical",
+  PENDING_VERIFICATION: "warning",
+  DEACTIVATED: "neutral",
+};
+
+/** "Dr. Ayesha Raza" is AR, and Ayesha in a sentence. */
+function withoutTitle(name: string): string {
+  return name.replace(/^Dr\.?\s+/i, "");
+}
+
+function initialsOf(name: string): string {
+  return (
+    withoutTitle(name)
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? "")
+      .join("") || "?"
+  );
+}
+
+function PersonRow({ row, onChanged, onOpen }: { row: Row; onChanged: () => void; onOpen: () => void }) {
   const tr = useTr();
   const { user } = useSession();
   const isSelf = user?.id === row.id;
   const toast = useToast();
   const [busy, setBusy] = useState(false);
-  const [suspending, setSuspending] = useState(false);
-  const [removing, setRemoving] = useState(false);
+  const [panel, setPanel] = useState<"suspend" | "remove" | null>(null);
   const [reason, setReason] = useState("");
 
-  const active = row.status === "ACTIVE";
+  const suspended = row.status === "SUSPENDED";
+  const first = withoutTitle(row.name).split(" ")[0];
 
   async function change(status: "ACTIVE" | "SUSPENDED") {
     setBusy(true);
@@ -97,7 +116,7 @@ function Person({ row, onChanged, onOpen }: { row: Row; onChanged: () => void; o
               )
             : tr(`${row.name} can sign in again.`, `${row.name} dobara sign in kar sakta hai.`),
       });
-      setSuspending(false);
+      setPanel(null);
       setReason("");
       onChanged();
     } catch (cause) {
@@ -112,147 +131,171 @@ function Person({ row, onChanged, onOpen }: { row: Row; onChanged: () => void; o
   }
 
   return (
-    <li
-      className={cx(
-        "rounded-2xl border p-4 shadow-card",
-        // Marked by its ground and its red status badge rather than by fading
-        // the row, which took the words below a readable contrast.
-        active ? "border-line bg-card" : "border-critical/30 bg-sunken/50",
-      )}
-    >
-      {/* On a phone the actions take their own line, and take it by rule
-          rather than by running out of room.
-          -------------------------------------------------------------
-          Wrapping got there eventually, but only after the name had been
-          squeezed into a column narrow enough to break "Esfan Mehmood
-          Merchant" across three lines while two buttons sat beside it. Giving
-          the actions the full width below `sm` hands the whole row back to the
-          name, which is the part somebody is reading. */}
-      <div className="flex flex-wrap items-start gap-3 sm:items-center">
-        <Avatar name={row.name} />
-        <div className="min-w-0 flex-1">
-          <p className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={onOpen}
-              className="rounded font-display text-base font-bold text-strong underline-offset-4 hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            >
-              {row.name}
-            </button>
-            <Badge tone="neutral">{tr(...(ROLE_LABEL[row.role] ?? [row.role, row.role]))}</Badge>
-            {!active && <Badge tone="critical">{tr(...(STATUS_LABEL[row.status] ?? [row.status, row.status]))}</Badge>}
-          </p>
-          <p className="truncate text-sm text-muted">{row.email}</p>
-        </div>
-
-        {/* Never on your own row.
-            ----------------------
-            The server has always refused this — `set_user_status` returns 403
-            when the id is the caller's own — but the button was still offered,
-            so the only thing pressing it produced was an error. An action that
-            cannot succeed should not be on screen: suspending yourself would
-            revoke your own session mid-click and, with one administrator left,
-            lock the hospital out of its own admin portal. */}
-        {isSelf ? (
-          <span className="mono-caps w-full text-[11px] text-faint sm:w-auto">
-            {tr("This is you", "Yeh aap hain")}
-          </span>
-        ) : (
-          <div className="flex w-full flex-wrap items-center justify-end gap-1 sm:w-auto">
-            {active ? (
-              <Button variant="ghost" onClick={() => setSuspending((open) => !open)}>
-                {tr("Suspend", "Mo'attal karein")}
-              </Button>
-            ) : (
-              <Button variant="secondary" loading={busy} onClick={() => change("ACTIVE")}>
-                {tr("Restore", "Bahaal karein")}
-              </Button>
-            )}
-            {/* Quieter than Suspend on purpose. Removal is the rarer and far
-                more serious act, and the panel behind it is what makes it
-                deliberate — a louder button here would only make it easier to
-                press by mistake. */}
-            <Button
-              variant="ghost"
-              className="text-critical hover:bg-critical-soft"
-              onClick={() => setRemoving((open) => !open)}
-            >
-              {tr("Remove", "Hatayein")}
-            </Button>
-          </div>
-        )}
-      </div>
-
-      {removing && (
-        <RemoveAccount
-          userId={row.id}
-          name={row.name}
-          onCancel={() => setRemoving(false)}
-          onDone={() => {
-            setRemoving(false);
-            onChanged();
-          }}
-        />
-      )}
-
-      {suspending && (
-        <div className="mt-4 space-y-3 rounded-xl border border-critical/40 bg-critical-soft p-3">
-          <p className="flex items-start gap-2 text-sm text-strong">
-            <Icon name="warning" className="mt-0.5 shrink-0 text-[18px] text-critical" />
-            <span>
-              {tr(
-                "They will be signed out everywhere immediately and will not be able to sign in. Their records stay — nothing is deleted.",
-                "Woh foran har jagah se sign out ho jayenge aur andar nahi aa sakenge. Un ka record wahi rahega — kuch mitta nahi.",
+    <>
+      <tr
+        onClick={onOpen}
+        // Marked by its ground and its red status rather than by fading the
+        // row, which took the words below a readable contrast.
+        className={cx("cursor-pointer", suspended && "[&>td]:bg-critical-soft/45")}
+      >
+        <td>
+          <div className="flex min-w-0 items-center gap-[11px]">
+            <span
+              aria-hidden
+              className={cx(
+                "grid h-[34px] w-[34px] shrink-0 place-items-center rounded-full text-[12px] font-bold",
+                suspended ? "bg-critical-soft text-critical" : "bg-sunken text-primary",
               )}
-            </span>
-          </p>
-
-          <Field
-            label={tr("Why is this account being suspended?", "Yeh account kyun mo'attal ho raha hai?")}
-            htmlFor={`reason-${row.id}`}
-            hint={tr(
-              "Recorded in the audit trail against your name.",
-              "Audit trail mein aap ke naam ke saath darj hoga.",
-            )}
-          >
-            <Input
-              id={`reason-${row.id}`}
-              maxLength={300}
-              autoFocus
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-            />
-          </Field>
-
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="danger"
-              loading={busy}
-              disabled={reason.trim().length < 3}
-              onClick={() => change("SUSPENDED")}
             >
-              {tr("Suspend account", "Account mo'attal karein")}
-            </Button>
-            <Button variant="ghost" onClick={() => setSuspending(false)}>
-              {tr("Cancel", "Cancel")}
-            </Button>
+              {initialsOf(row.name)}
+            </span>
+            <span className="min-w-0">
+              {/* The row opens on a click anywhere; the name is how a keyboard gets there. */}
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onOpen();
+                }}
+                className="block max-w-full truncate rounded text-left text-[13.5px] font-semibold text-strong hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                {row.name}
+              </button>
+              <span className="block truncate text-[12.5px] text-muted">{row.email}</span>
+            </span>
           </div>
-        </div>
+        </td>
+        <td>
+          <StatusPill>{tr(...(ROLE_LABEL[row.role] ?? [row.role, row.role]))}</StatusPill>
+        </td>
+        <td>
+          <StatusPill dot tone={STATUS_TONE[row.status] ?? "neutral"}>
+            {tr(...(STATUS_LABEL[row.status] ?? [row.status, row.status]))}
+          </StatusPill>
+        </td>
+        <td className="whitespace-nowrap text-muted tabular-nums">
+          {row.lastLoginAt ? consoleStamp(row.lastLoginAt) : tr("Never", "Kabhi nahi")}
+        </td>
+        <td className="whitespace-nowrap text-muted tabular-nums">{consoleDay(row.createdAt)}</td>
+        <td className="text-right">
+          {/* Never on your own row.
+              ----------------------
+              The server has always refused this — `set_user_status` returns 403
+              when the id is the caller's own — and an action that cannot
+              succeed should not be on screen: suspending yourself would revoke
+              your own session mid-click and, with one administrator left, lock
+              the hospital out of its own admin portal. */}
+          {isSelf ? (
+            <StatusPill tone="info">{tr("This is you", "Yeh aap hain")}</StatusPill>
+          ) : (
+            <RowMenu
+              label={tr(`Actions for ${row.name}`, `${row.name} ke liye actions`)}
+              items={[
+                { label: tr("Open", "Kholein"), icon: "visibility", onSelect: onOpen },
+                suspended
+                  ? {
+                      label: tr("Restore access", "Rasai bahaal karein"),
+                      icon: "lock_open",
+                      onSelect: () => void change("ACTIVE"),
+                    }
+                  : { label: tr("Suspend…", "Mo'attal karein…"), icon: "lock", onSelect: () => setPanel("suspend") },
+                // Last and set apart: removal is the rarer and far more serious
+                // act, and the panel behind it is what makes it deliberate.
+                {
+                  label: tr("Remove account…", "Account hatayein…"),
+                  icon: "close",
+                  danger: true,
+                  onSelect: () => setPanel("remove"),
+                },
+              ]}
+            />
+          )}
+        </td>
+      </tr>
+
+      {panel && (
+        <tr className="[&>td]:!bg-card">
+          <td colSpan={6} className="!pt-0">
+            {panel === "remove" ? (
+              <RemoveAccount
+                userId={row.id}
+                name={row.name}
+                onCancel={() => setPanel(null)}
+                onDone={() => {
+                  setPanel(null);
+                  onChanged();
+                }}
+              />
+            ) : (
+              <div className="rise-in mt-1 flex flex-col gap-3 rounded-2xl border border-critical/35 bg-critical-soft p-4">
+                <p className="flex items-start gap-2.5 text-[13.5px] leading-normal text-strong">
+                  <Icon name="warning" className="mt-px shrink-0 text-[18px] text-critical" />
+                  <span>
+                    {tr(
+                      `${first} will be signed out everywhere at once and cannot sign in. Their records stay — nothing is deleted.`,
+                      `${first} foran har jagah se sign out ho jayenge aur andar nahi aa sakenge. Un ka record wahi rahega — kuch mitta nahi.`,
+                    )}
+                  </span>
+                </p>
+                <div className="max-w-[520px]">
+                  <Field
+                    label={tr("Why is this account being suspended?", "Yeh account kyun mo'attal ho raha hai?")}
+                    htmlFor={`reason-${row.id}`}
+                    hint={tr(
+                      "Written to the audit trail against your name.",
+                      "Audit trail mein aap ke naam ke saath darj hoga.",
+                    )}
+                  >
+                    <Input
+                      id={`reason-${row.id}`}
+                      maxLength={300}
+                      autoFocus
+                      value={reason}
+                      onChange={(event) => setReason(event.target.value)}
+                    />
+                  </Field>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="danger"
+                    loading={busy}
+                    disabled={reason.trim().length < 3}
+                    onClick={() => change("SUSPENDED")}
+                  >
+                    {tr("Suspend account", "Account mo'attal karein")}
+                  </Button>
+                  <Button variant="ghost" onClick={() => setPanel(null)}>
+                    {tr("Cancel", "Cancel")}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </td>
+        </tr>
       )}
-    </li>
+    </>
   );
 }
 
 export default function AdminUsers() {
   const tr = useTr();
-  const [role, setRole] = useState<Role | "">("");
+  const [role, setRole] = useState<RoleTab>("ALL");
+  const [suspendedOnly, setSuspendedOnly] = useState(false);
   const [search, setSearch] = useState("");
+  const [offset, setOffset] = useState(0);
   const [refresh, setRefresh] = useState(0);
   const reload = useCallback(() => setRefresh((n) => n + 1), []);
 
   const list = useAsync(
-    () => users.list({ role: role || undefined, search: search || undefined, limit: 50 }),
-    [role, search, refresh],
+    () =>
+      users.list({
+        role: role === "ALL" ? undefined : role,
+        status: suspendedOnly ? "SUSPENDED" : undefined,
+        search: search || undefined,
+        limit: PAGE,
+        offset,
+      }),
+    [role, suspendedOnly, search, offset, refresh],
   );
 
   const rows = list.data?.data ?? [];
@@ -266,51 +309,84 @@ export default function AdminUsers() {
     window.addEventListener(PERSON_HELD, onHeld);
     return () => window.removeEventListener(PERSON_HELD, onHeld);
   }, []);
-  // The header's sentence. Counts only — one row each — so it costs the
-  // server three COUNTs, not three pages of people.
+  // The sentence and the counts on the tabs. One row each, so it costs the
+  // server five COUNTs, not five pages of people.
   const tally = useAsync(
     () =>
       Promise.all([
+        users.list({ limit: 1 }),
         users.list({ role: "PATIENT", limit: 1 }),
         users.list({ role: "DOCTOR", limit: 1 }),
+        users.list({ role: "ADMIN", limit: 1 }),
         users.list({ status: "SUSPENDED", limit: 1 }),
-      ]).then(([patients, doctors, suspended]) => ({
+      ]).then(([everyone, patients, doctors, admins, suspended]) => ({
+        everyone: everyone.meta.total,
         patients: patients.meta.total,
         doctors: doctors.meta.total,
+        admins: admins.meta.total,
         suspended: suspended.meta.total,
       })),
     [refresh],
   );
+  const counts = tally.data;
+  // Every change to what is asked for starts again at the first page.
+  const narrow = (apply: () => void) => {
+    apply();
+    setOffset(0);
+  };
+
+  const roles: Array<{ value: RoleTab; label: string; count?: number }> = [
+    { value: "ALL", label: tr("Everyone", "Sab"), count: counts?.everyone },
+    { value: "PATIENT", label: tr("Patients", "Mareez"), count: counts?.patients },
+    { value: "DOCTOR", label: tr("Doctors", "Doctors"), count: counts?.doctors },
+    { value: "ADMIN", label: tr("Admins", "Admins"), count: counts?.admins },
+  ];
 
   return (
     <AppShell role="ADMIN">
       <div id="main" className="space-y-6">
-        <ConsoleHeader mark="people"
-          icon="group"
+        <ConsoleHeader
+          mark="people"
           eyebrow={tr("Everybody on the platform", "Platform par sab log")}
           title={tr("People", "Log")}
           actions={
-            <HeaderPill href="/admin/users?new=staff" icon="person_add" tone="primary">
+            <HeaderPill href="/admin/users?new=staff" icon="add" tone="primary">
               {tr("Add a staff account", "Staff account banayein")}
             </HeaderPill>
           }
         >
-          {tally.data ? (
+          {counts ? (
             <p>
               <b>
-                {tally.data.patients} {tr(tally.data.patients === 1 ? "patient" : "patients", "mareez")}
+                {counts.patients} {tr(counts.patients === 1 ? "patient" : "patients", "mareez")}
               </b>{" "}
               {tr("and", "aur")}{" "}
               <b>
-                {tally.data.doctors} {tr(tally.data.doctors === 1 ? "doctor" : "doctors", "doctors")}
+                {counts.doctors} {tr(counts.doctors === 1 ? "doctor" : "doctors", "doctors")}
               </b>
               .{" "}
-              {tally.data.suspended > 0
-                ? tr(
-                    `${tally.data.suspended} ${tally.data.suspended === 1 ? "account is" : "accounts are"} suspended and cannot sign in.`,
-                    `${tally.data.suspended} accounts muattal hain aur sign in nahi kar sakte.`,
-                  )
-                : tr("Every account can sign in.", "Har account sign in kar sakta hai.")}
+              {counts.suspended > 0 ? (
+                <>
+                  <a
+                    href="#accounts"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      narrow(() => {
+                        setRole("ALL");
+                        setSuspendedOnly(true);
+                      });
+                    }}
+                  >
+                    {tr(
+                      `${counts.suspended} ${counts.suspended === 1 ? "account is" : "accounts are"} suspended`,
+                      `${counts.suspended} accounts muattal hain`,
+                    )}
+                  </a>{" "}
+                  {tr("and cannot sign in.", "aur sign in nahi kar sakte.")}
+                </>
+              ) : (
+                tr("Every account can sign in.", "Har account sign in kar sakta hai.")
+              )}
             </p>
           ) : (
             <p>
@@ -322,52 +398,67 @@ export default function AdminUsers() {
           )}
         </ConsoleHeader>
 
-        <Card>
-          <div className="flex flex-wrap items-center gap-3">
-            <div
-              role="group"
-              aria-label={tr("Role", "Kirdar")}
-              className="inline-flex rounded-lg border border-line p-0.5"
+        <section
+          id="accounts"
+          aria-label={tr("Accounts", "Accounts")}
+          className="rise-in scroll-mt-24 overflow-hidden rounded-3xl border border-line bg-card shadow-card"
+        >
+          <div className="flex flex-wrap items-center gap-3 px-[18px] py-4">
+            <Segmented
+              options={roles}
+              value={role}
+              onChange={(next) => narrow(() => setRole(next))}
+              label={tr("Role", "Kirdar")}
+            />
+            <button
+              type="button"
+              aria-pressed={suspendedOnly}
+              onClick={() => narrow(() => setSuspendedOnly((value) => !value))}
+              className={cx(
+                "inline-flex h-8 items-center gap-2 rounded-full border px-[13px] text-[12.5px] font-semibold whitespace-nowrap transition-colors",
+                "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                suspendedOnly
+                  ? "border-critical bg-critical-soft text-critical"
+                  : "border-line-strong bg-card text-strong hover:bg-sunken",
+              )}
             >
-              {ROLES.map((option) => (
-                <button
-                  key={option.value || "all"}
-                  type="button"
-                  aria-pressed={role === option.value}
-                  onClick={() => setRole(option.value)}
-                  className={cx(
-                    "min-h-11 rounded-md px-3 text-xs font-bold transition-colors sm:min-h-9",
-                    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                    role === option.value
-                      ? "bg-primary text-primary-on"
-                      : "text-muted hover:text-strong",
-                  )}
-                >
-                  {tr(...option.label)}
-                </button>
-              ))}
-            </div>
-
-            <div className="min-w-[14rem] flex-1">
-              <Field label={tr("Search", "Talash")} htmlFor="people-search">
-                <Input
-                  id="people-search"
-                  value={search}
-                  maxLength={100}
-                  onChange={(event) => setSearch(event.target.value)}
-                />
-              </Field>
-            </div>
+              <span aria-hidden className="h-[7px] w-[7px] rounded-full bg-critical" />
+              {tr("Suspended only", "Sirf muattal")}
+            </button>
+            <label className="flex h-10 w-full items-center gap-2.5 rounded-full border border-line-strong bg-card pr-3 pl-3.5 text-muted focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary sm:ml-auto sm:w-80">
+              <Icon name="search" className="text-[18px]" />
+              <input
+                type="search"
+                aria-label={tr("Search by name or email", "Naam ya email se talash")}
+                placeholder={tr("Search by name or email", "Naam ya email se talash")}
+                value={search}
+                maxLength={100}
+                onChange={(event) => narrow(() => setSearch(event.target.value))}
+                className="min-w-0 flex-1 bg-transparent text-[13.5px] text-strong outline-none placeholder:text-muted"
+              />
+            </label>
           </div>
-        </Card>
 
-        <Card icon="group" title={tr("Accounts", "Accounts")}>
-          {list.loading && <SkeletonRows rows={4} />}
-          {list.error && <ErrorState message={list.error.message} onRetry={list.reload} />}
+          {list.loading && !list.data && (
+            <div className="px-[18px] pb-5">
+              <SkeletonRows rows={5} title={false} />
+            </div>
+          )}
+          {list.error && (
+            <div className="px-[18px] pb-5">
+              <ErrorState message={list.error.message} onRetry={list.reload} />
+            </div>
+          )}
           {list.data && rows.length === 0 && (
             <EmptyState
               icon="person_search"
-              title={search ? tr(`Nobody called “${search}”`, `“${search}” naam ka koi nahi`) : tr("Nobody here yet", "Abhi yahan koi nahi")}
+              title={
+                search
+                  ? tr(`Nobody called “${search}”`, `“${search}” naam ka koi nahi`)
+                  : suspendedOnly
+                    ? tr("Nobody is suspended", "Koi muattal nahi")
+                    : tr("Nobody here yet", "Abhi yahan koi nahi")
+              }
               description={tr(
                 "Search finds a name or an email address. Try part of either, or a different role above. Removed accounts stay in the audit trail.",
                 "Talash naam ya email dhoondti hai. In ka koi hissa likhein, ya upar koi aur kirdar chunein. Hataye gaye accounts audit trail mein rehte hain.",
@@ -375,13 +466,32 @@ export default function AdminUsers() {
             />
           )}
           {rows.length > 0 && (
-            <ul className="space-y-3">
-              {rows.map((row) => (
-                <Person key={row.id} row={row} onChanged={reload} onOpen={() => setOpened(row)} />
-              ))}
-            </ul>
+            <>
+              <div className="overflow-x-auto">
+                <table className="console-table min-w-[52rem]">
+                  <thead>
+                    <tr>
+                      <th scope="col">{tr("Person", "Shakhs")}</th>
+                      <th scope="col">{tr("Role", "Kirdar")}</th>
+                      <th scope="col">{tr("Status", "Haalat")}</th>
+                      <th scope="col">{tr("Last sign-in", "Aakhri sign-in")}</th>
+                      <th scope="col">{tr("Joined", "Shamil hue")}</th>
+                      <th scope="col" className="text-right">
+                        <span className="sr-only">{tr("Actions", "Actions")}</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((row) => (
+                      <PersonRow key={row.id} row={row} onChanged={reload} onOpen={() => setOpened(row)} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <Pager offset={offset} limit={PAGE} total={list.data?.meta.total ?? rows.length} onChange={setOffset} />
+            </>
           )}
-        </Card>
+        </section>
 
         <PersonDrawer person={opened} onClose={() => setOpened(null)} />
         {/* useSearchParams needs a Suspense boundary of its own. */}

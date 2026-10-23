@@ -614,3 +614,113 @@ export function ConsoleLoading({ tiles = 4, rows = 4 }: { tiles?: number; rows?:
     </div>
   );
 }
+
+export type PillTone = "good" | "warning" | "critical" | "info" | "neutral";
+
+const PILL_TONES: Record<PillTone, string> = {
+  good: "bg-stable-soft text-stable",
+  warning: "bg-warning-soft text-warning",
+  critical: "bg-critical-soft text-critical",
+  info: "bg-info-soft text-info",
+  neutral: "bg-sunken text-muted",
+};
+
+/**
+ * A state, said as a word on its own colour — with a dot when it is a status
+ * somebody might act on, without one when it only labels (a role, a type).
+ */
+export function StatusPill({
+  tone = "neutral",
+  dot,
+  icon,
+  children,
+}: {
+  tone?: PillTone;
+  dot?: boolean;
+  icon?: string;
+  children: ReactNode;
+}) {
+  return (
+    <span
+      className={cx(
+        "inline-flex h-6 items-center gap-1.5 rounded-full px-[9px] text-[12px] font-semibold whitespace-nowrap",
+        PILL_TONES[tone],
+      )}
+    >
+      {dot && <span aria-hidden className="h-[7px] w-[7px] shrink-0 rounded-full bg-current" />}
+      {icon && <Icon name={icon} className="text-[14px]" />}
+      {children}
+    </span>
+  );
+}
+
+/** "23 Oct · 2:41 PM" — how the console writes a moment. */
+export function consoleStamp(iso: string): string {
+  const at = new Date(iso);
+  const day = at.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  const time = at.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  return `${day} · ${time}`;
+}
+
+/** "2 Jan 2026" — how the console writes a day. */
+export function consoleDay(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
+
+/**
+ * The foot of a console table: where in the list this page is, and the way
+ * to the next. Says nothing more when everything fits on one page.
+ */
+export function Pager({
+  offset,
+  limit,
+  total,
+  onChange,
+}: {
+  offset: number;
+  limit: number;
+  total: number;
+  onChange: (offset: number) => void;
+}) {
+  const tr = useTr();
+  if (total === 0) return null;
+  const page = Math.floor(offset / limit) + 1;
+  const pages = Math.max(1, Math.ceil(total / limit));
+  const last = Math.min(total, offset + limit);
+  const button =
+    "grid h-8 w-8 place-items-center rounded-full border border-line-strong bg-card text-strong transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-card";
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2.5 border-t border-line px-[18px] py-3 text-[13px] text-muted">
+      <span className="tabular-nums">
+        {tr("Showing ", "")}
+        <b className="font-semibold text-strong">
+          {offset + 1}–{last}
+        </b>
+        {tr(` of ${total}`, ` / ${total} dikh rahe hain`)}
+      </span>
+      {pages > 1 && (
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            aria-label={tr("Previous page", "Pichhla safha")}
+            disabled={page <= 1}
+            onClick={() => onChange(Math.max(0, offset - limit))}
+            className={button}
+          >
+            <Icon name="chevron_left" className="text-[18px]" />
+          </button>
+          <span className="px-1.5 tabular-nums">{tr(`Page ${page} of ${pages}`, `Safha ${page} / ${pages}`)}</span>
+          <button
+            type="button"
+            aria-label={tr("Next page", "Agla safha")}
+            disabled={page >= pages}
+            onClick={() => onChange(offset + limit)}
+            className={button}
+          >
+            <Icon name="chevron_right" className="text-[18px]" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

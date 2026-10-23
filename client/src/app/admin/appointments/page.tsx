@@ -14,56 +14,78 @@ import { useCallback, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
-import { AppointmentRow } from "@/components/appointments";
 import { AppointmentWeek, localToday } from "@/components/admin/AppointmentWeek";
 import { ClinicPulse } from "@/components/admin/ClinicPulse";
-import { ConsoleHeader, ConsoleLoading, FinishedState, PastelRow, PastelTile } from "@/components/admin/console";
 import {
-  Button,
-  Card,
-  EmptyState,
-  ErrorState,
-  Input,
-  SkeletonRows,
-  cx,
-} from "@/components/ui";
-import {
-  ApiError,
-  appointments,
-  type Appointment,
-  type AppointmentStatus,
-} from "@/lib/api";
+  ConsoleHeader,
+  ConsoleLoading,
+  FinishedState,
+  Pager,
+  PastelRow,
+  PastelTile,
+  StatusPill,
+  type PillTone,
+} from "@/components/admin/console";
+import { Segmented } from "@/components/forms";
+import { Button, EmptyState, ErrorState, SkeletonRows, cx } from "@/components/ui";
+import { ApiError, appointments, type Appointment, type AppointmentStatus } from "@/lib/api";
 import { DATE_BOUNDS } from "@/lib/dates";
 import { useTr } from "@/lib/lang";
 import { useAsync, PAGE_REFRESH_MS } from "@/lib/useAsync";
 
+type FilterKey = "upcoming" | "asking" | "confirmed" | "completed" | "cancelled" | "missed" | "all";
+
 const FILTERS: Array<{
+  key: FilterKey;
   label: [string, string];
-  icon: string;
   status?: AppointmentStatus;
   upcomingOnly?: boolean;
 }> = [
-  { label: ["Upcoming", "Aane wali"], icon: "event_upcoming", upcomingOnly: true },
-  { label: ["Awaiting confirmation", "Confirm baqi"], icon: "hourglass_top", status: "REQUESTED" },
-  { label: ["Confirmed", "Confirm shuda"], icon: "check_circle", status: "CONFIRMED" },
-  { label: ["Completed", "Mukammal"], icon: "task_alt", status: "COMPLETED" },
-  { label: ["Cancelled", "Mansookh"], icon: "cancel", status: "CANCELLED" },
-  { label: ["Did not attend", "Nahi aaye"], icon: "person_off", status: "NO_SHOW" },
-  { label: ["All", "Sab"], icon: "list" },
+  { key: "upcoming", label: ["Upcoming", "Aane wali"], upcomingOnly: true },
+  { key: "asking", label: ["Need a yes", "Haan chahiye"], status: "REQUESTED" },
+  { key: "confirmed", label: ["Confirmed", "Confirm shuda"], status: "CONFIRMED" },
+  { key: "completed", label: ["Completed", "Mukammal"], status: "COMPLETED" },
+  { key: "cancelled", label: ["Cancelled", "Mansookh"], status: "CANCELLED" },
+  { key: "missed", label: ["Did not come", "Nahi aaye"], status: "NO_SHOW" },
+  { key: "all", label: ["All", "Sab"] },
 ];
 
-/** Picking a day on the week shows everything that day, past or not. */
-const ALL_INDEX = FILTERS.length - 1;
+/** Twenty to a page: a day's list, with room for the busy ones. */
+const PAGE = 20;
+
+const STATUS: Record<AppointmentStatus, { tone: PillTone; label: [string, string] }> = {
+  REQUESTED: { tone: "warning", label: ["Needs a yes", "Haan chahiye"] },
+  CONFIRMED: { tone: "info", label: ["Confirmed", "Confirm shuda"] },
+  CHECKED_IN: { tone: "info", label: ["Checked in", "Pohanch gaye"] },
+  IN_PROGRESS: { tone: "info", label: ["With the doctor", "Doctor ke paas"] },
+  COMPLETED: { tone: "good", label: ["Completed", "Mukammal"] },
+  CANCELLED: { tone: "neutral", label: ["Cancelled", "Mansookh"] },
+  NO_SHOW: { tone: "critical", label: ["Did not come", "Nahi aaye"] },
+};
+
+/** "Fri 23 Oct", from the clinic's own date — never moved by the browser's zone. */
+function clinicDay(date: string): string {
+  return new Date(`${date}T00:00:00Z`)
+    .toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" })
+    .replace(",", "");
+}
+
+/** "14:00" as "2:00 PM". */
+function clock(time: string): string {
+  const [hours, minutes] = time.split(":").map(Number);
+  return `${hours % 12 || 12}:${String(minutes).padStart(2, "0")} ${hours < 12 ? "AM" : "PM"}`;
+}
 
 export default function AdminAppointments() {
   const tr = useTr();
-  const [active, setActive] = useState(0);
+  const [filterKey, setFilterKey] = useState<FilterKey>("upcoming");
   const [day, setDay] = useState("");
   const [view, setView] = useState<"week" | "day">("week");
+  const [offset, setOffset] = useState(0);
   const [refresh, setRefresh] = useState(0);
   const reloadAll = useCallback(() => setRefresh((n) => n + 1), []);
 
-  const filter = FILTERS[active];
+  const filter = FILTERS.find((option) => option.key === filterKey) ?? FILTERS[0];
   const list = useAsync(
     () =>
       appointments.list({
@@ -71,9 +93,10 @@ export default function AdminAppointments() {
         upcomingOnly: filter.upcomingOnly,
         from: day || undefined,
         to: day || undefined,
-        limit: 100,
+        limit: PAGE,
+        offset,
       }),
-    [active, day, refresh],
+    [filterKey, day, offset, refresh],
     { refreshMs: PAGE_REFRESH_MS },
   );
   // The header's sentence and the tiles. Counts come from one-row reads, so
@@ -112,40 +135,55 @@ export default function AdminAppointments() {
     [refresh],
     { refreshMs: PAGE_REFRESH_MS },
   );
-  const awaitingIndex = FILTERS.findIndex((option) => option.status === "REQUESTED");
-  const showList = (index: number) => {
-    setActive(index);
+  const showList = (key: FilterKey) => {
+    setFilterKey(key);
+    setOffset(0);
     document.getElementById("list")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   const stats = tally.data;
   const percent = (part: number, whole: number) => (whole > 0 ? `${Math.round((part / whole) * 1000) / 10}%` : "—");
 
+  // The calendar's own switch, carried into whichever card is showing.
+  const views = (
+    <Segmented
+      options={[
+        { value: "week" as const, label: tr("Week", "Hafta") },
+        { value: "day" as const, label: tr("Day, by doctor", "Din, doctor ke hisaab se") },
+      ]}
+      value={view}
+      onChange={setView}
+      label={tr("Calendar view", "Calendar ka view")}
+    />
+  );
+
+  const rows = list.data?.data ?? [];
+
   return (
     <AppShell role="ADMIN">
       <div id="main">
-        <ConsoleHeader mark="appointments"
-          icon="calendar_month"
+        <ConsoleHeader
+          mark="appointments"
           eyebrow={tr("Every booking in the hospital", "Hospital ki har booking")}
           title={tr("Appointments", "Appointments")}
         >
-          {tally.data ? (
+          {stats ? (
             <p>
               <b>
-                {tally.data.upcoming} {tr(tally.data.upcoming === 1 ? "visit" : "visits", "visits")}
+                {stats.upcoming} {tr(stats.upcoming === 1 ? "visit" : "visits", "visits")}
               </b>{" "}
               {tr("still to come.", "abhi baqi hain.")}{" "}
-              {tally.data.requested > 0 ? (
+              {stats.requested > 0 ? (
                 <>
                   <a
                     href="#list"
                     onClick={(event) => {
                       event.preventDefault();
-                      showList(awaitingIndex);
+                      showList("asking");
                     }}
                   >
                     {tr(
-                      `${tally.data.requested} still ${tally.data.requested === 1 ? "needs" : "need"} a yes`,
-                      `${tally.data.requested} ko abhi haan chahiye`,
+                      `${stats.requested} still ${stats.requested === 1 ? "needs" : "need"} a yes`,
+                      `${stats.requested} ko abhi haan chahiye`,
                     )}
                   </a>
                   .
@@ -184,7 +222,7 @@ export default function AdminAppointments() {
             <PastelTile
               pastel="sky"
               icon="videocam"
-              label={tr("Video consults", "Video consults")}
+              label={tr("Video visits", "Video visits")}
               value={stats.video}
               note={tr(
                 `This week · ${percent(stats.video, stats.week)} of visits`,
@@ -204,221 +242,215 @@ export default function AdminAppointments() {
           </PastelRow>
         )}
 
-        <div className="mt-6 flex flex-col gap-3">
-          <div role="group" aria-label={tr("Calendar view", "Calendar ka view")} className="inline-flex self-start rounded-full bg-sunken p-1">
-            {(
-              [
-                ["week", tr("Week", "Hafta")],
-                ["day", tr("Day, by doctor", "Din, doctor ke hisaab se")],
-              ] as const
-            ).map(([value, text]) => (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={view === value}
-                onClick={() => setView(value)}
-                className={cx(
-                  "h-9 rounded-full px-4 text-[13px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-primary",
-                  view === value ? "bg-card text-strong shadow-sm" : "text-muted hover:text-strong",
-                )}
-              >
-                {text}
-              </button>
-            ))}
-          </div>
+        <div className="mt-6">
           {view === "week" ? (
             <AppointmentWeek
+              lead={views}
               onPickDay={(date) => {
                 setDay(date);
-                showList(ALL_INDEX);
+                showList("all");
               }}
             />
           ) : (
-            <ClinicPulse navigable title={tr("The day, by doctor", "Din, doctor ke hisaab se")} />
+            <ClinicPulse navigable lead={views} title={tr("The day, by doctor", "Din, doctor ke hisaab se")} />
           )}
         </div>
 
-        <div
-          role="tablist"
-          aria-label={tr("Filter appointments", "Appointments chhantein")}
-          className="no-scrollbar -mx-4 mt-6 flex gap-1 overflow-x-auto px-4"
+        <section
+          id="list"
+          aria-label={tr("Appointments", "Appointments")}
+          className="mt-6 scroll-mt-24 overflow-hidden rounded-3xl border border-line bg-card shadow-card"
         >
-          <div className="inline-flex shrink-0 gap-1 rounded-2xl border border-line bg-sunken p-1">
-            {FILTERS.map((option, index) => {
-              const selected = index === active;
-              return (
+          <div className="flex flex-wrap items-center gap-3 px-[18px] py-4">
+            <Segmented
+              options={FILTERS.map((option) => ({
+                value: option.key,
+                label: tr(...option.label),
+                count:
+                  option.key === "upcoming" ? stats?.upcoming : option.key === "asking" ? stats?.requested : undefined,
+              }))}
+              value={filterKey}
+              onChange={(next) => {
+                setFilterKey(next);
+                setOffset(0);
+              }}
+              label={tr("Filter appointments", "Appointments chhantein")}
+            />
+            {/* The day sits with the list it narrows, not on a row of its own. */}
+            <div className="flex items-center gap-2 sm:ml-auto">
+              <label htmlFor="day" className="text-[13px] font-semibold text-muted">
+                {tr("On a day", "Kisi din")}
+              </label>
+              <input
+                id="day"
+                type="date"
+                // Without these a browser accepts a six-digit year.
+                min={DATE_BOUNDS.min}
+                max={DATE_BOUNDS.max}
+                value={day}
+                onChange={(event) => {
+                  setDay(event.target.value);
+                  setOffset(0);
+                }}
+                className="h-10 w-[170px] rounded-xl border border-line-strong bg-card px-3 text-[14px] text-strong focus-visible:outline-2 focus-visible:outline-primary"
+              />
+              {day && (
                 <button
-                  key={option.label[0]}
                   type="button"
-                  role="tab"
-                  aria-selected={selected}
-                  onClick={() => setActive(index)}
-                  className={cx(
-                    "inline-flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl px-3.5 text-sm font-semibold transition-[background-color,color,box-shadow,transform] duration-200 ease-out",
-                    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                    selected
-                      ? "bg-gradient-brand text-white shadow-sm"
-                      : "text-muted hover:bg-card hover:text-strong hover:shadow-sm",
-                  )}
+                  aria-label={tr("Clear the day", "Din hatayein")}
+                  onClick={() => {
+                    setDay("");
+                    setOffset(0);
+                  }}
+                  className="grid h-8 w-8 place-items-center rounded-full border border-line-strong bg-card text-strong hover:bg-sunken focus-visible:outline-2 focus-visible:outline-primary"
                 >
-                  <Icon name={option.icon} filled={selected} className="text-[18px]" />
-                  {tr(...option.label)}
+                  <Icon name="close" className="text-[17px]" />
                 </button>
-              );
-            })}
+              )}
+            </div>
           </div>
-        </div>
 
-        <div id="list" className="mt-6 scroll-mt-24">
-          {list.loading && (
-            <div role="status" aria-live="polite">
+          {list.loading && !list.data && (
+            <div role="status" aria-live="polite" className="px-[18px] pb-5">
               <span className="sr-only">{tr("Loading appointments…", "Appointments load ho rahi hain…")}</span>
-              <SkeletonRows rows={4} />
+              <SkeletonRows rows={4} title={false} />
             </div>
           )}
-          {list.error && <ErrorState message={list.error.message} onRetry={list.reload} />}
-
-          {list.data && (
-            <Card
-              icon={filter.icon}
-              title={tr(...filter.label)}
-              description={tr(
-                `${list.data.meta.total} appointment${list.data.meta.total === 1 ? "" : "s"}`,
-                `${list.data.meta.total} appointments`,
-              )}
-              action={
-                // The day sits with the list it narrows, not on a row of its own.
-                <div className="flex items-center gap-2">
-                  <label htmlFor="day" className="sr-only">
-                    {tr("On a specific day", "Kisi khaas din")}
-                  </label>
-                  <Input
-                    id="day"
-                    type="date"
-                    // Without these a browser accepts a six-digit year.
-                    min={DATE_BOUNDS.min}
-                    max={DATE_BOUNDS.max}
-                    value={day}
-                    onChange={(event) => setDay(event.target.value)}
-                    className="!min-h-10 w-44"
-                  />
-                  {day && (
-                    <Button variant="ghost" className="!min-h-9 px-3 text-sm" onClick={() => setDay("")}>
-                      <Icon name="close" className="text-[18px]" />
-                      {tr("Clear day", "Din hatayein")}
-                    </Button>
-                  )}
-                </div>
-              }
-            >
-              {list.data.data.length === 0 && filter.status === "REQUESTED" && !day ? (
-                <FinishedState
-                  title={tr("Every request has an answer", "Har darkhwast ka jawab ho chuka")}
-                  description={tr(
-                    "New bookings that need confirming will appear here.",
-                    "Nayi bookings jinhein confirm karna ho, yahan aayengi.",
-                  )}
-                />
-              ) : list.data.data.length === 0 ? (
-                <EmptyState
-                  icon="event_busy"
-                  title={tr("Nothing matches that filter", "Is filter par kuchh nahi")}
-                  description={tr(
-                    "Try another status, or clear the day to see every booking.",
-                    "Koi aur haalat chunein, ya din hata kar saari bookings dekhein.",
-                  )}
-                />
-              ) : (
-                <ul className="stagger divide-y divide-line">
-                  {list.data.data.map((appointment) => (
-                    <AdminRow
-                      key={appointment.id}
-                      appointment={appointment}
-                      onChanged={reloadAll}
-                    />
-                  ))}
-                </ul>
-              )}
-            </Card>
+          {list.error && (
+            <div className="px-[18px] pb-5">
+              <ErrorState message={list.error.message} onRetry={list.reload} />
+            </div>
           )}
-        </div>
+
+          {list.data && rows.length === 0 && filter.status === "REQUESTED" && !day ? (
+            <FinishedState
+              title={tr("Every request has an answer", "Har darkhwast ka jawab ho chuka")}
+              description={tr(
+                "New bookings that need confirming will appear here.",
+                "Nayi bookings jinhein confirm karna ho, yahan aayengi.",
+              )}
+            />
+          ) : list.data && rows.length === 0 ? (
+            <EmptyState
+              icon="event_busy"
+              title={tr("Nothing matches that filter", "Is filter par kuchh nahi")}
+              description={tr(
+                "Try another status, or clear the day to see every booking.",
+                "Koi aur haalat chunein, ya din hata kar saari bookings dekhein.",
+              )}
+            />
+          ) : null}
+
+          {rows.length > 0 && (
+            <>
+              <div className="overflow-x-auto">
+                <table className="console-table min-w-[56rem]">
+                  <thead>
+                    <tr>
+                      <th scope="col">{tr("When", "Kab")}</th>
+                      <th scope="col">{tr("Patient", "Mareez")}</th>
+                      <th scope="col">{tr("Doctor", "Doctor")}</th>
+                      <th scope="col">{tr("Type", "Qism")}</th>
+                      <th scope="col">{tr("Status", "Haalat")}</th>
+                      <th scope="col" className="text-right">
+                        <span className="sr-only">{tr("Actions", "Actions")}</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((appointment) => (
+                      <AdminRow key={appointment.id} appointment={appointment} onChanged={reloadAll} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <Pager offset={offset} limit={PAGE} total={list.data?.meta.total ?? rows.length} onChange={setOffset} />
+            </>
+          )}
+        </section>
       </div>
     </AppShell>
   );
 }
 
-function AdminRow({
-  appointment,
-  onChanged,
-}: {
-  appointment: Appointment;
-  onChanged: () => void;
-}) {
+function AdminRow({ appointment, onChanged }: { appointment: Appointment; onChanged: () => void }) {
   const tr = useTr();
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"confirm" | "cancel" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const run = async (action: () => Promise<unknown>) => {
-    setBusy(true);
+  const run = async (which: "confirm" | "cancel", action: () => Promise<unknown>) => {
+    setBusy(which);
     setError(null);
     try {
       await action();
       onChanged();
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : tr("Could not update the appointment.", "Appointment update nahi ho saki."));
-      setBusy(false);
+      setBusy(null);
     }
   };
 
   const canConfirm = appointment.status === "REQUESTED";
   const canCancel = ["REQUESTED", "CONFIRMED", "CHECKED_IN"].includes(appointment.status);
+  const status = STATUS[appointment.status];
+  const video = appointment.mode === "ONLINE";
 
   return (
-    <>
-      <AppointmentRow
-        appointment={appointment}
-        counterparty={appointment.patientName ?? tr("Patient", "Mareez")}
-        detail={
-          appointment.doctorName
-            ? `${appointment.doctorName}${appointment.specialization ? ` · ${appointment.specialization}` : ""}`
-            : appointment.medicalRecordNumber
-        }
-        actions={
-          <>
-            {canConfirm && (
-              <Button
-                disabled={busy}
-                loading={busy}
-                onClick={() =>
-                  void run(() => appointments.setStatus(appointment.id, "CONFIRMED"))
-                }
-              >
-                <Icon name="check" className="text-[20px]" />
-                {tr("Confirm", "Confirm")}
-              </Button>
-            )}
-            {canCancel && (
-              <Button
-                variant="ghost"
-                disabled={busy}
-                onClick={() =>
-                  void run(() =>
-                    appointments.cancel(appointment.id, "Cancelled by the hospital"),
-                  )
-                }
-              >
-                {tr("Cancel", "Cancel")}
-              </Button>
-            )}
-          </>
-        }
-      />
-      {error && (
-        <p role="alert" className="pop-in flex items-center gap-1.5 pb-3 text-sm font-medium text-critical">
-          <Icon name="error" className="text-[16px]" />
-          {error}
-        </p>
-      )}
-    </>
+    <tr>
+      <td className="whitespace-nowrap tabular-nums">
+        <b className="font-semibold">{clinicDay(appointment.localDate)}</b>
+        <span className="text-muted"> · {clock(appointment.localTime)}</span>
+      </td>
+      <td>
+        <span className="block font-semibold">{appointment.patientName ?? tr("Patient", "Mareez")}</span>
+        {appointment.medicalRecordNumber && (
+          <span className="block font-mono text-[12.5px] text-muted">{appointment.medicalRecordNumber}</span>
+        )}
+      </td>
+      <td>
+        <span className="block font-semibold">{appointment.doctorName ?? "—"}</span>
+        {appointment.specialization && <span className="block text-[12.5px] text-muted">{appointment.specialization}</span>}
+      </td>
+      <td>
+        <StatusPill icon={video ? "videocam" : "location_on"}>{video ? tr("Video", "Video") : tr("Clinic", "Clinic")}</StatusPill>
+      </td>
+      <td>
+        <StatusPill dot tone={status.tone}>
+          {tr(...status.label)}
+        </StatusPill>
+        {error && (
+          <span role="alert" className="mt-1 flex items-center gap-1 text-[12.5px] font-medium text-critical">
+            <Icon name="error" className="text-[14px]" />
+            {error}
+          </span>
+        )}
+      </td>
+      <td className="text-right whitespace-nowrap">
+        <span className={cx("inline-flex items-center gap-1", !canConfirm && !canCancel && "hidden")}>
+          {canConfirm && (
+            <Button
+              size="sm"
+              disabled={busy !== null}
+              loading={busy === "confirm"}
+              onClick={() => void run("confirm", () => appointments.setStatus(appointment.id, "CONFIRMED"))}
+            >
+              <Icon name="check" className="text-[16px]" />
+              {tr("Confirm", "Confirm")}
+            </Button>
+          )}
+          {canCancel && (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={busy !== null}
+              loading={busy === "cancel"}
+              onClick={() => void run("cancel", () => appointments.cancel(appointment.id, "Cancelled by the hospital"))}
+            >
+              {tr("Cancel", "Cancel")}
+            </Button>
+          )}
+        </span>
+      </td>
+    </tr>
   );
 }

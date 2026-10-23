@@ -17,9 +17,10 @@ import { Fragment, type ReactNode } from "react";
 
 import { Icon } from "@/components/Icon";
 import { Drawer } from "@/components/overlays";
-import { Avatar, Badge, ErrorState, cx } from "@/components/ui";
+import { StatusPill, consoleDay, consoleStamp } from "@/components/admin/console";
+import { ErrorState, cx } from "@/components/ui";
 import { appointments, doctors, invoices, type AccountRow, type Role } from "@/lib/api";
-import { useLang, useTr } from "@/lib/lang";
+import { useTr } from "@/lib/lang";
 import { useAsync } from "@/lib/useAsync";
 
 let held: AccountRow | null = null;
@@ -71,7 +72,7 @@ function isoDay(offsetDays = 0): string {
 function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
     <>
-      <dt className="text-[12.5px] text-faint">{label}</dt>
+      <dt className="pt-px text-[12.5px] text-faint">{label}</dt>
       <dd className="m-0 min-w-0 text-[14px] font-semibold break-words text-strong">{children}</dd>
     </>
   );
@@ -81,7 +82,7 @@ function Stat({ label, value, tone }: { label: string; value: ReactNode; tone?: 
   return (
     <div className={cx("flex flex-col gap-1 rounded-2xl p-3.5", tone === "warning" ? "bg-warning-soft" : "bg-sunken")}>
       <span className={cx("text-[12px] font-semibold", tone === "warning" ? "text-warning" : "text-muted")}>{label}</span>
-      <span className="font-display text-xl font-bold text-strong tabular-nums">{value}</span>
+      <span className="font-display text-[22px] font-bold text-strong tabular-nums">{value}</span>
     </div>
   );
 }
@@ -105,8 +106,8 @@ function DoctorFacts({ doctorId }: { doctorId: string }) {
   const doctor = profile.data;
 
   return (
-    <section aria-label={tr("As a doctor", "Doctor ke taur par")} className="flex flex-col gap-4">
-      <h3 className="mono-caps text-[0.7rem] text-faint">{tr("As a doctor", "Doctor ke taur par")}</h3>
+    <section aria-label={tr("As a doctor", "Doctor ke taur par")} className="flex flex-col gap-3.5">
+      <h3 className="font-mono text-[11px] tracking-[0.14em] text-faint uppercase">{tr("As a doctor", "Doctor ke taur par")}</h3>
       {stats.data && (
         <div className="grid grid-cols-3 gap-2">
           <Stat label={tr("Seen, 30 days", "30 din mein dekhe")} value={stats.data.seen} />
@@ -157,8 +158,8 @@ function PatientFacts({ patientId }: { patientId: string }) {
   );
 
   return (
-    <section aria-label={tr("As a patient", "Mareez ke taur par")} className="flex flex-col gap-4">
-      <h3 className="mono-caps text-[0.7rem] text-faint">{tr("As a patient", "Mareez ke taur par")}</h3>
+    <section aria-label={tr("As a patient", "Mareez ke taur par")} className="flex flex-col gap-3.5">
+      <h3 className="font-mono text-[11px] tracking-[0.14em] text-faint uppercase">{tr("As a patient", "Mareez ke taur par")}</h3>
       {stats.error && <ErrorState message={stats.error.message} onRetry={stats.reload} />}
       {stats.data && (
         <div className="grid grid-cols-3 gap-2">
@@ -184,9 +185,13 @@ function PatientFacts({ patientId }: { patientId: string }) {
 
 export function PersonDrawer({ person, onClose }: { person: AccountRow | null; onClose: () => void }) {
   const tr = useTr();
-  const locale = useLang() === "ur" ? "en-PK" : undefined;
-  const date = (iso: string | null) =>
-    iso ? new Date(iso).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" }) : tr("Never", "Kabhi nahi");
+  const initials = (person?.name ?? "")
+    .replace(/^Dr\.?\s+/i, "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
 
   return (
     <Drawer
@@ -194,19 +199,28 @@ export function PersonDrawer({ person, onClose }: { person: AccountRow | null; o
       onClose={onClose}
       title={person?.name ?? ""}
       description={person ? tr(...(ROLE_LABEL[person.role] ?? [person.role, person.role])) : undefined}
+      titleHidden
       width={520}
     >
       {person && (
-        <div className="flex flex-col gap-7">
+        <div className="flex flex-col gap-[26px]">
           <div className="flex items-center gap-4">
-            <Avatar name={person.name} size="lg" ring={person.status === "ACTIVE" ? "active" : "inactive"} />
+            <span
+              aria-hidden
+              className={cx(
+                "grid h-16 w-16 shrink-0 place-items-center rounded-full bg-pastel-sky font-display text-xl font-bold text-primary ring-2 ring-offset-[3px] ring-offset-card",
+                person.status === "ACTIVE" ? "ring-[#5EEAD4]" : "ring-line-strong",
+              )}
+            >
+              {initials || "?"}
+            </span>
             <div className="flex min-w-0 flex-col gap-1.5">
-              <span className="font-display text-xl font-bold text-strong">{person.name}</span>
+              <span className="font-display text-[22px] leading-tight font-bold text-strong">{person.name}</span>
               <span className="flex flex-wrap gap-1.5">
-                <Badge tone="neutral">{tr(...(ROLE_LABEL[person.role] ?? [person.role, person.role]))}</Badge>
-                <Badge tone={person.status === "ACTIVE" ? "good" : "critical"}>
+                <StatusPill>{tr(...(ROLE_LABEL[person.role] ?? [person.role, person.role]))}</StatusPill>
+                <StatusPill dot tone={person.status === "ACTIVE" ? "good" : person.status === "SUSPENDED" ? "critical" : person.status === "PENDING_VERIFICATION" ? "warning" : "neutral"}>
                   {tr(...(STATUS_LABEL[person.status] ?? [person.status, person.status]))}
-                </Badge>
+                </StatusPill>
               </span>
             </div>
           </div>
@@ -216,8 +230,8 @@ export function PersonDrawer({ person, onClose }: { person: AccountRow | null; o
               [
                 [tr("Email", "Email"), person.email],
                 [tr("Phone", "Phone"), person.phone ?? "—"],
-                [tr("Joined", "Shamil hue"), date(person.createdAt)],
-                [tr("Last sign-in", "Aakhri sign-in"), date(person.lastLoginAt)],
+                [tr("Last sign-in", "Aakhri sign-in"), person.lastLoginAt ? consoleStamp(person.lastLoginAt) : tr("Never", "Kabhi nahi")],
+                [tr("Joined", "Shamil hue"), consoleDay(person.createdAt)],
               ] as const
             ).map(([label, value]) => (
               <Fragment key={label}>

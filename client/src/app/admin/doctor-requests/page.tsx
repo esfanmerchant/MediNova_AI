@@ -18,20 +18,14 @@ import { useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
-import { ConsoleHeader, FinishedState } from "@/components/admin/console";
+import { ConsoleHeader, FinishedState, StatusPill } from "@/components/admin/console";
 import { Segmented } from "@/components/forms";
-import {
-  Avatar,
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  ErrorState,
-  SkeletonTable,
-} from "@/components/ui";
+import { Button, EmptyState, ErrorState, SkeletonTable, cx } from "@/components/ui";
 import {
   ApiError,
   doctorRequests,
+  type ApplicationDocument,
+  type ApplicationDocumentKind,
   type ApplicationStatus,
   type DoctorApplication,
 } from "@/lib/api";
@@ -39,10 +33,7 @@ import { useTr } from "@/lib/lang";
 import { QUEUE_REFRESH_MS } from "@/lib/useAsync";
 
 import { ReviewDrawer } from "@/components/doctorApplication/ReviewDrawer";
-import {
-  RelativeTime,
-  StatusChip,
-} from "@/components/doctorApplication/shared";
+import { useNow } from "@/components/doctorApplication/shared";
 
 type Tab = "pending" | "approved" | "rejected";
 
@@ -51,6 +42,109 @@ const TAB_STATUS: Record<Tab, ApplicationStatus> = {
   approved: "APPROVED",
   rejected: "REJECTED",
 };
+
+const KINDS: Array<{ kind: ApplicationDocumentKind; icon: string; label: [string, string] }> = [
+  { kind: "REGISTRATION_CERTIFICATE", icon: "description", label: ["Registration certificate", "Registration certificate"] },
+  { kind: "DEGREE", icon: "school", label: ["Degree", "Degree"] },
+  { kind: "NATIONAL_ID", icon: "badge", label: ["National ID", "Shanakhti card"] },
+  { kind: "PHOTO", icon: "account_box", label: ["Photo", "Tasveer"] },
+];
+
+const DAY_MS = 86_400_000;
+
+function initialsOf(name: string): string {
+  return (
+    name
+      .replace(/^Dr\.?\s+/i, "")
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? "")
+      .join("") || "?"
+  );
+}
+
+/**
+ * The four papers an application needs, one square each: green once an
+ * administrator has checked it, grey while it waits, dashed while it is not
+ * there at all — so a missing degree shows before the drawer is opened.
+ */
+function Documents({ documents }: { documents: ApplicationDocument[] }) {
+  const tr = useTr();
+  const states = KINDS.map(({ kind }) => {
+    const mine = documents.filter((document) => document.kind === kind);
+    return mine.length === 0 ? "missing" : mine.some((document) => document.verified) ? "checked" : "uploaded";
+  });
+  const missing = states.filter((state) => state === "missing").length;
+  const toCheck = states.filter((state) => state === "uploaded").length;
+  const note = missing
+    ? tr(`${missing} missing`, `${missing} ghayab`)
+    : toCheck
+      ? tr(`${toCheck} to check`, `${toCheck} check karne hain`)
+      : tr("All checked", "Sab check ho gaye");
+  return (
+    <span className="flex items-center gap-2.5">
+      <span className="flex gap-1">
+        {KINDS.map(({ kind, icon, label }, index) => {
+          const state = states[index];
+          return (
+            <span
+              key={kind}
+              title={`${tr(...label)} · ${
+                state === "checked"
+                  ? tr("checked", "check ho gaya")
+                  : state === "uploaded"
+                    ? tr("not checked yet", "abhi check nahi hua")
+                    : tr("missing", "ghayab")
+              }`}
+              className={cx(
+                "grid h-[26px] w-[26px] place-items-center rounded-lg",
+                state === "checked" && "bg-stable-soft text-stable",
+                state === "uploaded" && "bg-sunken text-primary",
+                state === "missing" && "border-[1.5px] border-dashed border-line-strong text-faint",
+              )}
+            >
+              <Icon name={icon} className="text-[15px]" />
+            </span>
+          );
+        })}
+      </span>
+      <span className="text-[12.5px] whitespace-nowrap text-muted">{note}</span>
+    </span>
+  );
+}
+
+/** How long it has waited — amber from the second day — or when it was decided. */
+function Age({ application }: { application: DoctorApplication }) {
+  const tr = useTr();
+  const now = useNow(true, 60_000);
+  const day = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  if (application.status === "APPROVED" || application.status === "REJECTED") {
+    const approved = application.status === "APPROVED";
+    return (
+      <StatusPill tone={approved ? "good" : "critical"}>
+        {application.reviewedAt
+          ? approved
+            ? tr(`Approved ${day(application.reviewedAt)}`, `${day(application.reviewedAt)} ko manzoor`)
+            : tr(`Rejected ${day(application.reviewedAt)}`, `${day(application.reviewedAt)} ko na-manzoor`)
+          : approved
+            ? tr("Approved", "Manzoor")
+            : tr("Rejected", "Na-manzoor")}
+      </StatusPill>
+    );
+  }
+  if (!application.submittedAt) return <span className="text-faint">—</span>;
+  const days = Math.floor((now - Date.parse(application.submittedAt)) / DAY_MS);
+  return (
+    <span title={new Date(application.submittedAt).toLocaleString("en-GB")}>
+      <StatusPill tone={days >= 2 ? "warning" : "neutral"}>
+        {days < 1
+          ? tr("Sent today", "Aaj bheji")
+          : tr(`Waiting ${days} ${days === 1 ? "day" : "days"}`, `${days} din se intezar`)}
+      </StatusPill>
+    </span>
+  );
+}
 
 export default function DoctorRequestsPage() {
   const tr = useTr();
@@ -174,17 +268,10 @@ export default function DoctorRequestsPage() {
     );
   }, []);
 
-  const options: { value: Tab; label: string; icon: string }[] = [
-    {
-      value: "pending",
-      label:
-        pending !== null && pending > 0
-          ? `${tr("Pending", "Zer-e-ghaur")} (${pending})`
-          : tr("Pending", "Zer-e-ghaur"),
-      icon: "hourglass_top",
-    },
-    { value: "approved", label: tr("Approved", "Manzoor"), icon: "check_circle" },
-    { value: "rejected", label: tr("Rejected", "Na-manzoor"), icon: "cancel" },
+  const options: { value: Tab; label: string; count?: number }[] = [
+    { value: "pending", label: tr("Pending", "Zer-e-ghaur"), count: pending ?? undefined },
+    { value: "approved", label: tr("Approved", "Manzoor") },
+    { value: "rejected", label: tr("Rejected", "Na-manzoor") },
   ];
 
   const empty: Record<Tab, { title: string; description: string; icon: string }> = {
@@ -217,8 +304,8 @@ export default function DoctorRequestsPage() {
   return (
     <AppShell role="ADMIN">
       <div id="main" className="space-y-6">
-        <ConsoleHeader mark="requests"
-          icon="how_to_reg"
+        <ConsoleHeader
+          mark="requests"
           eyebrow={tr("Doctors who want to join", "Doctors jo shamil hona chahte hain")}
           title={tr("Doctor requests", "Doctors ki darkhwastein")}
         >
@@ -249,60 +336,50 @@ export default function DoctorRequestsPage() {
           </p>
         </ConsoleHeader>
 
-        <Segmented
-          options={options}
-          value={tab}
-          onChange={setTab}
-          label={tr("Application status", "Darkhwast ki soorat-e-haal")}
-        />
+        <section
+          id="applications"
+          aria-label={tr("Applications", "Darkhwastein")}
+          className="rise-in scroll-mt-24 overflow-hidden rounded-3xl border border-line bg-card shadow-card"
+        >
+          <div className="flex flex-wrap items-center gap-3 px-[18px] py-4">
+            <Segmented
+              options={options}
+              value={tab}
+              onChange={setTab}
+              label={tr("Application status", "Darkhwast ki soorat-e-haal")}
+            />
+            <span className="text-[13px] text-muted sm:ml-auto">
+              {tr("Oldest first · updates on its own", "Sab se purani pehle · khud update hoti hai")}
+            </span>
+          </div>
 
-        <div id="applications" className="scroll-mt-24">
-          <Card
-            icon="how_to_reg"
-            title={tr("Applications", "Darkhwastein")}
-            description={
-              rows
-                ? tr(
-                    `${rows.length} application${rows.length === 1 ? "" : "s"}`,
-                    `${rows.length} darkhwast`,
-                  )
-                : undefined
-            }
-            flush
-          >
-            {loading && <SkeletonTable rows={5} columns={5} />}
+          {loading && <SkeletonTable rows={4} columns={5} />}
 
-            {error && (
-              <div className="p-6">
-                <ErrorState
-                  message={error.message}
-                  onRetry={() => setNonce((value) => value + 1)}
-                />
-              </div>
-            )}
+          {error && (
+            <div className="px-[18px] pb-5">
+              <ErrorState message={error.message} onRetry={() => setNonce((value) => value + 1)} />
+            </div>
+          )}
 
-            {rows && rows.length === 0 && !error && tab === "pending" && (
-              <FinishedState title={empty[tab].title} description={empty[tab].description} />
-            )}
-            {rows && rows.length === 0 && !error && tab !== "pending" && (
-              <EmptyState
-                icon={empty[tab].icon}
-                title={empty[tab].title}
-                description={empty[tab].description}
-              />
-            )}
+          {rows && rows.length === 0 && !error && tab === "pending" && (
+            <FinishedState title={empty[tab].title} description={empty[tab].description} />
+          )}
+          {rows && rows.length === 0 && !error && tab !== "pending" && (
+            <EmptyState icon={empty[tab].icon} title={empty[tab].title} description={empty[tab].description} />
+          )}
 
-            {rows && rows.length > 0 && (
-              <div className="overflow-x-auto p-2">
-                <table className="table-modern min-w-[52rem]">
+          {rows && rows.length > 0 && (
+            <>
+              <div className="overflow-x-auto">
+                <table className="console-table min-w-[56rem]">
                   <thead>
                     <tr>
                       <th scope="col">{tr("Applicant", "Applicant")}</th>
-                      <th scope="col">{tr("Specialization", "Specialization")}</th>
-                      <th scope="col">{tr("Registration", "Registration")}</th>
-                      <th scope="col">{tr("Submitted", "Bheji gayi")}</th>
-                      <th scope="col">{tr("Status", "Soorat-e-haal")}</th>
-                      <th scope="col">
+                      <th scope="col">{tr("Speciality", "Speciality")}</th>
+                      <th scope="col">{tr("PMDC number", "PMDC number")}</th>
+                      <th scope="col">{tr("Documents", "Documents")}</th>
+                      <th scope="col">{tab === "pending" ? tr("Waiting", "Intezar") : tr("Decided", "Faisla")}</th>
+                      <th scope="col" className="text-right">
                         <span className="sr-only">{tr("Review", "Jaiza")}</span>
                       </th>
                     </tr>
@@ -316,57 +393,53 @@ export default function DoctorRequestsPage() {
                             key={row.id}
                             layout={!reduced}
                             initial={false}
-                            exit={
-                              reduced
-                                ? { opacity: 0 }
-                                : { opacity: 0, x: 48, transition: { duration: 0.28 } }
-                            }
+                            exit={reduced ? { opacity: 0 } : { opacity: 0, x: 48, transition: { duration: 0.28 } }}
                           >
                             <td>
-                              <div className="flex items-center gap-3">
-                                <Avatar name={name || "?"} />
-                                <div className="min-w-0">
-                                  <p className="truncate font-semibold text-strong">
+                              <div className="flex min-w-0 items-center gap-[11px]">
+                                <span
+                                  aria-hidden
+                                  className="grid h-[34px] w-[34px] shrink-0 place-items-center rounded-full bg-pastel-lilac text-[12px] font-bold text-pastel-ink"
+                                >
+                                  {initialsOf(name)}
+                                </span>
+                                <span className="min-w-0">
+                                  <span className="block truncate font-semibold text-strong">
                                     {name || tr("Unnamed applicant", "Naam nahi diya")}
-                                  </p>
+                                  </span>
                                   {row.applicant?.email && (
-                                    <p className="truncate font-mono text-[11px] text-faint">
-                                      {row.applicant.email}
-                                    </p>
+                                    <span className="block truncate text-[12.5px] text-muted">{row.applicant.email}</span>
                                   )}
-                                </div>
+                                </span>
                               </div>
                             </td>
                             <td>
                               {row.specialization ? (
-                                <Badge tone="info">{row.specialization}</Badge>
+                                <StatusPill tone="info">{row.specialization}</StatusPill>
                               ) : (
                                 <span className="text-faint">—</span>
                               )}
                             </td>
-                            <td className="whitespace-nowrap font-mono text-xs text-muted">
+                            <td className="font-mono text-[12.5px] whitespace-nowrap text-muted">
                               {row.registrationNumber || "—"}
                             </td>
-                            <td className="whitespace-nowrap text-muted">
-                              {row.submittedAt ? (
-                                <RelativeTime iso={row.submittedAt} />
-                              ) : (
-                                <span className="text-faint">—</span>
-                              )}
+                            <td>
+                              <Documents documents={row.documents} />
                             </td>
                             <td>
-                              <StatusChip status={row.status} />
+                              <Age application={row} />
                             </td>
                             <td className="text-right">
                               <Button
-                                variant="secondary"
+                                size="sm"
+                                variant={tab === "pending" ? "primary" : "secondary"}
                                 onClick={() => {
                                   setSelected(row);
                                   setDrawerOpen(true);
                                 }}
                               >
-                                <Icon name="visibility" className="text-[18px]" />
-                                {tr("Review", "Jaiza lein")}
+                                <Icon name="visibility" className="text-[16px]" />
+                                {tab === "pending" ? tr("Review", "Jaiza lein") : tr("Open", "Kholein")}
                               </Button>
                             </td>
                           </motion.tr>
@@ -376,9 +449,25 @@ export default function DoctorRequestsPage() {
                   </tbody>
                 </table>
               </div>
-            )}
-          </Card>
-        </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line px-[18px] py-3 text-[12.5px] text-muted">
+                <span className="inline-flex items-center gap-[7px]">
+                  <span aria-hidden className="grid h-[18px] w-[18px] place-items-center rounded-md bg-stable-soft text-stable">
+                    <Icon name="check" className="text-[12px]" />
+                  </span>
+                  {tr("Checked by an admin", "Admin ne check kiya")}
+                </span>
+                <span className="inline-flex items-center gap-[7px]">
+                  <span aria-hidden className="h-[18px] w-[18px] rounded-md bg-sunken" />
+                  {tr("Uploaded, not checked", "Upload hua, check nahi")}
+                </span>
+                <span className="inline-flex items-center gap-[7px]">
+                  <span aria-hidden className="h-[18px] w-[18px] rounded-md border-[1.5px] border-dashed border-line-strong" />
+                  {tr("Missing", "Ghayab")}
+                </span>
+              </div>
+            </>
+          )}
+        </section>
       </div>
 
       {/* Keyed by applicant: a different row mounts a fresh panel, so last

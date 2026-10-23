@@ -371,11 +371,15 @@ export function Drawer({
   footer,
   side = "right",
   width = 560,
+  titleHidden = false,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   description?: string;
+  /** For a panel whose body opens with the name set large: the title still
+      names the dialog, but only the description shows in the header. */
+  titleHidden?: boolean;
   children: ReactNode;
   /** Sticky, so the commit stays reachable in a long panel. */
   footer?: ReactNode;
@@ -389,10 +393,12 @@ export function Drawer({
     <AnimatedDrawer open={open} onClose={onClose} labelledBy={labelId} side={side} width={width}>
       <header className="flex items-start gap-3 border-b border-line px-5 py-4">
         <div className="min-w-0 flex-1">
-          <h2 id={labelId} className="font-display text-lg font-bold text-strong">
+          <h2 id={labelId} className={titleHidden ? "sr-only" : "font-display text-lg font-bold text-strong"}>
             {title}
           </h2>
-          {description && <p className="mt-0.5 text-sm text-muted">{description}</p>}
+          {description && (
+            <p className={titleHidden ? "pt-1.5 text-[13px] text-muted" : "mt-0.5 text-sm text-muted"}>{description}</p>
+          )}
         </div>
         <button
           type="button"

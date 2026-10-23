@@ -15,7 +15,7 @@
  */
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { Icon } from "@/components/Icon";
 import { CHIP, KIND, localToday, shift } from "@/components/admin/AppointmentWeek";
@@ -48,12 +48,15 @@ export function ClinicPulse({
   date: initialDate,
   navigable = false,
   title,
+  lead,
 }: {
   /** "YYYY-MM-DD", clinic-local. Today when omitted. */
   date?: string;
   /** Offers previous and next day — the Appointments page's Day view. */
   navigable?: boolean;
   title?: string;
+  /** Set first in the card's header — the Appointments page's view switch. */
+  lead?: ReactNode;
 }) {
   const tr = useTr();
   const today = localToday();
@@ -111,6 +114,7 @@ export function ClinicPulse({
       }
       action={
         <div className="flex flex-wrap items-center gap-2">
+          {lead}
           {navigable && (
             <div className="flex items-center gap-1">
               <button
@@ -171,7 +175,7 @@ export function ClinicPulse({
               ["done", tr("Done", "Mukammal")],
               ["booked", tr("Confirmed or with the doctor", "Confirm ya doctor ke paas")],
               ["ask", tr("Needs a yes", "Haan chahiye")],
-              ["off", tr("Cancelled or no-show", "Cancel ya nahi aaye")],
+              ["off", tr("Cancelled or did not come", "Cancel ya nahi aaye")],
             ] as const
           ).map(([kind, text]) => (
             <span key={kind} className="inline-flex items-center gap-1.5">

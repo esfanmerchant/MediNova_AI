@@ -528,7 +528,8 @@ export function Button({
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "primary" | "secondary" | "danger" | "ghost";
-  size?: "md" | "lg";
+  /** `sm` is the console's table-row size; elsewhere it stays a full touch target. */
+  size?: "sm" | "md" | "lg";
   /** Shows the pulse-line in place of the label and disables the button. */
   loading?: boolean;
 }) {
@@ -554,8 +555,8 @@ export function Button({
   // Minimum 44px height: the accessible touch-target size. The console's
   // pills are 40, the size its tables and headers are drawn around.
   const sizes = inConsole
-    ? ({ md: "min-h-10 px-[18px] text-[13.5px]", lg: "min-h-12 px-6 text-[15px]" } as const)
-    : ({ md: "min-h-11 px-4 text-base", lg: "min-h-14 px-6 text-lg" } as const);
+    ? ({ sm: "min-h-8 gap-1.5 px-[13px] text-[12.5px]", md: "min-h-10 px-[18px] text-[13.5px]", lg: "min-h-12 px-6 text-[15px]" } as const)
+    : ({ sm: "min-h-11 px-3 text-sm", md: "min-h-11 px-4 text-base", lg: "min-h-14 px-6 text-lg" } as const);
 
   return (
     <button
