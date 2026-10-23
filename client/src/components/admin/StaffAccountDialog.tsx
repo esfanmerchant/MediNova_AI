@@ -150,6 +150,7 @@ export function StaffAccountDialog({
       ) : (
         <form id="staff-account" onSubmit={(event) => void submit(event)} className="flex flex-col gap-4">
           <Segmented<StaffRole>
+            fill
             label={tr("Role", "Kirdar")}
             value={role}
             onChange={setRole}
@@ -177,7 +178,14 @@ export function StaffAccountDialog({
             />
           </Field>
           <Field label={tr("Phone (optional)", "Phone (ikhtiyari)")} htmlFor="staff-phone" error={error?.fieldError("phone")}>
-            <Input id="staff-phone" type="tel" value={phone} maxLength={20} onChange={(event) => setPhone(event.target.value)} />
+            <Input
+              id="staff-phone"
+              type="tel"
+              value={phone}
+              maxLength={20}
+              placeholder="03XX XXX XXXX"
+              onChange={(event) => setPhone(event.target.value)}
+            />
           </Field>
           {role === "ADMIN" && (
             <p className="flex items-start gap-2 rounded-xl bg-sunken px-3.5 py-2.5 text-[13px] text-strong">

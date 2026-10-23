@@ -14,11 +14,12 @@
  */
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useContext, useEffect, useId, useState } from "react";
 
 import { Icon } from "@/components/Icon";
+import { consoleMoney, dayMonth, groupPhone } from "@/components/admin/console";
 import { Dialog, Drawer, useToast } from "@/components/overlays";
-import { Avatar, Button, Checkbox, Loading, Textarea, cx } from "@/components/ui";
+import { Avatar, Button, Checkbox, ConsoleSurface, Loading, Textarea, cx } from "@/components/ui";
 import {
   ApiError,
   doctorRequests,
@@ -61,6 +62,7 @@ function Section({
   const reduced = useReducedMotion();
   const [open, setOpen] = useState(defaultOpen);
   const bodyId = useId();
+  const inConsole = useContext(ConsoleSurface);
 
   return (
     <section className="overflow-hidden rounded-2xl border border-line bg-card">
@@ -70,13 +72,21 @@ function Section({
           aria-expanded={open}
           aria-controls={bodyId}
           onClick={() => setOpen((current) => !current)}
-          className="flex w-full items-center gap-2.5 px-4 py-3.5 text-left transition-colors hover:bg-sunken/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
+          className={cx(
+            "flex w-full items-center gap-2.5 text-left transition-colors hover:bg-sunken/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary",
+            inConsole ? "px-4 py-3" : "px-4 py-3.5",
+          )}
         >
-          <Icon name={icon} filled className="shrink-0 text-[20px] text-primary" />
-          <span className="min-w-0 flex-1 font-display text-[15px] font-bold text-strong">
+          <Icon name={icon} filled={!inConsole} className={cx("shrink-0 text-primary", inConsole ? "text-[18px]" : "text-[20px]")} />
+          <span className={cx("min-w-0 flex-1 text-strong", inConsole ? "text-[14.5px] leading-5 font-semibold" : "font-display text-[15px] font-bold")}>
             {title}
           </span>
-          {badge && <span className="font-mono text-[11px] text-muted">{badge}</span>}
+          {badge &&
+            (inConsole ? (
+              <span className="rounded-full bg-sunken px-[7px] py-px font-mono text-[11px] font-semibold text-muted">{badge}</span>
+            ) : (
+              <span className="font-mono text-[11px] text-muted">{badge}</span>
+            ))}
           <Icon
             name="expand_more"
             className={cx(
@@ -97,11 +107,23 @@ function Section({
             transition={{ duration: reduced ? 0 : 0.26, ease: [0.16, 1, 0.3, 1] }}
             className="overflow-hidden"
           >
-            <div className="border-t border-line px-4 py-4">{children}</div>
+            <div className={cx("border-t border-line", inConsole ? "px-4 pt-3.5 pb-4" : "px-4 py-4")}>{children}</div>
           </motion.div>
         )}
       </AnimatePresence>
     </section>
+  );
+}
+
+function initialsFor(name: string): string {
+  return (
+    name
+      .replace(/^Dr\.?\s+/i, "")
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? "")
+      .join("") || "?"
   );
 }
 
@@ -119,6 +141,7 @@ export function ReviewDrawer({
 }) {
   const tr = useTr();
   const toast = useToast();
+  const inConsole = useContext(ConsoleSurface);
   const [fetched, setFetched] = useState<{
     id: string;
     detail: DoctorApplication | null;
@@ -297,13 +320,16 @@ export function ReviewDrawer({
                   setReasonError(null);
                   setConfirming("reject");
                 }}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-critical/50 px-4 text-base font-semibold text-critical transition-[background-color,transform] hover:bg-critical-soft active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-critical"
+                className={cx(
+                  "inline-flex items-center justify-center gap-2 border font-semibold text-critical transition-[background-color,transform] hover:bg-critical-soft active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-critical",
+                  inConsole ? "min-h-10 rounded-full border-line-strong bg-card px-[18px] text-[13.5px]" : "min-h-11 rounded-xl border-critical/50 px-4 text-base",
+                )}
               >
-                <Icon name="cancel" className="text-[20px]" />
+                <Icon name={inConsole ? "close" : "cancel"} className={inConsole ? "text-[16px]" : "text-[20px]"} />
                 {tr("Reject", "Na-manzoor")}
               </button>
               <Button className="ml-auto" onClick={() => setConfirming("approve")}>
-                <Icon name="check_circle" className="text-[20px]" />
+                <Icon name={inConsole ? "check" : "check_circle"} className={inConsole ? "text-[16px]" : "text-[20px]"} />
                 {tr("Approve", "Manzoor karein")}
               </Button>
             </div>
@@ -315,17 +341,34 @@ export function ReviewDrawer({
         ) : (
           <>
             {/* Who is being reviewed, pinned while the panel scrolls. */}
-            <div className="sticky -top-5 z-10 -mx-5 -mt-5 mb-5 flex items-center gap-3 border-b border-line bg-card/95 px-5 py-4 backdrop-blur">
-              <Avatar name={name || "?"} size="lg" />
+            <div
+              className={cx(
+                "sticky z-10 flex items-center bg-card/95 backdrop-blur",
+                inConsole
+                  ? "-top-[22px] -mx-[22px] -mt-[22px] mb-2.5 gap-3.5 px-[22px] pt-6 pb-3"
+                  : "-top-5 -mx-5 -mt-5 mb-5 gap-3 border-b border-line px-5 py-4",
+              )}
+            >
+              {inConsole ? (
+                <span
+                  aria-hidden
+                  className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-pastel-sky font-display text-[18px] font-bold text-primary"
+                >
+                  {initialsFor(name)}
+                </span>
+              ) : (
+                <Avatar name={name || "?"} size="lg" />
+              )}
               <div className="min-w-0 flex-1">
-                <p className="truncate font-display text-lg font-bold text-strong">
+                <p className={cx("truncate font-display font-bold text-strong", inConsole ? "text-[20px]" : "text-lg")}>
                   {name || tr("Unnamed applicant", "Naam nahi diya")}
                 </p>
-                <p className="truncate text-sm text-muted">
+                <p className={cx("truncate text-muted", inConsole ? "text-[13.5px]" : "text-sm")}>
                   {current.specialization || tr("No specialization given", "Specialization nahi di")}
+                  {inConsole && current.submittedAt && ` · ${tr("applied", "darkhwast")} ${dayMonth(new Date(current.submittedAt))}`}
                 </p>
                 {current.applicant?.email && (
-                  <p className="truncate font-mono text-[11px] text-faint">
+                  <p className={cx("truncate font-mono text-faint", inConsole ? "text-[12.5px] text-muted" : "text-[11px]")}>
                     {current.applicant.email}
                     {current.applicant.emailVerified === false && (
                       <span className="ml-1 text-warning">
@@ -364,11 +407,11 @@ export function ReviewDrawer({
               </div>
             )}
 
-            <div className="space-y-3">
-              <Section title={tr("Personal details", "Zaati maloomat")} icon="badge">
-                <dl className="grid gap-4 sm:grid-cols-2">
+            <div className={inConsole ? "space-y-3.5" : "space-y-3"}>
+              <Section title={tr("Personal details", "Zaati maloomat")} icon={inConsole ? "group" : "badge"}>
+                <dl className={cx("grid sm:grid-cols-2", inConsole ? "gap-x-[18px] gap-y-3" : "gap-4")}>
                   <SummaryField label={tr("Full name", "Poora naam")} value={current.fullName} />
-                  <SummaryField label={tr("Phone", "Phone")} value={current.phone} mono />
+                  <SummaryField label={tr("Phone", "Phone")} value={current.phone ? groupPhone(current.phone) : current.phone} />
                   <SummaryField
                     label={tr("National ID", "Shanakhti card")}
                     value={current.nationalId}
@@ -380,9 +423,9 @@ export function ReviewDrawer({
 
               <Section
                 title={tr("Professional details", "Professional details")}
-                icon="medical_information"
+                icon={inConsole ? "description" : "medical_information"}
               >
-                <dl className="grid gap-4 sm:grid-cols-2">
+                <dl className={cx("grid sm:grid-cols-2", inConsole ? "gap-x-[18px] gap-y-3" : "gap-4")}>
                   <SummaryField
                     label={tr("Registration number", "Registration number")}
                     value={current.registrationNumber}
@@ -409,16 +452,15 @@ export function ReviewDrawer({
                     value={
                       current.consultationFee === null || current.consultationFee === undefined
                         ? ""
-                        : String(current.consultationFee)
+                        : consoleMoney(String(current.consultationFee))
                     }
-                    mono
                   />
                 </dl>
               </Section>
 
               <Section
                 title={tr("Qualifications", "Qualifications")}
-                icon="school"
+                icon={inConsole ? "star" : "school"}
                 badge={String(current.qualifications?.length ?? 0)}
               >
                 {(current.qualifications ?? []).length === 0 ? (
@@ -442,7 +484,7 @@ export function ReviewDrawer({
 
               <Section
                 title={tr("Documents", "Documents")}
-                icon="folder_open"
+                icon={inConsole ? "description" : "folder_open"}
                 badge={`${verifiedCount}/${documents.length}`}
               >
                 {documents.length === 0 ? (
@@ -526,7 +568,7 @@ export function ReviewDrawer({
               </Section>
 
               <Section title={tr("Review", "Jaiza")} icon="fact_check">
-                <dl className="mb-4 grid gap-4 sm:grid-cols-2">
+                <dl className={cx("mb-4 grid sm:grid-cols-2", inConsole ? "gap-x-[18px] gap-y-3" : "gap-4")}>
                   <SummaryField
                     label={tr("Submitted", "Bheji gayi")}
                     value={current.submittedAt ? formatDateTime(current.submittedAt) : ""}

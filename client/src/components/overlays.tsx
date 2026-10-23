@@ -319,6 +319,7 @@ export function Dialog({
 }) {
   const tr = useTr();
   const labelId = useId();
+  const inConsole = useContext(ConsoleSurface);
   const widths = { sm: "max-w-sm", md: "max-w-lg", lg: "max-w-2xl" } as const;
 
   return (
@@ -327,39 +328,56 @@ export function Dialog({
       onClose={onClose}
       labelledBy={labelId}
       className={cx(
-        "max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-line bg-card shadow-float",
+        "max-h-[calc(100dvh-2rem)] overflow-y-auto border border-line bg-card",
+        inConsole ? "rounded-3xl shadow-[0_40px_90px_-30px_rgba(5,13,31,0.45)]" : "rounded-2xl shadow-float",
         widths[size],
       )}
     >
-      <header className="flex items-start gap-3 border-b border-line px-6 py-5">
-        {icon && (
-          <span
-            aria-hidden
-            className="bg-gradient-brand grid h-11 w-11 shrink-0 place-items-center rounded-xl text-white shadow-sm"
-          >
-            <Icon name={icon} filled className="text-[22px]" />
-          </span>
-        )}
+      <header className={cx("flex items-start gap-3 border-b border-line", inConsole ? "px-[22px] py-[18px]" : "px-6 py-5")}>
+        {icon &&
+          (inConsole ? (
+            // The console's icon tile: the sunken square every card heads with.
+            <span aria-hidden className="grid h-[38px] w-[38px] shrink-0 place-items-center rounded-[13px] bg-sunken text-primary">
+              <Icon name={icon} className="text-[19px]" />
+            </span>
+          ) : (
+            <span
+              aria-hidden
+              className="bg-gradient-brand grid h-11 w-11 shrink-0 place-items-center rounded-xl text-white shadow-sm"
+            >
+              <Icon name={icon} filled className="text-[22px]" />
+            </span>
+          ))}
         <div className="min-w-0 flex-1">
-          <h2 id={labelId} className="font-display text-lg font-bold text-strong">
+          <h2 id={labelId} className={cx("font-display font-bold text-strong", inConsole ? "text-[18px] leading-tight" : "text-lg")}>
             {title}
           </h2>
-          {description && <p className="mt-1 text-sm text-muted">{description}</p>}
+          {description && <p className={inConsole ? "mt-[3px] text-[13px] leading-[1.5] text-muted" : "mt-1 text-sm text-muted"}>{description}</p>}
         </div>
         <button
           type="button"
           aria-label={tr("Close", "Band karein")}
           onClick={onClose}
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted transition-[background-color,color,transform] hover:rotate-90 hover:scale-110 hover:bg-sunken hover:text-strong focus-visible:outline-2 focus-visible:outline-primary"
+          className={cx(
+            "grid shrink-0 place-items-center rounded-full focus-visible:outline-2 focus-visible:outline-primary",
+            inConsole
+              ? "h-8 w-8 border border-line-strong bg-card text-strong transition-colors hover:bg-sunken"
+              : "h-9 w-9 text-muted transition-[background-color,color,transform] hover:rotate-90 hover:scale-110 hover:bg-sunken hover:text-strong",
+          )}
         >
-          <Icon name="close" className="text-[20px]" />
+          <Icon name="close" className={inConsole ? "text-[16px]" : "text-[20px]"} />
         </button>
       </header>
 
-      <div className="px-6 py-5">{children}</div>
+      <div className={inConsole ? "p-[22px]" : "px-6 py-5"}>{children}</div>
 
       {footer && (
-        <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-line px-6 py-4">
+        <footer
+          className={cx(
+            "flex flex-wrap items-center justify-end gap-2 border-t border-line",
+            inConsole ? "px-[22px] py-3.5" : "px-6 py-4",
+          )}
+        >
           {footer}
         </footer>
       )}
@@ -381,6 +399,7 @@ export function Drawer({
   side = "right",
   width = 560,
   titleHidden = false,
+  monoTitle = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -389,6 +408,8 @@ export function Drawer({
   /** For a panel whose body opens with the name set large: the title still
       names the dialog, but only the description shows in the header. */
   titleHidden?: boolean;
+  /** For a title that is a code — an invoice number. */
+  monoTitle?: boolean;
   children: ReactNode;
   /** Sticky, so the commit stays reachable in a long panel. */
   footer?: ReactNode;
@@ -408,11 +429,22 @@ export function Drawer({
         )}
       >
         <div className="min-w-0 flex-1">
-          <h2 id={labelId} className={titleHidden ? "sr-only" : "font-display text-lg leading-tight font-bold text-strong"}>
+          <h2
+            id={labelId}
+            className={
+              titleHidden
+                ? "sr-only"
+                : monoTitle
+                  ? "!font-mono text-[17px] leading-tight font-semibold tracking-normal text-strong"
+                  : cx("font-display leading-tight font-bold text-strong", inConsole ? "text-[18px]" : "text-lg")
+            }
+          >
             {title}
           </h2>
           {description && (
-            <p className={titleHidden ? "text-[13px] text-muted" : "mt-0.5 text-sm text-muted"}>{description}</p>
+            <p className={titleHidden || inConsole ? cx("text-[13px] text-muted", !titleHidden && "mt-0.5") : "mt-0.5 text-sm text-muted"}>
+              {description}
+            </p>
           )}
         </div>
         <button
@@ -433,7 +465,12 @@ export function Drawer({
       <div className={cx("min-h-0 flex-1 overflow-y-auto", inConsole ? "p-[22px]" : "px-5 py-5")}>{children}</div>
 
       {footer && (
-        <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-line bg-card px-5 py-4">
+        <footer
+          className={cx(
+            "flex flex-wrap items-center justify-end gap-2 border-t border-line bg-card",
+            inConsole ? "px-[22px] py-3.5" : "px-5 py-4",
+          )}
+        >
           {footer}
         </footer>
       )}

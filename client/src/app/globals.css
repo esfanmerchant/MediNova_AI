@@ -2164,6 +2164,45 @@ video-player-container.consult-stage video-player[data-role="self"] {
   font-size: 14px;
   line-height: normal;
 }
+/* An invoice's lines in the console: 13.5px rows and sums under mono heads. */
+.console-tokens .invoice-lines tbody td,
+.console-tokens .invoice-lines tfoot td {
+  font-size: 13.5px;
+}
+.console-tokens .invoice-lines tfoot tr:last-of-type td {
+  padding-bottom: 14px;
+}
+
+/* An invoice's lines in the console: mono heads on the soft ground. */
+.console-tokens .invoice-lines thead th {
+  background: var(--console-soft);
+  font-family: var(--font-mono-face), ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* A key, as the design writes one: mono, on the soft ground, outlined. */
+.console-kbd {
+  font-family: var(--font-mono-face), ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--line-strong);
+  background: var(--console-soft, var(--surface-sunken));
+  color: var(--text-muted);
+}
+
+/* The banner's 3D hospital, fading in from the left into the banner's blue. */
+.banner-art {
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 24%);
+  mask-image: linear-gradient(90deg, transparent 0%, #000 24%);
+}
+
 .console-scope {
   background:
     radial-gradient(900px 500px at 92% -8%, rgb(26 143 199 / 0.12), transparent 60%),

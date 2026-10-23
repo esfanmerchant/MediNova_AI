@@ -93,6 +93,7 @@ export function ConsoleBanner({
   actions,
   aside,
   stats,
+  art,
 }: {
   id?: string;
   eyebrow: string;
@@ -105,6 +106,12 @@ export function ConsoleBanner({
   /** The right-hand panel: a small chart, never a picture. */
   aside?: ReactNode;
   stats?: BannerStat[];
+  /**
+   * The hospital drawn in 3D across the banner's right half — a day and a
+   * night render — fading in from the left so the sentence keeps the
+   * banner's own blue behind it. A banner with art has no side panel.
+   */
+  art?: { light: string; dark: string };
 }) {
   return (
     <section
@@ -131,8 +138,31 @@ export function ConsoleBanner({
         <circle cx="560" cy="60" r="5" />
         <circle cx="600" cy="240" r="5" />
       </svg>
+      {art &&
+        (["light", "dark"] as const).map((theme) => (
+          <Image
+            key={theme}
+            src={art[theme]}
+            alt=""
+            aria-hidden
+            width={1000}
+            height={674}
+            priority
+            className={cx(
+              "banner-art art-settle pointer-events-none absolute -right-[90px] -bottom-[40px] -z-10 hidden w-[60%] max-w-[720px] select-none lg:block",
+              theme === "light" ? "dark:!hidden" : "!hidden dark:lg:!block",
+            )}
+          />
+        ))}
 
-      <div className="relative grid grid-cols-1 items-center gap-7 px-6 pt-7 pb-6 sm:px-8 lg:grid-cols-2">
+      <div
+        className={cx(
+          "relative grid grid-cols-1 items-center gap-7 px-6 pt-7 pb-6 sm:px-8",
+          // With the art there is no panel: the sentence on the left, the
+          // hospital on the right, as the design draws it.
+          art ? "min-h-[236px] lg:pt-[30px] lg:pb-7" : "lg:grid-cols-2",
+        )}
+      >
         <div className="flex flex-col gap-3.5">
           <p className="flex items-center gap-2 font-mono text-[11px] tracking-[0.14em] text-[#9FE8DC]">
             {live && <LiveDot />}

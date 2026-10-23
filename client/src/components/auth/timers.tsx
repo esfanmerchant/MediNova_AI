@@ -14,10 +14,10 @@
  * same string before a single tick has happened.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useState } from "react";
 
 import { Icon } from "@/components/Icon";
-import { cx } from "@/components/ui";
+import { ConsoleSurface, cx } from "@/components/ui";
 
 export interface Countdown {
   /** Whole seconds left, never below zero. */
@@ -104,6 +104,22 @@ export function ResendControl({
   onResend: () => void;
 }) {
   const waiting = remaining > 0;
+  const inConsole = useContext(ConsoleSurface);
+  if (inConsole) {
+    return (
+      <button
+        type="button"
+        onClick={onResend}
+        disabled={waiting || busy}
+        className={cx(
+          "rounded-lg tabular-nums transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+          waiting || busy ? "cursor-not-allowed text-muted" : "font-semibold text-primary underline underline-offset-[3px]",
+        )}
+      >
+        {waiting ? waitingLabel(remaining) : label}
+      </button>
+    );
+  }
   return (
     // Deliberately not a live region: the label changes once a second, and a
     // screen reader reading "59… 58… 57…" over the top of the page is worse

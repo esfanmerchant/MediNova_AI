@@ -16,10 +16,12 @@
  * actually dispatches, so a reader can predict their inbox.
  */
 
+import { useContext } from "react";
+
 import { Icon } from "@/components/Icon";
 import { NotificationChannels } from "@/components/settings/NotificationChannels";
 import { PushToggle } from "@/components/settings/PushToggle";
-import { Badge, Card, cx } from "@/components/ui";
+import { Badge, Card, ConsoleSurface, cx } from "@/components/ui";
 import { useTr } from "@/lib/lang";
 import type { Role } from "@/lib/api";
 
@@ -105,9 +107,111 @@ const KINDS: NotificationKind[] = [
   },
 ];
 
+/**
+ * What reaches an administrator, as the console lists it. Read off the API's
+ * senders: the doctor-request and payment notices are mailed directly by the
+ * modules that raise them, so they are emailed although their types are not
+ * on the general email list.
+ */
+const CONSOLE_KINDS: { title: [string, string]; description: [string, string]; emailed: boolean }[] = [
+  {
+    title: ["Emergency access", "Emergency access"],
+    description: [
+      "A record opened under break-glass — you review every one.",
+      "Break-glass mein khola gaya record — har aik ka jaiza aap lete hain.",
+    ],
+    emailed: true,
+  },
+  {
+    title: ["Doctor requests", "Doctor requests"],
+    description: [
+      "A doctor applies, or writes in about an application.",
+      "Koi doctor darkhwast deta hai, ya apni darkhwast ke baare mein likhta hai.",
+    ],
+    emailed: true,
+  },
+  {
+    title: ["Payments and payouts", "Payments aur payouts"],
+    description: [
+      "A transfer waits for you to confirm; a doctor asks to withdraw.",
+      "Koi transfer aap ki tasdeeq ka muntazir hai; koi doctor raqam nikalna chahta hai.",
+    ],
+    emailed: true,
+  },
+  {
+    title: ["Pharmacy orders", "Pharmacy orders"],
+    description: [
+      "A new order, a prescription to check, a refund that is due.",
+      "Naya order, check karne ke liye prescription, wajib refund.",
+    ],
+    emailed: true,
+  },
+  {
+    title: ["Account security", "Account ki hifazat"],
+    description: [
+      "A password change, a new sign-in, two-factor turned on or off.",
+      "Password badalna, naya sign-in, ya two-factor on/off hona.",
+    ],
+    emailed: true,
+  },
+];
+
 export function NotificationsTab({ role }: { role: Role }) {
   const tr = useTr();
+  const inConsole = useContext(ConsoleSurface);
   const kinds = KINDS.filter((kind) => kind.roles.includes(role));
+
+  if (inConsole) {
+    return (
+      <div className="flex flex-col gap-[22px]">
+        <div
+          role="status"
+          className="flex gap-3 rounded-[18px] border border-line bg-[var(--console-soft)] px-[18px] py-3.5 text-[13.5px] leading-[1.55] text-muted"
+        >
+          <Icon name="info" className="mt-0.5 shrink-0 text-[18px] text-primary" />
+          <p>
+            <strong className="font-semibold text-strong">
+              {tr("You choose the channels, not each message.", "Channels aap chunte hain, har paigham nahi.")}
+            </strong>{" "}
+            {tr(
+              "Email and your devices can each be switched off; the list below says what the system sends.",
+              "Email aur aap ke devices alag alag band kiye ja sakte hain; neeche ki fehrist batati hai ke system kya bhejta hai.",
+            )}
+          </p>
+        </div>
+
+        <NotificationChannels />
+
+        <PushToggle />
+
+        <Card
+          title={tr("What you are notified about", "Aap ko kis cheez ki ittila di jati hai")}
+          description={tr("The chips say where each one travels", "Chips batate hain ke har aik kahan jata hai")}
+          icon="notifications"
+          flush
+        >
+          <ul className="border-t border-line">
+            {CONSOLE_KINDS.map((kind, index) => (
+              <li
+                key={kind.title[0]}
+                className={cx("flex items-start gap-3.5 px-[22px] py-3.5", index > 0 && "border-t border-line")}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-[14px] font-semibold text-strong">{tr(...kind.title)}</p>
+                  <p className="mt-0.5 text-[12.5px] text-muted">{tr(...kind.description)}</p>
+                </div>
+                <div className="flex max-w-[240px] flex-wrap justify-end gap-1.5">
+                  <Badge tone="info">{tr("In the console", "Console mein")}</Badge>
+                  {kind.emailed && <Badge tone="info">{tr("Email", "Email")}</Badge>}
+                  <Badge tone="info">{tr("Device", "Device")}</Badge>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

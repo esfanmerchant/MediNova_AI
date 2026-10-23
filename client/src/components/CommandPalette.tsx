@@ -21,6 +21,7 @@ import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import {
   useCallback,
+  useContext,
   useEffect,
   useId,
   useMemo,
@@ -31,7 +32,7 @@ import {
 
 import { Icon } from "@/components/Icon";
 import { AnimatedModal } from "@/components/overlays";
-import { cx } from "@/components/ui";
+import { ConsoleSurface, cx } from "@/components/ui";
 import { useTr } from "@/lib/lang";
 import { SPRING, useCalmMotion } from "@/lib/motion";
 
@@ -110,6 +111,7 @@ function Palette({
 }) {
   const tr = useTr();
   const router = useRouter();
+  const inConsole = useContext(ConsoleSurface);
   const calm = useCalmMotion();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -243,8 +245,8 @@ function Palette({
 
   return (
     <>
-      <div className="flex items-center gap-3 border-b border-line/70 px-4">
-        <Icon name="search" className="shrink-0 text-[22px] text-faint" />
+      <div className={cx("flex items-center gap-3 border-b", inConsole ? "h-[60px] border-line pr-[18px] pl-5" : "border-line/70 px-4")}>
+        <Icon name="search" className={cx("shrink-0", inConsole ? "text-[20px] text-primary" : "text-[22px] text-faint")} />
         <input
           ref={field}
           type="text"
@@ -261,12 +263,19 @@ function Palette({
             setActive(0);
           }}
           onKeyDown={onKeyDown}
-          className="min-h-14 w-full bg-transparent text-base text-strong outline-none placeholder:text-faint"
+          className={cx(
+            "w-full bg-transparent text-strong outline-none placeholder:text-faint",
+            inConsole ? "text-[16px]" : "min-h-14 text-base",
+          )}
         />
         {searching && <span aria-hidden className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-line border-t-primary" />}
-        <kbd className="mono-caps hidden shrink-0 rounded-md border border-line-strong px-1.5 py-0.5 text-[10px] text-faint sm:block">
-          Esc
-        </kbd>
+        {inConsole ? (
+          <kbd className="console-kbd hidden shrink-0 sm:block">esc</kbd>
+        ) : (
+          <kbd className="mono-caps hidden shrink-0 rounded-md border border-line-strong px-1.5 py-0.5 text-[10px] text-faint sm:block">
+            Esc
+          </kbd>
+        )}
       </div>
 
       {/* The count, for a reader who cannot see the list shrink. */}
@@ -280,7 +289,7 @@ function Palette({
             : `${count} ${tr("pages", "safhaat")}`}
       </p>
 
-      <div id={listId} role="listbox" className="max-h-[52vh] overflow-y-auto p-2">
+      <div id={listId} role="listbox" className={cx("max-h-[52vh] overflow-y-auto", inConsole ? "px-2.5 pt-1.5 pb-2.5" : "p-2")}>
         {count === 0 && (
           <p className="px-3 py-8 text-center text-sm text-muted">
             {searching
@@ -293,7 +302,15 @@ function Palette({
 
         {results.sections.map((section) => (
           <div key={section.label} role="group" aria-label={section.label} className="mb-1">
-            <p className="mono-caps px-3 pb-1 pt-2 text-[0.68rem] text-faint">{section.label}</p>
+            <p
+              className={
+                inConsole
+                  ? "px-2.5 pt-2.5 pb-1 font-mono text-[10.5px] tracking-[0.14em] text-faint uppercase"
+                  : "mono-caps px-3 pb-1 pt-2 text-[0.68rem] text-faint"
+              }
+            >
+              {section.label}
+            </p>
             {section.items.map(({ item, index }) => {
               const selected = index === active;
               return (
@@ -307,14 +324,16 @@ function Palette({
                   onClick={() => go(item)}
                   onMouseMove={() => setActive(index)}
                   className={cx(
-                    "relative flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-[0.9375rem] transition-colors",
-                    selected ? "font-semibold text-primary" : "text-muted hover:bg-sunken",
+                    "relative flex cursor-pointer items-center gap-3 transition-colors",
+                    inConsole
+                      ? cx("rounded-[14px] px-2.5 py-[9px]", selected ? "bg-[var(--console-soft)] ring-1 ring-line ring-inset" : "hover:bg-[var(--console-soft)]")
+                      : cx("rounded-xl px-3 py-2.5 text-[0.9375rem]", selected ? "font-semibold text-primary" : "text-muted hover:bg-sunken"),
                   )}
                 >
                   {/* One highlight that follows the cursor from row to row,
                       rather than a row that lights up and another that goes
                       dark — the eye can track a thing that moves. */}
-                  {selected && (
+                  {selected && !inConsole && (
                     <motion.span
                       layoutId="palette-cursor"
                       aria-hidden
@@ -322,12 +341,43 @@ function Palette({
                       className="bg-gradient-soft absolute inset-0 rounded-xl"
                     />
                   )}
-                  <Icon name={item.icon} filled={selected} className="relative text-[20px]" />
+                  {inConsole ? (
+                    <span
+                      aria-hidden
+                      className={cx(
+                        "grid h-9 w-9 shrink-0 place-items-center rounded-xl text-primary",
+                        selected ? "bg-info-soft" : "bg-sunken",
+                      )}
+                    >
+                      <Icon name={item.icon} className="text-[17px]" />
+                    </span>
+                  ) : (
+                    <Icon name={item.icon} filled={selected} className="relative text-[20px]" />
+                  )}
                   <span className="relative min-w-0 flex-1">
-                    <span className="block truncate">{item.label}</span>
-                    {item.detail && <span className="block truncate text-[12px] font-normal text-faint">{item.detail}</span>}
+                    <span
+                      className={cx(
+                        "block truncate",
+                        inConsole && cx("text-[14px] font-semibold", selected ? "text-primary" : "text-strong"),
+                      )}
+                    >
+                      {item.label}
+                    </span>
+                    {item.detail && (
+                      <span className={cx("block truncate font-normal", inConsole ? "text-[12.5px] text-muted" : "text-[12px] text-faint")}>
+                        {item.detail}
+                      </span>
+                    )}
                   </span>
-                  {selected && <Icon name="keyboard_return" className="relative text-[18px] text-faint" />}
+                  {selected &&
+                    (inConsole ? (
+                      <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-muted">
+                        {tr("Open", "Kholein")}
+                        <kbd className="console-kbd">↵</kbd>
+                      </span>
+                    ) : (
+                      <Icon name="keyboard_return" className="relative text-[18px] text-faint" />
+                    ))}
                 </div>
               );
             })}
@@ -335,15 +385,33 @@ function Palette({
         ))}
       </div>
 
-      <div className="flex items-center gap-4 border-t border-line/70 px-4 py-2 text-[11px] text-faint">
-        <span className="flex items-center gap-1">
-          <Icon name="keyboard_arrow_up" className="text-[16px]" />
-          <Icon name="keyboard_arrow_down" className="text-[16px]" />
-          {tr("move", "chalayein")}
-        </span>
-        <span>↵ {tr("open", "kholein")}</span>
-        <span>esc {tr("close", "band")}</span>
-      </div>
+      {inConsole ? (
+        <div className="flex flex-wrap items-center gap-4 border-t border-line bg-[var(--console-soft)] px-5 py-[11px] text-[12.5px] text-muted">
+          <span className="inline-flex items-center gap-1.5">
+            <kbd className="console-kbd">↑</kbd>
+            <kbd className="console-kbd">↓</kbd>
+            {tr("move", "chalayein")}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <kbd className="console-kbd">↵</kbd>
+            {tr("open", "kholein")}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <kbd className="console-kbd">esc</kbd>
+            {tr("close", "band")}
+          </span>
+        </div>
+      ) : (
+        <div className="flex items-center gap-4 border-t border-line/70 px-4 py-2 text-[11px] text-faint">
+          <span className="flex items-center gap-1">
+            <Icon name="keyboard_arrow_up" className="text-[16px]" />
+            <Icon name="keyboard_arrow_down" className="text-[16px]" />
+            {tr("move", "chalayein")}
+          </span>
+          <span>↵ {tr("open", "kholein")}</span>
+          <span>esc {tr("close", "band")}</span>
+        </div>
+      )}
     </>
   );
 }
@@ -363,6 +431,7 @@ export function CommandPalette({
   placeholder?: string;
 }) {
   const tr = useTr();
+  const inConsole = useContext(ConsoleSurface);
   return (
     // The palette keeps its own keyboard — the field holds focus, Tab walks
     // the list — so the shell's focus trap stays out of its way.
@@ -373,7 +442,11 @@ export function CommandPalette({
       layer="z-[120]"
       trap={false}
       label={search ? tr("Search", "Dhoondein") : tr("Search pages", "Safhaat mein dhoondein")}
-      className="glass max-w-xl overflow-hidden rounded-2xl"
+      className={
+        inConsole
+          ? "max-w-[640px] overflow-hidden rounded-3xl border border-line bg-card shadow-[0_40px_90px_-30px_rgba(5,13,31,0.45)]"
+          : "glass max-w-xl overflow-hidden rounded-2xl"
+      }
     >
       <Palette onClose={onClose} items={items} search={search} placeholder={placeholder} />
     </AnimatedModal>

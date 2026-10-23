@@ -546,11 +546,17 @@ function ProductDialog({
         <Field label={tr("Category", "Category")} htmlFor="p-category">
           <Input id="p-category" value={form.category} maxLength={60} onChange={(event) => set("category", event.target.value)} placeholder="Pain & Fever" />
         </Field>
-        <Field label={tr("Price per pack (PKR)", "Fi pack qeemat (PKR)")} htmlFor="p-price" hint={tr("Not above the DRAP maximum retail price on the pack.", "Pack par DRAP MRP se zyada nahi.")}>
-          <Input id="p-price" inputMode="decimal" value={form.price} onChange={(event) => set("price", event.target.value.replace(/[^\d.]/g, ""))} />
+        <Field label={tr("Price per pack", "Fi pack qeemat")} htmlFor="p-price" hint={tr("Not above the DRAP maximum retail price on the pack.", "Pack par DRAP MRP se zyada nahi.")}>
+          <div className="relative">
+            <span aria-hidden className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-[13px] font-semibold text-muted">PKR</span>
+            <Input id="p-price" inputMode="decimal" className="!pl-[50px]" value={form.price} onChange={(event) => set("price", event.target.value.replace(/[^\d.]/g, ""))} />
+          </div>
         </Field>
         <Field label={tr("Cost price (optional)", "Khareed qeemat (ikhtiyari)")} htmlFor="p-cost" hint={tr("Only you see this. It is how margin is worked out.", "Yeh sirf aap dekhte hain. Is se munafa nikalta hai.")}>
-          <Input id="p-cost" inputMode="decimal" value={form.costPrice ?? ""} onChange={(event) => set("costPrice", event.target.value.replace(/[^\d.]/g, ""))} />
+          <div className="relative">
+            <span aria-hidden className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-[13px] font-semibold text-muted">PKR</span>
+            <Input id="p-cost" inputMode="decimal" className="!pl-[50px]" value={form.costPrice ?? ""} onChange={(event) => set("costPrice", event.target.value.replace(/[^\d.]/g, ""))} />
+          </div>
         </Field>
         <Field label={tr("Manufacturer (optional)", "Company (ikhtiyari)")} htmlFor="p-maker">
           <Input id="p-maker" value={form.manufacturer ?? ""} maxLength={120} onChange={(event) => set("manufacturer", event.target.value)} />
@@ -563,7 +569,7 @@ function ProductDialog({
             <Textarea id="p-description" rows={2} maxLength={500} value={form.description ?? ""} onChange={(event) => set("description", event.target.value)} />
           </Field>
         </div>
-        <div className="space-y-3 sm:col-span-2">
+        <div className="space-y-3 sm:col-span-2 [&>label]:rounded-2xl [&>label]:border [&>label]:border-line [&>label]:bg-[var(--console-soft)] [&>label]:px-3.5 [&>label]:py-3">
           <Switch
             checked={form.rxRequired}
             onChange={(next) => set("rxRequired", next)}
@@ -712,6 +718,12 @@ function ImportDialog({ onClose, onImported }: { onClose: () => void; onImported
             {tr("Download template", "Template download")}
           </Button>
         </div>
+        <p className="text-[12.5px] text-muted">
+          {tr(
+            "Columns: name, genericName, strength, form, packSize, category, manufacturer, price, costPrice, stock, rxRequired. The template has them in order.",
+            "Columns: name, genericName, strength, form, packSize, category, manufacturer, price, costPrice, stock, rxRequired. Template mein yeh isi tarteeb mein hain.",
+          )}
+        </p>
         {error && <p role="alert" className="text-sm font-medium text-critical">{error}</p>}
         {result && (
           <div className="rounded-xl border border-line bg-sunken p-4 text-sm">

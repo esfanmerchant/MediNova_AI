@@ -26,7 +26,16 @@ import { useHydrated } from "@/lib/useHydrated";
 
 const TURN = { ...SPRING, opacity: { duration: DURATION.base, ease: EASE } };
 
-export function ThemeToggle({ onDark = false, console = false }: { onDark?: boolean; console?: boolean }) {
+export function ThemeToggle({
+  onDark = false,
+  console = false,
+  menu = false,
+}: {
+  onDark?: boolean;
+  console?: boolean;
+  /** The console's account menu: a small two-part pill, the current theme in navy. */
+  menu?: boolean;
+}) {
   const tr = useTr();
   const calm = useCalmMotion();
   const { resolvedTheme, setTheme } = useThemeSwitch();
@@ -57,6 +66,36 @@ export function ThemeToggle({ onDark = false, console = false }: { onDark?: bool
     ];
     return () => runs.forEach((run) => run && run.stop());
   }, [dark, mounted, calm]);
+
+  if (menu) {
+    return (
+      <button
+        type="button"
+        role="switch"
+        aria-checked={dark}
+        aria-label={label}
+        title={label}
+        onClick={() => setTheme(dark ? "light" : "dark")}
+        className="inline-flex rounded-full border border-line-strong p-[3px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      >
+        {(["light_mode", "dark_mode"] as const).map((name) => {
+          const on = mounted && (name === "dark_mode") === dark;
+          return (
+            <span
+              key={name}
+              aria-hidden
+              className={cx(
+                "grid h-[26px] w-7 place-items-center rounded-full transition-colors",
+                on ? "bg-[#0B3FA8] text-white dark:bg-[#3B6FE0]" : "text-muted",
+              )}
+            >
+              <Icon name={name} className="text-[14px]" />
+            </span>
+          );
+        })}
+      </button>
+    );
+  }
 
   // The console's switch is one round button showing the theme it turns on —
   // a moon by day, a sun by night — as the design draws it.

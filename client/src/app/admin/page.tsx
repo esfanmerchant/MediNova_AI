@@ -31,7 +31,6 @@ import {
 } from "@/components/admin/console";
 import { localToday } from "@/components/admin/AppointmentWeek";
 import { ClinicPulse } from "@/components/admin/ClinicPulse";
-import { TodayByHour } from "@/components/admin/TodayByHour";
 import { BusiestDoctors, PharmacyPipeline, WeekBySpeciality } from "@/components/admin/OverviewSections";
 import { RevenuePanel, inWindow } from "@/components/admin/RevenueChart";
 import { SetupChecklist } from "@/components/admin/SetupChecklist";
@@ -248,7 +247,7 @@ export default function AdminDashboard() {
             .toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })
             .replace(",", "")
             .toUpperCase()} · LIVE`}
-          aside={<TodayByHour visits={visitsToday.data ? todaysVisits : null} />}
+          art={{ light: "/admin-art/hospital-light.webp", dark: "/admin-art/hospital-dark.webp" }}
           title={firstName ? `${greeting}, ${firstName}.` : `${greeting}.`}
           actions={
             data && (

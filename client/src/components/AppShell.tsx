@@ -23,6 +23,7 @@ import { LanguageToggle } from "@/components/LanguageToggle";
 import { NotificationBell } from "@/components/NotificationBell";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { ConsoleTabBar } from "@/components/admin/ConsoleTabBar";
+import { consoleMoney } from "@/components/admin/console";
 import { NEW_ACTIONS, NewMenu } from "@/components/admin/NewMenu";
 import { holdInvoice } from "@/components/admin/InvoiceDrawer";
 import { holdPerson } from "@/components/admin/PersonDrawer";
@@ -575,6 +576,14 @@ function initialsOf(name: string): string {
  */
 function RoleChip({ role, className }: { role: Role; className?: string }) {
   const tr = useTr();
+  const inConsole = useContext(ConsoleSurface);
+  if (inConsole) {
+    return (
+      <span className={cx("inline-flex h-5 items-center rounded-full bg-info-soft px-[7px] text-[11px] font-semibold text-info", className)}>
+        {tr(...ROLE_LABEL[role])}
+      </span>
+    );
+  }
   return (
     <span className={cx("bg-gradient-soft inline-flex rounded-full px-2 py-px", className)}>
       <span className="text-gradient-brand text-[10.5px] font-bold uppercase tracking-wider">
@@ -639,8 +648,10 @@ function AccountMenu({
     onNavigate?.();
   };
 
-  const itemClass =
-    "flex min-h-11 w-full items-center gap-2.5 rounded-xl px-3 text-sm font-semibold text-strong transition-colors hover:bg-gradient-soft hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+  const itemClass = cx(
+    "flex w-full items-center gap-2.5 rounded-xl px-3 font-semibold text-strong transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+    inConsole ? "min-h-10 text-[13.5px] hover:bg-[var(--console-soft)] [&_.console-icon]:text-[18px]" : "min-h-11 text-sm hover:bg-gradient-soft hover:text-primary",
+  );
 
   return (
     <div ref={shell} className="relative">
@@ -728,12 +739,29 @@ function AccountMenu({
             transition={SPRING}
             style={{ transformOrigin: variant === "card" ? "bottom left" : "top right" }}
             className={cx(
-              "glass absolute z-50 w-64 rounded-2xl p-2",
+              "absolute z-50 p-2",
+              inConsole
+                ? "w-[264px] rounded-3xl border border-line bg-card shadow-[0_30px_70px_-28px_rgba(5,13,31,0.4)]"
+                : "glass w-64 rounded-2xl",
               variant === "card" ? "bottom-full left-0 mb-2" : "right-0 mt-2",
             )}
           >
-            <div className="bg-gradient-soft flex items-center gap-3 rounded-xl p-3">
-              <Avatar name={user.name} src={user.avatarUrl} />
+            <div className={cx("flex items-center gap-3 p-3", inConsole ? "rounded-2xl bg-[var(--console-soft)]" : "bg-gradient-soft rounded-xl")}>
+              {inConsole ? (
+                <span
+                  aria-hidden
+                  className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full border-2 border-[#5EEAD4] bg-pastel-mint text-[14px] font-bold text-[#08636C] dark:text-[#5EEAD4]"
+                >
+                  {user.avatarUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    initialsOf(user.name)
+                  )}
+                </span>
+              ) : (
+                <Avatar name={user.name} src={user.avatarUrl} />
+              )}
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-strong">{user.name}</p>
                 <p className="truncate text-xs text-muted">{user.email}</p>
@@ -766,12 +794,17 @@ function AccountMenu({
               <LanguageToggle />
             </div>
 
-            <div className="mt-1 flex min-h-11 items-center justify-between gap-2 rounded-xl px-3">
-              <span className="flex items-center gap-2.5 text-sm font-semibold text-strong">
-                <Icon name="contrast" className="text-[20px]" />
+            <div
+              className={cx(
+                "flex items-center justify-between gap-2 rounded-xl px-3",
+                inConsole ? "min-h-10" : "mt-1 min-h-11",
+              )}
+            >
+              <span className={cx("flex items-center gap-2.5 font-semibold text-strong", inConsole ? "text-[13.5px]" : "text-sm")}>
+                <Icon name={inConsole ? "dark_mode" : "contrast"} className="text-[20px]" />
                 {tr("Theme", "Theme")}
               </span>
-              <ThemeToggle />
+              <ThemeToggle menu={inConsole} />
             </div>
 
             <div aria-hidden className="my-1 h-px bg-line/70" />
@@ -779,7 +812,7 @@ function AccountMenu({
             {/* Findable after the fact. Somebody who agreed to these months ago
                 needs a way back to them that is not the registration form. */}
             <Link href="/terms" onClick={close} className={itemClass}>
-              <Icon name="gavel" className="text-[20px]" />
+              <Icon name={inConsole ? "description" : "gavel"} className="text-[20px]" />
               {tr("Terms and guidelines", "Shara-it aur guidelines")}
             </Link>
 
@@ -1002,7 +1035,7 @@ function Rail({
         // not cut off at the edge of the scroll.
         className={cx(
           "relative min-h-0 flex-1 overflow-y-auto",
-          onDark ? "flex flex-col gap-3 [@media(max-height:940px)]:gap-2" : "px-3",
+          onDark ? "flex flex-col gap-3 [@media(max-height:860px)]:gap-2" : "px-3",
         )}
       >
         {groups.map((group) => (
@@ -1355,14 +1388,14 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
           href: `/admin/pharmacy/orders/${order.id}`,
           icon: "local_shipping",
           label: order.orderNumber,
-          detail: [order.patientName ?? order.recipientName, order.city].filter(Boolean).join(" · "),
+          detail: [order.patientName ?? order.recipientName, order.city, consoleMoney(order.total)].filter(Boolean).join(" · "),
           section: tr("Orders", "Orders"),
         })),
         ...(bills?.data ?? []).map((invoice) => ({
           href: "/admin/billing",
           icon: "receipt_long",
           label: invoice.invoiceNumber,
-          detail: [invoice.patientName, `${invoice.currency} ${invoice.totalAmount}`].filter(Boolean).join(" · "),
+          detail: [invoice.patientName, consoleMoney(invoice.totalAmount, invoice.currency)].filter(Boolean).join(" · "),
           section: tr("Invoices", "Invoices"),
           onPick: () => holdInvoice(invoice),
         })),

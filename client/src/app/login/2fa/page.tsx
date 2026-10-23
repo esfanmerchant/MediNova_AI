@@ -17,7 +17,7 @@
 import { motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState, type FormEvent } from "react";
+import { Suspense, useContext, useEffect, useState, type FormEvent } from "react";
 
 import { AuthPanel } from "@/components/AuthPanel";
 import { ConsoleAuthFrame } from "@/components/admin/ConsoleAuthFrame";
@@ -31,7 +31,7 @@ import {
 } from "@/components/auth/parts";
 import { ResendControl, useCountdown } from "@/components/auth/timers";
 import { OtpInput } from "@/components/forms";
-import { Button, Checkbox, Loading, cx } from "@/components/ui";
+import { Button, Checkbox, ConsoleSurface, Loading, cx } from "@/components/ui";
 import { ApiError, auth, type TwoFactorMethod } from "@/lib/api";
 import { useTr } from "@/lib/lang";
 import { useSession } from "@/lib/session";
@@ -39,12 +39,18 @@ import { useSession } from "@/lib/session";
 /** Seconds before another code may be asked for. */
 const RESEND_WAIT = 60;
 
+/** 55 → "0:55", the way the console counts down. */
+function clock(seconds: number): string {
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
 function TwoFactorForm() {
   const router = useRouter();
   const params = useSearchParams();
   const reduced = useReducedMotion();
   const { adoptSession } = useSession();
   const tr = useTr();
+  const inConsole = useContext(ConsoleSurface);
 
   const challengeId = params.get("challenge") ?? "";
   const method = (params.get("method") === "TOTP" ? "TOTP" : "EMAIL") as TwoFactorMethod;
@@ -151,21 +157,41 @@ function TwoFactorForm() {
       transition={reduced ? { duration: 0 } : { duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
       className="w-full"
     >
-      <AuthHeading
-        badge={<IconBadge name="verified_user" />}
-        title={tr("Enter your verification code", "Tasdeeqi code darj karein")}
-        subtitle={
-          method === "EMAIL"
-            ? tr(
-                "We sent a six-digit code to the address on your account.",
-                "Hum ne aap ke account wale pate par chhe hindson ka code bheja hai.",
-              )
-            : tr(
-                "Open your authenticator app and read the current code.",
-                "Apni authenticator app kholein aur mojooda code dekhein.",
-              )
-        }
-      />
+      {inConsole ? (
+        <div className="mb-[22px] flex flex-col gap-2">
+          <p className="font-mono text-[11px] tracking-[0.16em] text-faint uppercase">{tr("Two-step sign-in", "Do-marhala login")}</p>
+          <h2 className="font-display text-[2rem] leading-[normal] font-bold tracking-[-0.02em] text-strong">
+            {tr("Enter your code", "Apna code darj karein")}
+          </h2>
+          <p className="text-[15px] leading-[1.55] text-muted">
+            {method === "EMAIL"
+              ? tr(
+                  "We sent a six-digit code to the email on your account. It works for five minutes.",
+                  "Hum ne aap ke account wali email par chhe hindson ka code bheja hai. Yeh paanch minute chalta hai.",
+                )
+              : tr(
+                  "Open your authenticator app and read the current code.",
+                  "Apni authenticator app kholein aur mojooda code dekhein.",
+                )}
+          </p>
+        </div>
+      ) : (
+        <AuthHeading
+          badge={<IconBadge name="verified_user" />}
+          title={tr("Enter your verification code", "Tasdeeqi code darj karein")}
+          subtitle={
+            method === "EMAIL"
+              ? tr(
+                  "We sent a six-digit code to the address on your account.",
+                  "Hum ne aap ke account wale pate par chhe hindson ka code bheja hai.",
+                )
+              : tr(
+                  "Open your authenticator app and read the current code.",
+                  "Apni authenticator app kholein aur mojooda code dekhein.",
+                )
+          }
+        />
+      )}
 
       {wrongCode && (
         <AuthNotice tone="critical" title={tr("That code is not right", "Yeh code sahih nahi hai")}>
@@ -194,7 +220,7 @@ function TwoFactorForm() {
           event.preventDefault();
           void submit(code);
         }}
-        className="space-y-6"
+        className={inConsole ? "space-y-[22px]" : "space-y-6"}
         noValidate
       >
         {backup ? (
@@ -221,23 +247,55 @@ function TwoFactorForm() {
           <Checkbox
             checked={remember}
             onChange={(event) => setRemember(event.target.checked)}
-            label={tr("Remember this device for 30 days", "Is device ko 30 din yaad rakhein")}
+            label={
+              inConsole ? (
+                <span>
+                  {tr("Remember this device for 30 days", "Is device ko 30 din yaad rakhein")}
+                  <span className="mt-0.5 block text-[12.5px] text-muted">
+                    {tr("Not on a shared computer.", "Mushtarka computer par nahi.")}
+                  </span>
+                </span>
+              ) : (
+                tr("Remember this device for 30 days", "Is device ko 30 din yaad rakhein")
+              )
+            }
           />
         )}
 
-        <Button
-          type="submit"
-          size="lg"
-          className="btn-shine w-full"
-          loading={submitting}
-          disabled={backup ? code.trim().length === 0 : code.length < 6}
-        >
-          {tr("Verify", "Tasdeeq karein")}
-          <Icon name="arrow_forward" className="text-[20px]" />
-        </Button>
+        {inConsole ? (
+          // The console's pill, as on its sign-in.
+          <button
+            type="submit"
+            disabled={submitting || (backup ? code.trim().length === 0 : code.length < 6)}
+            className={cx(
+              "inline-flex h-[50px] w-full items-center justify-center gap-2 rounded-full bg-[#0B3FA8] text-[15px] font-semibold text-white",
+              "shadow-[0_10px_22px_-12px_rgba(11,63,168,0.8)] transition-colors hover:bg-[#0A3796] disabled:opacity-70",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:bg-[#3B6FE0] dark:hover:bg-[#4A7BEA]",
+            )}
+          >
+            {submitting ? tr("Checking…", "Check ho raha hai…") : tr("Verify", "Tasdeeq karein")}
+            {!submitting && <Icon name="arrow_forward" className="text-[18px]" />}
+          </button>
+        ) : (
+          <Button
+            type="submit"
+            size="lg"
+            className="btn-shine w-full"
+            loading={submitting}
+            disabled={backup ? code.trim().length === 0 : code.length < 6}
+          >
+            {tr("Verify", "Tasdeeq karein")}
+            <Icon name="arrow_forward" className="text-[20px]" />
+          </Button>
+        )}
       </form>
 
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5">
+      <div
+        className={cx(
+          "flex flex-wrap items-center justify-between gap-3 border-t border-line",
+          inConsole ? "mt-[22px] pt-4 text-[13.5px]" : "mt-6 pt-5",
+        )}
+      >
         <button
           type="button"
           onClick={() => {
@@ -245,7 +303,7 @@ function TwoFactorForm() {
             setCode("");
             setError(null);
           }}
-          className={cx(AUTH_LINK, "text-sm")}
+          className={cx(AUTH_LINK, inConsole ? "underline-offset-[3px]" : "text-sm")}
         >
           {backup
             ? tr("Use the emailed code", "Email wala code istemal karein")
@@ -259,18 +317,31 @@ function TwoFactorForm() {
             busy={resending}
             label={tr("Send it again", "Dobara bhejein")}
             waitingLabel={(seconds) =>
-              tr(`Send it again in ${seconds}s`, `${seconds}s baad dobara bhejein`)
+              inConsole
+                ? tr(`Send it again in ${clock(seconds)}`, `${clock(seconds)} baad dobara bhejein`)
+                : tr(`Send it again in ${seconds}s`, `${seconds}s baad dobara bhejein`)
             }
             onResend={() => void onResend()}
           />
         )}
       </div>
 
-      <p className="mt-6 text-center text-sm text-muted">
-        <Link href={back} className={AUTH_LINK}>
+      {inConsole ? (
+        // The frame's own audit note follows, as on the console's sign-in.
+        <Link
+          href={back}
+          className="mt-[22px] inline-flex h-10 items-center gap-2 rounded-full text-[13.5px] font-semibold text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          <Icon name="chevron_left" className="text-[16px]" />
           {tr("Back to sign in", "Login par wapas")}
         </Link>
-      </p>
+      ) : (
+        <p className="mt-6 text-center text-sm text-muted">
+          <Link href={back} className={AUTH_LINK}>
+            {tr("Back to sign in", "Login par wapas")}
+          </Link>
+        </p>
+      )}
     </motion.div>
   );
 }

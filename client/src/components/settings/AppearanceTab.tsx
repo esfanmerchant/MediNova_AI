@@ -13,12 +13,12 @@
  * will the screen I am looking at become".
  */
 
-import { useState } from "react";
+import { useContext, useState } from "react";
 
 import { Icon } from "@/components/Icon";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { Segmented, Switch } from "@/components/forms";
-import { Card, cx } from "@/components/ui";
+import { Card, ConsoleSurface, cx } from "@/components/ui";
 import {
   setFontScale,
   setLiveUpdates,
@@ -84,11 +84,19 @@ function ThemeMiniature({ tone }: { tone: "light" | "dark" }) {
   );
 }
 
+/** The console's swatches: a rail and a page, in each theme's two grounds. */
+const CONSOLE_SWATCH = {
+  light: "linear-gradient(90deg, #FFFFFF 28%, #EEF3F9 28%)",
+  dark: "linear-gradient(90deg, #0B1733 28%, #050D1F 28%)",
+  system: "linear-gradient(90deg, #FFFFFF 50%, #0B1733 50%)",
+} as const;
+
 const THEMES = ["light", "dark", "system"] as const;
 type ThemeChoice = (typeof THEMES)[number];
 
 export function AppearanceTab() {
   const tr = useTr();
+  const inConsole = useContext(ConsoleSurface);
   const { theme, setTheme, resolvedTheme } = useThemeSwitch();
   const fontScale = useFontScale();
   const motion = useMotionPreference();
@@ -114,7 +122,7 @@ export function AppearanceTab() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className={inConsole ? "flex flex-col gap-[22px]" : "space-y-6"}>
       {/* Every change here is silent and instant, so it is announced. */}
       <p role="status" aria-live="polite" className="sr-only">
         {announcement}
@@ -122,10 +130,14 @@ export function AppearanceTab() {
 
       <Card
         title={tr("Theme", "Theme")}
-        description={tr(
-          "System follows whatever this device is set to, and changes with it.",
-          "System aap ke device ki setting ke mutabiq chalta hai aur us ke saath badalta hai.",
-        )}
+        description={
+          inConsole
+            ? tr("System follows whatever this device is set to", "System is device ki setting ke mutabiq chalta hai")
+            : tr(
+                "System follows whatever this device is set to, and changes with it.",
+                "System aap ke device ki setting ke mutabiq chalta hai aur us ke saath badalta hai.",
+              )
+        }
         icon="palette"
       >
         <div role="radiogroup" aria-label={tr("Theme", "Theme")} className="stagger grid gap-3 sm:grid-cols-3">
@@ -142,14 +154,29 @@ export function AppearanceTab() {
                   setAnnouncement(`${tr("Theme", "Theme")}: ${tr(...themeLabel[option])}`);
                 }}
                 className={cx(
-                  "hover-lift-sm rounded-2xl p-2.5 text-left transition-[border-color,box-shadow] active:scale-[0.97]",
+                  inConsole
+                    ? cx(
+                        "flex flex-col gap-2.5 rounded-[18px] p-2.5 text-left transition-colors",
+                        selected
+                          ? "border-2 border-[#0B3FA8] bg-pastel-sky dark:border-[#86ABFF]"
+                          : "border border-line bg-card hover:border-line-strong",
+                      )
+                    : cx(
+                        "hover-lift-sm rounded-2xl p-2.5 text-left transition-[border-color,box-shadow] active:scale-[0.97]",
+                        selected
+                          ? "border-gradient-fill shadow-glow"
+                          : "border border-line bg-card shadow-sm hover:border-line-strong",
+                      ),
                   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                  selected
-                    ? "border-gradient-fill shadow-glow"
-                    : "border border-line bg-card shadow-sm hover:border-line-strong",
                 )}
               >
-                {option === "system" ? (
+                {inConsole ? (
+                  <span
+                    aria-hidden
+                    className="block h-[76px] rounded-xl border border-line"
+                    style={{ background: CONSOLE_SWATCH[option] }}
+                  />
+                ) : option === "system" ? (
                   // Both, side by side: the point of "system" is that it is
                   // whichever of the two the device says.
                   <span aria-hidden className="grid grid-cols-2 gap-1.5">
@@ -160,21 +187,33 @@ export function AppearanceTab() {
                   <ThemeMiniature tone={option} />
                 )}
 
-                <span className="mt-2.5 flex items-center gap-1.5 px-1 pb-0.5">
-                  <span
-                    aria-hidden
-                    className={cx(
-                      "grid h-5 w-5 shrink-0 place-items-center rounded-full border-2 transition-colors",
-                      selected ? "border-transparent bg-gradient-brand text-white" : "border-line-strong",
-                    )}
-                  >
-                    {selected && <Icon name="check" className="text-[14px]" />}
-                  </span>
-                  <span className="text-sm font-semibold text-strong">
+                <span className={inConsole ? "flex items-center gap-2" : "mt-2.5 flex items-center gap-1.5 px-1 pb-0.5"}>
+                  {inConsole ? (
+                    <span
+                      aria-hidden
+                      className={cx(
+                        "h-4 w-4 shrink-0 rounded-full",
+                        selected
+                          ? "bg-[#0B3FA8] shadow-[inset_0_0_0_4px_var(--surface-card)] dark:bg-[#86ABFF]"
+                          : "border-[1.5px] border-line-strong",
+                      )}
+                    />
+                  ) : (
+                    <span
+                      aria-hidden
+                      className={cx(
+                        "grid h-5 w-5 shrink-0 place-items-center rounded-full border-2 transition-colors",
+                        selected ? "border-transparent bg-gradient-brand text-white" : "border-line-strong",
+                      )}
+                    >
+                      {selected && <Icon name="check" className="text-[14px]" />}
+                    </span>
+                  )}
+                  <span className={cx("font-semibold text-strong", inConsole ? "text-[14px]" : "text-sm")}>
                     {tr(...themeLabel[option])}
                   </span>
                   {option === "system" && mounted && (
-                    <span className="ml-auto text-[11px] text-faint">
+                    <span className={cx("ml-auto", inConsole ? "text-[12px] text-muted" : "text-[11px] text-faint")}>
                       {resolvedTheme === "dark"
                         ? tr("now dark", "abhi tareek")
                         : tr("now light", "abhi roshan")}
@@ -189,10 +228,14 @@ export function AppearanceTab() {
 
       <Card
         title={tr("Text size", "Likhai ka size")}
-        description={tr(
-          "Scales the whole interface, not just this page. Remembered on this device.",
-          "Poora interface bara hota hai, sirf yeh safha nahi. Is device par yaad rakha jata hai.",
-        )}
+        description={
+          inConsole
+            ? tr("Scales the whole console, remembered on this device", "Poora console bara hota hai, is device par yaad rehta hai")
+            : tr(
+                "Scales the whole interface, not just this page. Remembered on this device.",
+                "Poora interface bara hota hai, sirf yeh safha nahi. Is device par yaad rakha jata hai.",
+              )
+        }
         icon="format_size"
       >
         <Segmented
@@ -208,7 +251,13 @@ export function AppearanceTab() {
           }))}
           className="w-full sm:w-auto"
         />
-        <p className="mt-4 rounded-xl border border-line bg-sunken/60 p-4 text-[15px] leading-relaxed text-muted">
+        <p
+          className={
+            inConsole
+              ? "mt-3.5 rounded-2xl border border-line bg-[var(--console-soft)] px-4 py-3.5 text-[0.875rem] text-strong"
+              : "mt-4 rounded-xl border border-line bg-sunken/60 p-4 text-[15px] leading-relaxed text-muted"
+          }
+        >
           {tr(
             "Blood pressure 128/82 mmHg, recorded 12 minutes ago. This is what body text will look like.",
             "Blood pressure 128/82 mmHg, 12 minute pehle record hua. Aam likhai aisi dikhegi.",
@@ -218,10 +267,17 @@ export function AppearanceTab() {
 
       <Card
         title={tr("Motion", "Harkat")}
-        description={tr(
-          "Your device may already ask for this; turning it on here also covers a shared terminal you cannot change the settings of.",
-          "Aap ka device shayad pehle hi yeh maang raha ho; yahan on karne se woh terminal bhi shamil ho jata hai jis ki settings aap nahi badal sakte.",
-        )}
+        description={
+          inConsole
+            ? tr(
+                "Covers a shared terminal you cannot change the settings of",
+                "Woh mushtarka terminal bhi jis ki settings aap nahi badal sakte",
+              )
+            : tr(
+                "Your device may already ask for this; turning it on here also covers a shared terminal you cannot change the settings of.",
+                "Aap ka device shayad pehle hi yeh maang raha ho; yahan on karne se woh terminal bhi shamil ho jata hai jis ki settings aap nahi badal sakte.",
+              )
+        }
         icon="animation"
       >
         <Switch
@@ -236,7 +292,9 @@ export function AppearanceTab() {
           }}
           label={tr("Reduce motion", "Harkat kam karein")}
           description={tr(
-            "Entrances, sliding indicators and the loading pulse stop moving. Nothing is hidden — only the movement goes.",
+            inConsole
+              ? "Entrances and sliding indicators stop moving. Nothing is hidden — only the movement goes."
+              : "Entrances, sliding indicators and the loading pulse stop moving. Nothing is hidden — only the movement goes.",
             "Entrance, sarakne wale indicators aur loading ki dhadkan ruk jati hain. Kuch chhupta nahi — sirf harkat jati hai.",
           )}
         />

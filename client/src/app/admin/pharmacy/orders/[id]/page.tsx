@@ -19,7 +19,7 @@ import { Art, ConsoleCard, ConsoleHeader, MedicinePack, StatusPill, consoleStamp
 import { Dialog } from "@/components/overlays";
 import { AdminOrderStatus } from "@/components/pharmacy/AdminTabs";
 import { STEP_LABEL, rupees } from "@/components/pharmacy/shared";
-import { Button, ErrorState, Field, Input, SkeletonRows, Textarea, cx } from "@/components/ui";
+import { Button, EmptyState, ErrorState, Field, Input, SkeletonRows, Textarea, cx } from "@/components/ui";
 import { ApiError, pharmacy, type Order } from "@/lib/api";
 import { useTr } from "@/lib/lang";
 import { useAsync } from "@/lib/useAsync";
@@ -61,6 +61,28 @@ export default function AdminOrder() {
           <div className="mt-4">
             <SkeletonRows rows={4} />
           </div>
+        ) : order.error?.status === 404 ? (
+          <section
+            aria-label={tr("Not found", "Nahi mila")}
+            className="mt-4 rounded-3xl border border-line bg-card py-1 shadow-card"
+          >
+            <EmptyState
+              icon="search"
+              title={tr("There is no such order", "Aisa koi order nahi")}
+              description={tr(
+                "The link may be wrong, or the order was never placed. Orders are never deleted, so search will find it if it exists.",
+                "Link ghalat ho sakta hai, ya order kabhi diya hi nahi gaya. Orders kabhi delete nahi hote, is liye agar mojood hai to search mil jayega.",
+              )}
+              action={
+                <Link
+                  href="/admin/pharmacy/orders"
+                  className="inline-flex h-10 items-center rounded-full bg-[#0B3FA8] px-[18px] text-[13.5px] font-semibold text-white shadow-[0_10px_22px_-12px_rgba(11,63,168,0.8)] hover:bg-[#0A3796] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:bg-[#3B6FE0] dark:hover:bg-[#4A7BEA]"
+                >
+                  {tr("All orders", "Tamam orders")}
+                </Link>
+              }
+            />
+          </section>
         ) : order.error ? (
           <div className="mt-4">
             <ErrorState message={order.error.message} onRetry={order.reload} />
@@ -239,7 +261,7 @@ function Progress({ order }: { order: Order }) {
                       : step.done
                         ? "bg-[#0B3FA8] text-white dark:bg-[#3B6FE0]"
                         : now
-                          ? "bg-card text-primary ring-2 ring-[#0B3FA8] ring-inset outline-4 outline-pastel-sky dark:ring-[#7DA2FF]"
+                          ? "bg-card text-primary ring-2 ring-[#0B3FA8] ring-inset outline-4 outline-pastel-sky dark:ring-[#3B6FE0]"
                           : "bg-card text-faint ring-2 ring-line-strong ring-inset",
                   )}
                 >
@@ -537,7 +559,13 @@ function NextStep({ order, onChanged }: { order: Order; onChanged: () => void })
             </datalist>
           </Field>
           <Field label={tr("Tracking number (optional)", "Tracking number (ikhtiyari)")} htmlFor="tracking">
-            <Input id="tracking" value={tracking} maxLength={80} onChange={(event) => setTracking(event.target.value)} />
+            <Input
+              id="tracking"
+              value={tracking}
+              maxLength={80}
+              placeholder={tr("Shown to the patient on their order", "Mareez ko un ke order par dikhta hai")}
+              onChange={(event) => setTracking(event.target.value)}
+            />
           </Field>
         </div>
       </Dialog>

@@ -23,15 +23,24 @@
  * off stops this one.
  */
 
-import { useState } from "react";
+import { useContext, useState } from "react";
 
 import { Icon } from "@/components/Icon";
-import { Card, cx } from "@/components/ui";
+import { Card, ConsoleSurface, cx } from "@/components/ui";
 import { notificationChannels, type NotificationChannels as Channels } from "@/lib/api";
 import { useTr } from "@/lib/lang";
 import { useAsync } from "@/lib/useAsync";
 
 /** How the server spells a type, and how a person would say it. */
+/** The console's own words: an administrator is told about a record, not "your record". */
+const CONSOLE_ALWAYS_LABELS: Record<string, [string, string]> = {
+  EMERGENCY_ACCESS: ["a record opened in an emergency", "emergency mein khola gaya record"],
+  ACCOUNT_SECURITY: [
+    "a change to your account's security",
+    "aap ke account ki hifazat mein tabdeeli",
+  ],
+};
+
 const ALWAYS_LABELS: Record<string, [string, string]> = {
   EMERGENCY_ACCESS: [
     "your record being opened in an emergency",
@@ -60,19 +69,23 @@ function Switch({
   busy: boolean;
   onChange: (next: boolean) => void;
 }) {
+  const inConsole = useContext(ConsoleSurface);
   return (
-    <div className="flex items-start gap-4 px-6 py-4">
+    <div className={inConsole ? "flex items-center gap-3.5 px-[22px] py-3.5" : "flex items-start gap-4 px-6 py-4"}>
       <span
         aria-hidden
-        className="bg-gradient-soft grid h-10 w-10 shrink-0 place-items-center rounded-xl text-primary"
+        className={cx(
+          "grid shrink-0 place-items-center text-primary",
+          inConsole ? "h-9 w-9 rounded-xl bg-sunken" : "bg-gradient-soft h-10 w-10 rounded-xl",
+        )}
       >
-        <Icon name={icon} className="text-[20px]" />
+        <Icon name={icon} className={inConsole ? "text-[17px]" : "text-[20px]"} />
       </span>
       <div className="min-w-0 flex-1">
-        <label htmlFor={id} className="text-[0.9375rem] font-semibold text-strong">
+        <label htmlFor={id} className={cx("font-semibold text-strong", inConsole ? "text-[14px]" : "text-[0.9375rem]")}>
           {label}
         </label>
-        <p className="mt-0.5 text-sm leading-relaxed text-muted">{description}</p>
+        <p className={inConsole ? "mt-0.5 text-[12.5px] text-muted" : "mt-0.5 text-sm leading-relaxed text-muted"}>{description}</p>
       </div>
       <button
         id={id}
@@ -82,20 +95,23 @@ function Switch({
         disabled={busy}
         onClick={() => onChange(!checked)}
         className={cx(
-          "relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors",
+          "relative shrink-0 rounded-full transition-colors",
+          inConsole ? "h-7 w-[46px]" : "mt-0.5 h-6 w-11",
           // The visual track stays switch-sized; the hit area is extended so a
           // thumb has 44px to aim at without the control looking wrong.
           "before:absolute before:-inset-2.5 before:content-['']",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
           "disabled:opacity-60",
-          checked ? "bg-primary" : "bg-line-strong",
+          checked ? (inConsole ? "bg-[#0B3FA8] dark:bg-[#3B6FE0]" : "bg-primary") : "bg-line-strong",
         )}
       >
         <span
           aria-hidden
           className={cx(
-            "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-[left] duration-200",
-            checked ? "left-[1.375rem]" : "left-0.5",
+            "absolute rounded-full bg-white transition-[left] duration-200",
+            inConsole
+              ? cx("top-[3px] h-[22px] w-[22px] shadow-[0_1px_3px_rgba(0,0,0,0.25)]", checked ? "left-[21px]" : "left-[3px]")
+              : cx("top-0.5 h-5 w-5 shadow-sm", checked ? "left-[1.375rem]" : "left-0.5"),
           )}
         />
       </button>
@@ -105,6 +121,7 @@ function Switch({
 
 export function NotificationChannels() {
   const tr = useTr();
+  const inConsole = useContext(ConsoleSurface);
   const server = useAsync(() => notificationChannels.get(), [], { live: false });
 
   /** What the last press set, which is newer than the fetch. */
@@ -133,29 +150,43 @@ export function NotificationChannels() {
   };
 
   const always = channels.alwaysSent
-    .map((kind) => ALWAYS_LABELS[kind])
+    .map((kind) => (inConsole ? CONSOLE_ALWAYS_LABELS : ALWAYS_LABELS)[kind])
     .filter(Boolean)
     .map((pair) => tr(...pair));
 
   return (
     <Card
       title={tr("Where notifications go", "Notifications kahan jate hain")}
-      description={tr(
-        "Everything is always listed in the portal. These decide what else it reaches.",
-        "Har cheez portal mein hamesha darj hoti hai. Yeh tay karta hai ke aur kahan pohanche.",
-      )}
+      description={
+        inConsole
+          ? tr(
+              "Everything is always listed in the console; these decide what else it reaches",
+              "Har cheez console mein hamesha darj hoti hai; yeh tay karte hain ke aur kahan pohanche",
+            )
+          : tr(
+              "Everything is always listed in the portal. These decide what else it reaches.",
+              "Har cheez portal mein hamesha darj hoti hai. Yeh tay karta hai ke aur kahan pohanche.",
+            )
+      }
       icon="tune"
       flush
     >
-      <div className="divide-y divide-line">
+      <div className={cx("divide-y divide-line", inConsole && "border-t border-line")}>
         <Switch
           id="notify-push"
           icon="notifications_active"
           label={tr("On your devices", "Aap ke devices par")}
-          description={tr(
-            "Everything the system tells you — a dose that is due, an appointment, a new report, a bill.",
-            "Jo kuch bhi system aap ko batata hai — dawa ka waqt, appointment, nayi report, bill.",
-          )}
+          description={
+            inConsole
+              ? tr(
+                  "Everything the system tells you — a new grant, an order, a payment to confirm.",
+                  "Jo kuch bhi system aap ko batata hai — naya grant, order, tasdeeq ke liye payment.",
+                )
+              : tr(
+                  "Everything the system tells you — a dose that is due, an appointment, a new report, a bill.",
+                  "Jo kuch bhi system aap ko batata hai — dawa ka waqt, appointment, nayi report, bill.",
+                )
+          }
           checked={channels.notifyByPush}
           busy={busy}
           onChange={(next) => void change({ notifyByPush: next })}
@@ -164,17 +195,34 @@ export function NotificationChannels() {
           id="notify-email"
           icon="mail"
           label={tr("By email", "Email se")}
-          description={tr(
-            "Only what you may need without the app open, or months later: appointments, bills, your record being opened.",
-            "Sirf woh jo app khole baghair — ya maheenon baad — darkar ho: appointments, bills, aap ka record khulna.",
-          )}
+          description={
+            inConsole
+              ? tr(
+                  "Only what you may need without the console open: security, emergency access, payouts.",
+                  "Sirf woh jo console khole baghair darkar ho: security, emergency access, payouts.",
+                )
+              : tr(
+                  "Only what you may need without the app open, or months later: appointments, bills, your record being opened.",
+                  "Sirf woh jo app khole baghair — ya maheenon baad — darkar ho: appointments, bills, aap ka record khulna.",
+                )
+          }
           checked={channels.notifyByEmail}
           busy={busy}
           onChange={(next) => void change({ notifyByEmail: next })}
         />
       </div>
 
-      {always.length > 0 && (
+      {always.length > 0 && inConsole && (
+        <p className="flex items-start gap-2 border-t border-line px-[22px] py-3 text-[13px] text-muted">
+          <Icon name="shield" className="mt-px shrink-0 text-[15px] text-primary" />
+          <span>
+            <strong className="font-semibold text-strong">{tr("Two things always arrive:", "Do cheezein hamesha pohanchti hain:")}</strong>{" "}
+            {always.join(tr(", and ", ", aur "))}.
+          </span>
+        </p>
+      )}
+
+      {always.length > 0 && !inConsole && (
         <div className="border-t border-line px-6 py-4">
           <p className="flex items-start gap-2.5 text-sm leading-relaxed text-muted">
             <Icon name="shield_person" className="mt-0.5 shrink-0 text-[18px] text-primary" />

@@ -11,7 +11,7 @@
  */
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useContext, useState, type FormEvent, type ReactNode } from "react";
 
 import { Icon } from "@/components/Icon";
 import { PasswordStrength } from "@/components/forms";
@@ -24,6 +24,7 @@ import {
   Badge,
   Button,
   Card,
+  ConsoleSurface,
   EmptyState,
   ErrorState,
   Field,
@@ -106,6 +107,7 @@ function Async<T>({
 function PasswordCard() {
   const tr = useTr();
   const toast = useToast();
+  const inConsole = useContext(ConsoleSurface);
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -156,7 +158,7 @@ function PasswordCard() {
       )}
       icon="key"
     >
-      <form onSubmit={(event) => void submit(event)} className="max-w-md space-y-4">
+      <form onSubmit={(event) => void submit(event)} className={cx("space-y-4", inConsole ? "max-w-[404px]" : "max-w-md")}>
         <Field label={tr("Current password", "Mojooda password")} htmlFor="current-password">
           <Input
             id="current-password"
@@ -255,7 +257,9 @@ function statusChip(status: TwoFactorStatus, tr: Tr) {
 function TwoFactorCard() {
   const tr = useTr();
   const toast = useToast();
+  const inConsole = useContext(ConsoleSurface);
   const state = useAsync(() => account.twoFactor(), []);
+  const headChip = inConsole && state.data ? statusChip(state.data, tr) : null;
   const [enabling, setEnabling] = useState(false);
   const [disabling, setDisabling] = useState(false);
   const [forgetting, setForgetting] = useState(false);
@@ -295,24 +299,34 @@ function TwoFactorCard() {
         "Password ke baad doosra qadam, taake leak hua password akela raasta na bane.",
       )}
       icon="encrypted"
+      action={
+        headChip ? (
+          <Badge tone={headChip.tone}>
+            <span aria-hidden className="h-[7px] w-[7px] shrink-0 rounded-full bg-current" />
+            {headChip.text}
+          </Badge>
+        ) : undefined
+      }
     >
       <Async state={state} what={tr("Two-factor sign-in", "Two-factor sign-in")}>
         {(status) => {
           const chip = statusChip(status, tr);
           return (
-            <div className="space-y-5">
-              <div className="flex flex-wrap items-center gap-3">
-                <Badge tone={chip.tone}>
-                  <Icon name={chip.icon} className="text-[14px]" />
-                  {chip.text}
-                </Badge>
+            <div className={inConsole ? "space-y-3.5" : "space-y-5"}>
+              <div className={cx("flex flex-wrap items-center", inConsole ? "gap-2.5" : "gap-3")}>
+                {!inConsole && (
+                  <Badge tone={chip.tone}>
+                    <Icon name={chip.icon} className="text-[14px]" />
+                    {chip.text}
+                  </Badge>
+                )}
                 {status.enabled && (
-                  <span className="text-sm text-muted">
+                  <span className={cx("text-sm text-muted", inConsole && "order-last text-[12.5px]")}>
                     {status.backupCodesRemaining}{" "}
                     {tr("backup codes left", "backup codes bache hain")}
                   </span>
                 )}
-                <div className="ml-auto">
+                <div className={inConsole ? undefined : "ml-auto"}>
                   {status.enabled ? (
                     <Button
                       variant="secondary"
@@ -349,12 +363,17 @@ function TwoFactorCard() {
                 </p>
               )}
 
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-sunken/60 p-4">
-                <div className="min-w-0">
-                  <p className="text-[0.9375rem] font-semibold text-strong">
+              <div
+                className={cx(
+                  "flex flex-wrap items-center justify-between gap-3 border border-line",
+                  inConsole ? "rounded-2xl bg-[var(--console-soft)] px-4 py-3.5" : "rounded-xl bg-sunken/60 p-4",
+                )}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className={cx("font-semibold text-strong", inConsole ? "text-[14px]" : "text-[0.9375rem]")}>
                     {tr("Remembered devices", "Yaad rakhe hue devices")}
                   </p>
-                  <p className="mt-0.5 text-sm text-muted">
+                  <p className={cx("mt-0.5 text-muted", inConsole ? "text-[12.5px]" : "text-sm")}>
                     {status.trustedDevices === 0
                       ? tr(
                           "None. Every sign-in asks for the second step.",
@@ -368,6 +387,7 @@ function TwoFactorCard() {
                 </div>
                 <Button
                   variant="secondary"
+                  size={inConsole ? "sm" : "md"}
                   onClick={() => void forget()}
                   loading={forgetting}
                   disabled={status.trustedDevices === 0}
@@ -475,6 +495,7 @@ const DEVICE_CLASS_LABEL: Record<ActiveSession["deviceClass"], [string, string]>
 function SessionsCard() {
   const tr = useTr();
   const toast = useToast();
+  const inConsole = useContext(ConsoleSurface);
   const state = useAsync(() => account.sessions(), []);
   const [revoking, setRevoking] = useState<string | null>(null);
   /**
@@ -509,14 +530,18 @@ function SessionsCard() {
   return (
     <Card
       title={tr("Where you are signed in", "Aap kahan kahan signed in hain")}
-      description={tr(
-        "Every browser holding a live session. Anything you do not recognise should go.",
-        "Har browser jis ka session abhi chal raha hai. Jo pehchaan mein na aaye, usay hata dein.",
-      )}
+      description={
+        inConsole
+          ? tr("Signing one out ends it at once", "Kisi ko sign out karna usay foran khatam kar deta hai")
+          : tr(
+              "Every browser holding a live session. Anything you do not recognise should go.",
+              "Har browser jis ka session abhi chal raha hai. Jo pehchaan mein na aaye, usay hata dein.",
+            )
+      }
       icon="devices"
       flush
     >
-      <div className="p-6">
+      <div className={inConsole ? "px-[22px] pb-3.5" : "p-6"}>
         <Async state={state} what={tr("Active sessions", "Chalte hue sessions")}>
           {(all) => {
             const sessions = all.filter((session) => !gone.includes(session.id));
@@ -542,30 +567,45 @@ function SessionsCard() {
                           : { opacity: 0, height: 0, paddingTop: 0, paddingBottom: 0, overflow: "hidden" }
                       }
                       transition={{ ...TRANSITION.base, layout: SPRING }}
-                      className="flex flex-wrap items-center gap-4 py-4 first:pt-0 last:pb-0"
+                      className={
+                        inConsole
+                          ? "flex flex-wrap items-center gap-3 border-t border-line py-3"
+                          : "flex flex-wrap items-center gap-4 py-4 first:pt-0 last:pb-0"
+                      }
                     >
                       <span
                         aria-hidden
                         className={cx(
-                          "grid h-11 w-11 shrink-0 place-items-center rounded-xl",
-                          session.current ? "bg-gradient-brand text-white" : "bg-sunken text-muted",
+                          "grid shrink-0 place-items-center",
+                          inConsole
+                            ? "h-9 w-9 rounded-xl bg-sunken text-primary"
+                            : cx("h-11 w-11 rounded-xl", session.current ? "bg-gradient-brand text-white" : "bg-sunken text-muted"),
                         )}
                       >
-                        <Icon name={deviceIcon(session)} filled={session.current} className="text-[22px]" />
+                        <Icon
+                          name={deviceIcon(session)}
+                          filled={session.current && !inConsole}
+                          className={inConsole ? "text-[17px]" : "text-[22px]"}
+                        />
                       </span>
 
                       <div className="min-w-0 flex-1">
-                        <p className="flex flex-wrap items-center gap-2 text-[0.9375rem] font-semibold text-strong">
+                        <p
+                          className={cx(
+                            "flex flex-wrap items-center gap-2 font-semibold text-strong",
+                            inConsole ? "text-[13.5px]" : "text-[0.9375rem]",
+                          )}
+                        >
                           {deviceName(session.userAgent, tr)}
-                          {session.current && (
+                          {session.current && !inConsole && (
                             <Badge tone="good">
                               <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-stable" />
                               {tr("This device", "Yehi device")}
                             </Badge>
                           )}
                         </p>
-                        <p className="mt-0.5 text-sm text-muted">
-                          <span className="mono-caps text-[0.68rem] text-faint">
+                        <p className={cx("mt-0.5 text-muted", inConsole ? "text-[12.5px] tabular-nums" : "text-sm")}>
+                          <span className={inConsole ? undefined : "mono-caps text-[0.68rem] text-faint"}>
                             {tr(...DEVICE_CLASS_LABEL[session.deviceClass])}
                           </span>
                           {" · "}
@@ -575,16 +615,25 @@ function SessionsCard() {
                       </div>
 
                       {session.current ? (
-                        <span className="text-sm text-faint">
-                          {tr("Sign out from the menu", "Menu se sign out karein")}
-                        </span>
+                        inConsole ? (
+                          <Badge tone="good">
+                            <span aria-hidden className="h-[7px] w-[7px] shrink-0 rounded-full bg-current" />
+                            {tr("This device", "Yehi device")}
+                          </Badge>
+                        ) : (
+                          <span className="text-sm text-faint">
+                            {tr("Sign out from the menu", "Menu se sign out karein")}
+                          </span>
+                        )
                       ) : (
                         <Button
                           variant="secondary"
+                          size={inConsole ? "sm" : "md"}
                           onClick={() => void revoke(session)}
                           loading={revoking === session.id}
+                          aria-label={inConsole ? tr("Sign out this device", "Is device ko sign out karein") : undefined}
                         >
-                          {tr("Sign out this device", "Is device ko sign out karein")}
+                          {inConsole ? tr("Sign out", "Sign out") : tr("Sign out this device", "Is device ko sign out karein")}
                         </Button>
                       )}
                     </motion.li>
@@ -600,8 +649,9 @@ function SessionsCard() {
 }
 
 export function SecurityTab() {
+  const inConsole = useContext(ConsoleSurface);
   return (
-    <div className="space-y-6">
+    <div className={inConsole ? "flex max-w-[860px] flex-col gap-[22px]" : "space-y-6"}>
       <PasswordCard />
       <TwoFactorCard />
       <SessionsCard />

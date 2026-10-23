@@ -9,7 +9,8 @@
  * Printing keeps only the invoice; see `.invoice-print` in globals.css.
  */
 
-import { AdminActions, InvoiceDetail, PrintHeader, STATUS_LABEL } from "@/components/billing";
+import { StatusPill, consoleDay } from "@/components/admin/console";
+import { AdminActions, InvoiceDetail, PrintHeader, STATUS_LABEL, STATUS_TONE } from "@/components/billing";
 import { Icon } from "@/components/Icon";
 import { Drawer } from "@/components/overlays";
 import { Button } from "@/components/ui";
@@ -52,24 +53,29 @@ export function InvoiceDrawer({
       open={invoice !== null}
       onClose={onClose}
       title={invoice?.invoiceNumber ?? ""}
-      description={
-        invoice
-          ? [invoice.patientName, invoice.medicalRecordNumber, tr(...STATUS_LABEL[invoice.status])].filter(Boolean).join(" · ")
-          : undefined
-      }
-      width={600}
+      description={invoice ? [invoice.patientName, invoice.medicalRecordNumber].filter(Boolean).join(" · ") : undefined}
+      width={560}
+      monoTitle
       footer={
         invoice ? (
-          <Button variant="ghost" onClick={() => window.print()}>
-            <Icon name="print" className="text-[18px]" />
-            {tr("Print", "Print karein")}
-          </Button>
+          <span className="flex w-full justify-end">
+            <Button variant="ghost" size="sm" onClick={() => window.print()}>
+              <Icon name="print" className="text-[15px]" />
+              {tr("Print", "Print karein")}
+            </Button>
+          </span>
         ) : undefined
       }
     >
       {invoice && (
         <div className="invoice-print">
           <PrintHeader invoice={invoice} />
+          <span className="no-print mb-[18px] inline-flex">
+            <StatusPill dot tone={STATUS_TONE[invoice.status]}>
+              {tr(...STATUS_LABEL[invoice.status])}
+              {invoice.status === "PAID" && invoice.paidAt ? ` ${tr("on", "")} ${consoleDay(invoice.paidAt)}` : ""}
+            </StatusPill>
+          </span>
           <InvoiceDetail invoice={invoice} />
           {onChanged && (
             <div className="no-print">

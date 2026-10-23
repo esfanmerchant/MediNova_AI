@@ -27,7 +27,6 @@ import { useAsync, QUEUE_REFRESH_MS } from "@/lib/useAsync";
 const APPOINTMENTS_PATH: Partial<Record<Role, string>> = {
   PATIENT: "/patient/appointments",
   DOCTOR: "/doctor/appointments",
-  ADMIN: "/admin/appointments",
 };
 
 /** Where each role chooses what reaches it — the settings page's notifications tab. */
@@ -77,6 +76,9 @@ const TONE = {
   plain: "bg-gradient-brand text-white shadow-sm",
   read: "bg-sunken text-faint",
 } as const;
+
+/** The console's tiles are soft: a navy mark on the info ground, never the gradient. */
+const CONSOLE_TONE = { ...TONE, plain: "bg-info-soft text-primary" } as const;
 
 export function NotificationBell({ role }: { role: Role }) {
   const tr = useTr();
@@ -200,15 +202,24 @@ export function NotificationBell({ role }: { role: Role }) {
               "sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-[25rem]",
             )}
           >
-            <div className="flex items-center gap-2 px-5 pt-4 pb-2">
+            <div className={cx("flex items-center gap-2 pt-4 pb-2 pl-5", inConsole ? "pr-[18px]" : "pr-5")}>
               <p className="font-display text-lg font-bold text-strong">{tr("Notifications", "Ittilaat")}</p>
               {unread > 0 && (
-                <span className="rounded-full bg-critical-soft px-2 py-px text-xs font-bold tabular-nums text-critical">
+                <span
+                  className={cx(
+                    "rounded-full bg-critical-soft tabular-nums text-critical",
+                    inConsole ? "inline-flex h-6 items-center px-[9px] text-[12px] font-semibold" : "px-2 py-px text-xs font-bold",
+                  )}
+                >
                   {tr(`${unread} new`, `${unread} naye`)}
                 </span>
               )}
               {unread > 0 && (
-                <Button variant="ghost" className="ml-auto !min-h-9 px-2 text-sm" onClick={() => void markAll()}>
+                <Button
+                  variant="ghost"
+                  className={cx("ml-auto", inConsole ? "!min-h-8 h-8 px-[13px] text-[12.5px]" : "!min-h-9 px-2 text-sm")}
+                  onClick={() => void markAll()}
+                >
                   {tr("Mark all read", "Sab parh liye")}
                 </Button>
               )}
@@ -226,13 +237,21 @@ export function NotificationBell({ role }: { role: Role }) {
                   aria-selected={unreadOnly === tab.key}
                   onClick={() => setUnreadOnly(tab.key)}
                   className={cx(
-                    "-mb-px inline-flex min-h-10 items-center gap-1.5 border-b-2 px-2 text-sm font-semibold transition-colors",
+                    "-mb-px inline-flex min-h-10 items-center gap-1.5 border-b-2 px-2 font-semibold transition-colors",
+                    inConsole ? "text-[13.5px]" : "text-sm",
                     "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary",
                     unreadOnly === tab.key ? "border-strong text-strong" : "border-transparent text-muted hover:text-strong",
                   )}
                 >
                   {tab.label}
-                  <span className="rounded-full bg-sunken px-1.5 text-[11px] font-bold tabular-nums text-muted">{tab.count}</span>
+                  <span
+                    className={cx(
+                      "rounded-full bg-sunken text-[11px] tabular-nums text-muted",
+                      inConsole ? "px-[7px] py-px font-mono font-semibold" : "px-1.5 font-bold",
+                    )}
+                  >
+                    {tab.count}
+                  </span>
                 </button>
               ))}
             </div>
@@ -254,31 +273,60 @@ export function NotificationBell({ role }: { role: Role }) {
               )}
               {groups.map((group) => (
                 <section key={group.label} aria-label={group.label}>
-                  <p className="mono-caps px-5 pt-3 pb-1 text-[0.66rem] text-faint">{group.label}</p>
+                  <p
+                    className={
+                      inConsole
+                        ? "px-5 pt-3 pb-1 font-mono text-[10.5px] tracking-[0.14em] text-faint uppercase"
+                        : "mono-caps px-5 pt-3 pb-1 text-[0.66rem] text-faint"
+                    }
+                  >
+                    {group.label}
+                  </p>
                   <ul>
                     {group.items.map((item, index) => {
+                      const tones = inConsole ? CONSOLE_TONE : TONE;
                       const tone = item.readAt
-                        ? TONE.read
+                        ? tones.read
                         : item.priority >= 2
-                          ? TONE.urgent
+                          ? tones.urgent
                           : item.priority === 1
-                            ? TONE.soon
-                            : TONE.plain;
+                            ? tones.soon
+                            : tones.plain;
                       const body = (
                         <>
-                          <span aria-hidden className={cx("mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl", tone)}>
-                            <Icon name={iconFor(item.type)} className="text-[19px]" />
+                          <span
+                            aria-hidden
+                            className={cx(
+                              "grid h-9 w-9 shrink-0 place-items-center rounded-xl",
+                              inConsole ? "mt-px" : "mt-0.5",
+                              tone,
+                            )}
+                          >
+                            <Icon name={iconFor(item.type)} className={inConsole ? "text-[17px]" : "text-[19px]"} />
                           </span>
                           <span className="min-w-0 flex-1">
                             <span className="flex items-baseline justify-between gap-2">
-                              <span className={cx("text-sm text-strong", item.readAt ? "font-medium" : "font-semibold")}>{item.title}</span>
+                              <span
+                                className={cx(
+                                  "text-strong",
+                                  inConsole ? "text-[13.5px]" : "text-sm",
+                                  item.readAt ? "font-medium" : "font-semibold",
+                                )}
+                              >
+                                {item.title}
+                              </span>
                               <span className="shrink-0 text-[11.5px] text-faint tabular-nums">{timeAgo(item.createdAt, urdu)}</span>
                             </span>
-                            <span className="mt-0.5 block text-[13px] text-muted">{item.body}</span>
+                            <span className={cx("block text-muted", inConsole ? "mt-0.5 text-[12.5px] leading-[1.45]" : "mt-0.5 text-[13px]")}>
+                              {item.body}
+                            </span>
                           </span>
-                          {!item.readAt && <span aria-hidden className="mt-2 h-2 w-2 shrink-0 rounded-full bg-primary" />}
+                          {!item.readAt && (
+                            <span aria-hidden className={cx("h-2 w-2 shrink-0 rounded-full bg-primary", inConsole ? "mt-[7px]" : "mt-2")} />
+                          )}
                         </>
                       );
+                      const rowPad = inConsole ? "gap-3 px-5 py-2.5" : "gap-3 px-5 py-3";
                       return (
                         <motion.li
                           key={item.id}
@@ -293,7 +341,10 @@ export function NotificationBell({ role }: { role: Role }) {
                                 markRead(item);
                                 setOpen(false);
                               }}
-                              className="flex items-start gap-3 px-5 py-3 transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
+                              className={cx(
+                                "flex items-start transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary",
+                                rowPad,
+                              )}
                             >
                               {body}
                             </Link>
@@ -302,7 +353,10 @@ export function NotificationBell({ role }: { role: Role }) {
                               type="button"
                               onClick={() => markRead(item)}
                               aria-label={item.readAt ? undefined : `${item.title} — ${tr("mark read", "parh liya")}`}
-                              className="flex w-full items-start gap-3 px-5 py-3 text-left transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
+                              className={cx(
+                                "flex w-full items-start text-left transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary",
+                                rowPad,
+                              )}
                             >
                               {body}
                             </button>
@@ -315,15 +369,32 @@ export function NotificationBell({ role }: { role: Role }) {
               ))}
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-5 py-3">
+            <div
+              className={cx(
+                "flex flex-wrap items-center justify-between gap-2 border-t border-line",
+                inConsole ? "px-[22px] py-3" : "px-5 py-3",
+              )}
+            >
               {PREFERENCES_PATH[role] && (
                 <Link
                   href={PREFERENCES_PATH[role]}
                   onClick={() => setOpen(false)}
-                  className="inline-flex items-center gap-1.5 text-sm font-semibold text-muted hover:text-strong hover:underline"
+                  className={cx(
+                    "inline-flex items-center gap-1.5 font-semibold text-muted hover:text-strong hover:underline",
+                    inConsole ? "text-[12.5px]" : "text-sm",
+                  )}
                 >
-                  <Icon name="tune" className="text-[17px]" />
+                  <Icon name="tune" className={inConsole ? "text-[15px]" : "text-[17px]"} />
                   {tr("Choose what reaches you", "Chunein kya aap tak pahunche")}
+                </Link>
+              )}
+              {role === "ADMIN" && (
+                <Link
+                  href="/admin/audit"
+                  onClick={() => setOpen(false)}
+                  className="text-[12.5px] font-semibold text-primary hover:underline"
+                >
+                  {tr("Audit trail →", "Audit trail →")}
                 </Link>
               )}
               {APPOINTMENTS_PATH[role] && (

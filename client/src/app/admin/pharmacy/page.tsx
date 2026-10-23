@@ -37,7 +37,7 @@ import { PAGE_REFRESH_MS, useAsync } from "@/lib/useAsync";
 const COLUMNS: Array<{ status: OrderStatus; label: [string, string]; dot: string; empty: [string, string] }> = [
   { status: "PENDING_RX", label: ["Prescription", "Nuskha"], dot: "bg-[#8B5CF6]", empty: ["None waiting", "Koi nahi"] },
   { status: "AWAITING_PAYMENT", label: ["Awaiting payment", "Payment baqi"], dot: "bg-[#F59E0B]", empty: ["All paid", "Sab ada"] },
-  { status: "CONFIRMED", label: ["To pack", "Pack karna"], dot: "bg-[#0B3FA8] dark:bg-[#7DA2FF]", empty: ["Nothing to pack", "Pack ko kuchh nahi"] },
+  { status: "CONFIRMED", label: ["To pack", "Pack karna"], dot: "bg-[#0B3FA8] dark:bg-[#86ABFF]", empty: ["Nothing to pack", "Pack ko kuchh nahi"] },
   { status: "PACKED", label: ["To dispatch", "Bhejna"], dot: "bg-[#0E7490] dark:bg-[#5FD3E8]", empty: ["Nothing to send", "Bhejne ko kuchh nahi"] },
   { status: "DISPATCHED", label: ["On the way", "Raste mein"], dot: "bg-[#0F766E] dark:bg-[#5EEAD4]", empty: ["None out", "Koi raste mein nahi"] },
 ];

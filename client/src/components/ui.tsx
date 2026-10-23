@@ -159,7 +159,7 @@ export function Card({
         <header
           className={cx(
             "flex flex-wrap items-center gap-3",
-            inConsole ? "px-5 pt-5 pb-3 sm:px-6" : "border-b border-line px-6 py-5",
+            inConsole ? "px-[22px] pt-[18px] pb-3" : "border-b border-line px-6 py-5",
           )}
         >
           {icon && (
@@ -167,22 +167,22 @@ export function Card({
               aria-hidden
               className={cx(
                 "grid shrink-0 place-items-center text-primary",
-                inConsole ? "h-10 w-10 rounded-2xl bg-sunken" : "bg-gradient-soft h-11 w-11 rounded-xl",
+                inConsole ? "h-[38px] w-[38px] rounded-[13px] bg-sunken" : "bg-gradient-soft h-11 w-11 rounded-xl",
               )}
             >
-              <Icon name={icon} className={inConsole ? "text-[20px]" : "text-[22px]"} />
+              <Icon name={icon} className={inConsole ? "text-[19px]" : "text-[22px]"} />
             </span>
           )}
           <div className="min-w-0">
             {title && (
-              <h2 className={cx("font-display font-bold text-strong", inConsole ? "text-[1.05rem]" : "text-lg")}>{title}</h2>
+              <h2 className={cx("font-display font-bold text-strong", inConsole ? "text-[16px]" : "text-lg")}>{title}</h2>
             )}
-            {description && <p className={cx("text-muted", inConsole ? "mt-0.5 text-[13px]" : "mt-1 text-sm")}>{description}</p>}
+            {description && <p className={cx("text-muted", inConsole ? "text-[12.5px]" : "mt-1 text-sm")}>{description}</p>}
           </div>
           {action && <div className="ml-auto">{action}</div>}
         </header>
       )}
-      <div className={flush ? undefined : inConsole && (title || action) ? "px-5 pt-2 pb-5 sm:px-6" : "p-6"}>{children}</div>
+      <div className={flush ? undefined : inConsole && (title || action) ? "px-[22px] pt-1 pb-[22px]" : "p-6"}>{children}</div>
     </section>
   );
 }
@@ -784,7 +784,10 @@ export function Select({
       </select>
       <Icon
         name="expand_more"
-        className="select-chevron pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[22px] text-muted"
+        className={cx(
+          "select-chevron pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted",
+          inConsole ? "right-3.5 text-[18px]" : "right-3 text-[22px]",
+        )}
       />
     </span>
   );
@@ -1016,6 +1019,19 @@ export function EmptyState({
   icon?: string;
   action?: ReactNode;
 }) {
+  const inConsole = useContext(ConsoleSurface);
+  if (inConsole) {
+    return (
+      <div className="flex flex-col items-center gap-2 px-6 py-[30px] text-center">
+        <span aria-hidden className="grid h-14 w-14 place-items-center rounded-[18px] bg-sunken text-primary">
+          <Icon name={icon} className="text-[26px]" />
+        </span>
+        <p className="font-display text-[17px] font-bold text-strong">{title}</p>
+        {description && <p className="max-w-[52ch] text-[13.5px] text-muted">{description}</p>}
+        {action && <div className="mt-2 flex justify-center">{action}</div>}
+      </div>
+    );
+  }
   return (
     <div className="py-12 text-center">
       <span
@@ -1043,6 +1059,35 @@ export function ErrorState({
   onRetry?: () => void;
 }) {
   const tr = useTr();
+  const inConsole = useContext(ConsoleSurface);
+  if (inConsole) {
+    return (
+      <div role="alert" className="flex gap-3.5 rounded-3xl border border-critical/35 bg-critical-soft px-5 py-[18px]">
+        <span aria-hidden className="grid h-[38px] w-[38px] shrink-0 place-items-center rounded-xl bg-card text-critical">
+          <Icon name="error" className="text-[19px]" />
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <p className="font-semibold text-critical">{title ?? tr("Something went wrong", "Kuchh ghalat ho gaya")}</p>
+          <p className="text-[13.5px] text-strong">{message}</p>
+          {onRetry && (
+            <p className="text-[12.5px] text-muted">
+              {tr(
+                "Nothing you did was lost. This usually clears within a minute.",
+                "Aap ka kuchh zaya nahi hua. Yeh aksar ek minute mein theek ho jaata hai.",
+              )}
+            </p>
+          )}
+          {onRetry && (
+            <span className="mt-2">
+              <Button variant="secondary" size="sm" onClick={onRetry}>
+                {tr("Try again", "Dobara koshish karein")}
+              </Button>
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
   return (
     <div role="alert" className="flex gap-3 rounded-2xl border border-critical/40 bg-critical-soft p-5">
       <Icon name="error" filled className="mt-0.5 shrink-0 text-[24px] text-critical" />

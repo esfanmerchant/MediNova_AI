@@ -62,6 +62,7 @@ export function OtpInput({
   const boxes = useRef<(HTMLInputElement | null)[]>([]);
   const digits = value.padEnd(length, " ").slice(0, length).split("");
   const groupId = useId();
+  const inConsole = useContext(ConsoleSurface);
 
   useEffect(() => {
     if (autoFocus) boxes.current[0]?.focus();
@@ -113,7 +114,7 @@ export function OtpInput({
     <div
       role="group"
       aria-label={label}
-      className={cx("flex justify-center gap-2 sm:gap-3", invalid && "shake")}
+      className={cx(inConsole ? "grid grid-cols-6 gap-2" : "flex justify-center gap-2 sm:gap-3", invalid && "shake")}
     >
       {Array.from({ length }, (_, index) => (
         <input
@@ -134,7 +135,9 @@ export function OtpInput({
           onPaste={onPaste}
           onFocus={(event) => event.target.select()}
           className={cx(
-            "input-base h-14 w-11 rounded-xl border-2 bg-card text-center font-mono text-2xl font-bold text-strong sm:w-14",
+            inConsole
+              ? "input-base h-14 w-full rounded-xl border bg-card p-0 text-center font-display text-[22px] font-bold text-strong focus:!border-[#0B3FA8] focus:!shadow-[0_0_0_3px_var(--pastel-sky)] dark:focus:!border-[#86ABFF]"
+              : "input-base h-14 w-11 rounded-xl border-2 bg-card text-center font-mono text-2xl font-bold text-strong sm:w-14",
             "disabled:opacity-60",
             invalid ? "border-critical" : "border-line-strong",
           )}
@@ -155,6 +158,7 @@ export function Segmented<T extends string>({
   onChange,
   label,
   size = "md",
+  fill = false,
   className,
 }: {
   options: { value: T; label: string; icon?: string; count?: number }[];
@@ -162,6 +166,8 @@ export function Segmented<T extends string>({
   onChange: (next: T) => void;
   label: string;
   size?: "sm" | "md";
+  /** Share the width equally, as a form's two-way choice does in the console. */
+  fill?: boolean;
   className?: string;
 }) {
   const reduced = useReducedMotion();
@@ -186,6 +192,7 @@ export function Segmented<T extends string>({
               onClick={() => onChange(option.value)}
               className={cx(
                 "relative inline-flex h-[34px] shrink-0 items-center gap-[7px] whitespace-nowrap rounded-full px-3.5 text-[13px] font-semibold transition-colors",
+                fill && "flex-1",
                 "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                 active ? "text-strong" : "text-muted hover:text-strong",
               )}
@@ -286,10 +293,12 @@ export function Switch({
   disabled?: boolean;
 }) {
   const reduced = useReducedMotion();
+  const inConsole = useContext(ConsoleSurface);
   return (
     <label
       className={cx(
-        "flex cursor-pointer items-start gap-3",
+        "flex cursor-pointer",
+        inConsole ? "flex-row-reverse items-center gap-3.5" : "items-start gap-3",
         disabled && "cursor-not-allowed opacity-60",
       )}
     >
@@ -301,14 +310,15 @@ export function Switch({
         disabled={disabled}
         onClick={() => onChange(!checked)}
         className={cx(
-          "relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors",
+          "relative shrink-0 rounded-full transition-colors",
+          inConsole ? "h-7 w-[46px]" : "mt-0.5 h-6 w-11",
           // A switch that *looks* 44px tall looks wrong, so the hit area is
           // extended instead of the track. The label beside it is not a target
           // — a <label> forwards clicks to an input, not to a button — so this
           // is the only thing a thumb has to aim at.
           "before:absolute before:-inset-2.5 before:content-['']",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-          checked ? "bg-primary" : "bg-line-strong",
+          checked ? (inConsole ? "bg-[#0B3FA8] dark:bg-[#3B6FE0]" : "bg-primary") : "bg-line-strong",
         )}
       >
         <motion.span
@@ -316,14 +326,18 @@ export function Switch({
           aria-hidden
           transition={reduced ? { duration: 0 } : { type: "spring", stiffness: 500, damping: 32 }}
           className={cx(
-            "absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm",
-            checked ? "right-1" : "left-1",
+            "absolute rounded-full bg-white",
+            inConsole
+              ? cx("top-[3px] h-[22px] w-[22px] shadow-[0_1px_3px_rgba(0,0,0,0.25)]", checked ? "right-[3px]" : "left-[3px]")
+              : cx("top-1 h-4 w-4 shadow-sm", checked ? "right-1" : "left-1"),
           )}
         />
       </button>
-      <span className="min-w-0">
-        <span className="block text-sm font-semibold text-strong">{label}</span>
-        {description && <span className="block text-sm text-muted">{description}</span>}
+      <span className={cx("min-w-0", inConsole && "flex-1")}>
+        <span className={cx("block font-semibold text-strong", inConsole ? "text-[14px]" : "text-sm")}>{label}</span>
+        {description && (
+          <span className={cx("block text-muted", inConsole ? "mt-0.5 text-[12.5px]" : "text-sm")}>{description}</span>
+        )}
       </span>
     </label>
   );

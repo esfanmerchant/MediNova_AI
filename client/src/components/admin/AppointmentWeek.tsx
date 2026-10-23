@@ -55,7 +55,7 @@ export const KIND: Record<AppointmentStatus, Kind> = {
 
 export const CHIP: Record<Kind, string> = {
   done: "border-l-stable bg-stable-soft",
-  booked: "border-l-[#0B3FA8] bg-info-soft dark:border-l-[#7DA2FF]",
+  booked: "border-l-[#0B3FA8] bg-info-soft dark:border-l-[#86ABFF]",
   ask: "border-l-[#F59E0B] bg-warning-soft",
   off: "border-l-[#9DB0CC] bg-sunken text-faint line-through decoration-faint/60",
 };

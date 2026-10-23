@@ -14,6 +14,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
 import {
   useCallback,
+  useContext,
   useEffect,
   useId,
   useRef,
@@ -26,7 +27,7 @@ import { Icon } from "@/components/Icon";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Logo } from "@/components/brand/Logo";
-import { Badge, Button, EmptyState, IconButton, cx } from "@/components/ui";
+import { Badge, Button, ConsoleSurface, EmptyState, IconButton, cx } from "@/components/ui";
 import {
   ApiError,
   doctorApplication,
@@ -120,10 +121,15 @@ export const STATUS_META: Record<
 
 export function StatusChip({ status }: { status: ApplicationStatus }) {
   const tr = useTr();
+  const inConsole = useContext(ConsoleSurface);
   const meta = STATUS_META[status];
   return (
     <Badge tone={meta.tone}>
-      <Icon name={meta.icon} filled className="text-[13px]" />
+      {inConsole ? (
+        <span aria-hidden className="h-[7px] w-[7px] shrink-0 rounded-full bg-current" />
+      ) : (
+        <Icon name={meta.icon} filled className="text-[13px]" />
+      )}
       {tr(...meta.label)}
     </Badge>
   );
@@ -495,15 +501,17 @@ export function SummaryField({
   mono?: boolean;
 }) {
   const tr = useTr();
+  const inConsole = useContext(ConsoleSurface);
   const empty = value === null || value === undefined || value === "";
   return (
     <div className="min-w-0">
-      <dt className="mono-caps text-[10px] text-faint">{label}</dt>
+      <dt className={inConsole ? "text-[12.5px] text-faint" : "mono-caps text-[10px] text-faint"}>{label}</dt>
       <dd
         className={cx(
-          "mt-0.5 break-words text-sm",
-          mono && !empty && "font-mono",
-          empty ? "text-faint italic" : "text-strong",
+          "break-words",
+          inConsole ? "m-0 mt-[3px] text-[14px]" : "mt-0.5 text-sm",
+          mono && !empty && (inConsole ? "font-mono text-[13px]" : "font-mono"),
+          empty ? "text-faint italic" : cx("text-strong", inConsole && !mono && "font-semibold"),
         )}
       >
         {empty ? tr("Not given", "Nahi diya gaya") : value}

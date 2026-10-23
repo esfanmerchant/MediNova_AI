@@ -9,9 +9,10 @@
  * went, so a figure on screen can be read for how old it is.
  */
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useContext, useEffect, useState, useSyncExternalStore } from "react";
 
 import { Icon } from "@/components/Icon";
+import { ConsoleSurface } from "@/components/consoleSurface";
 import { useTr } from "@/lib/lang";
 
 function subscribe(onChange: () => void) {
@@ -25,6 +26,7 @@ function subscribe(onChange: () => void) {
 
 export function OfflineBanner() {
   const tr = useTr();
+  const inConsole = useContext(ConsoleSurface);
   // The server render and the first client render both say "online", so the
   // banner can only ever appear after hydration, never cause a mismatch.
   const online = useSyncExternalStore(
@@ -41,6 +43,28 @@ export function OfflineBanner() {
 
   if (online) return null;
   const at = since?.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+
+  if (inConsole) {
+    return (
+      <div className="px-4 pt-2 sm:px-7">
+        <div
+          role="status"
+          className="flex max-w-[1204px] items-center gap-3 rounded-[18px] bg-warning-soft px-[18px] py-3 text-[14px] text-strong"
+        >
+          <span aria-hidden className="grid h-8 w-8 shrink-0 place-items-center rounded-[10px] bg-card text-warning">
+            <Icon name="warning" className="text-[17px]" />
+          </span>
+          <span>
+            <b className="font-semibold">{tr("You are offline.", "Aap offline hain.")}</b>{" "}
+            {at
+              ? tr(`Showing what was loaded before ${at}.`, `Woh dikh raha hai jo ${at} se pehle load hua tha.`)
+              : tr("Showing what was loaded earlier.", "Woh dikh raha hai jo pehle load hua tha.")}{" "}
+            {tr("Nothing can be saved until the connection is back.", "Connection wapas aane tak kuchh save nahi ho sakta.")}
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div role="status" className="flex items-center gap-2.5 border-b border-warning/40 bg-warning-soft px-4 py-2 text-[13px] text-strong sm:px-6">

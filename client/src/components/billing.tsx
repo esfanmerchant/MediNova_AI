@@ -25,7 +25,7 @@
  */
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useState, type ReactNode } from "react";
+import { useContext, useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { Icon } from "@/components/Icon";
@@ -35,6 +35,7 @@ import {
   Badge,
   Button,
   Card,
+  ConsoleSurface,
   EmptyState,
   ErrorState,
   Field,
@@ -91,8 +92,8 @@ const STATUS_ICON: Record<InvoiceStatus, string> = {
 
 function when(iso: string | null): string {
   return iso
-    ? new Date(iso).toLocaleDateString(undefined, {
-        day: "2-digit",
+    ? new Date(iso).toLocaleDateString("en-GB", {
+        day: "numeric",
         month: "short",
         year: "numeric",
       })
@@ -211,6 +212,18 @@ function Modal({
 // ---------------------------------------------------------------------------
 
 function DateTile({ label, value, icon }: { label: string; value: string; icon: string }) {
+  const inConsole = useContext(ConsoleSurface);
+  if (inConsole) {
+    return (
+      <div className="flex flex-col gap-1 rounded-2xl border border-line bg-[var(--console-soft)] px-3.5 py-3">
+        <dt className="flex items-center gap-1.5 font-mono text-[10.5px] tracking-[0.14em] text-faint uppercase">
+          <Icon name={icon} className="text-[13px]" />
+          {label}
+        </dt>
+        <dd className="m-0 text-[14px] font-semibold text-strong tabular-nums">{value}</dd>
+      </div>
+    );
+  }
   return (
     <div className="flex items-center gap-3 rounded-xl border border-line bg-card px-3.5 py-2.5">
       <Icon name={icon} className="text-[20px] text-faint" />
@@ -256,8 +269,9 @@ export function PrintHeader({ invoice }: { invoice: Invoice }) {
 
 export function InvoiceDetail({ invoice }: { invoice: Invoice }) {
   const tr = useTr();
+  const inConsole = useContext(ConsoleSurface);
   return (
-    <div className="space-y-4">
+    <div className={inConsole ? "space-y-[18px]" : "space-y-4"}>
       {invoice.amendsInvoiceId && (
         <p className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning-soft px-4 py-3 text-sm text-warning">
           <Icon name="undo" className="mt-px shrink-0 text-[18px]" />
@@ -268,7 +282,7 @@ export function InvoiceDetail({ invoice }: { invoice: Invoice }) {
         </p>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-line bg-card">
+      <div className={cx("overflow-x-auto border border-line bg-card", inConsole ? "invoice-lines rounded-2xl" : "rounded-xl")}>
         <table className="table-modern min-w-[24rem]">
           <caption className="sr-only">Invoice {invoice.invoiceNumber} line items</caption>
           <thead>
@@ -323,10 +337,21 @@ export function InvoiceDetail({ invoice }: { invoice: Invoice }) {
               </td>
             </tr>
             <tr>
-              <td colSpan={2} className="px-4 pt-2 pb-1 text-right font-display text-base font-bold text-strong">
+              <td
+                colSpan={2}
+                className={cx(
+                  "px-4 pt-2 pb-1 text-right text-strong",
+                  inConsole ? "text-[15px] font-semibold" : "font-display text-base font-bold",
+                )}
+              >
                 {tr("Total", "Mila kar total")}
               </td>
-              <td className="px-4 pt-2 pb-1 text-right font-display text-base font-bold tabular-nums text-strong">
+              <td
+                className={cx(
+                  "px-4 pt-2 pb-1 text-right font-display font-bold tabular-nums text-strong",
+                  inConsole ? "text-[17px]" : "text-base",
+                )}
+              >
                 {money(invoice.totalAmount, invoice.currency)}
               </td>
             </tr>
@@ -364,11 +389,11 @@ export function InvoiceDetail({ invoice }: { invoice: Invoice }) {
         </table>
       </div>
 
-      <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <DateTile icon="send" label={tr("Issued", "Jari hua")} value={when(invoice.issuedAt)} />
+      <dl className={cx("grid grid-cols-2 sm:grid-cols-3", inConsole ? "gap-2.5" : "gap-3 sm:grid-cols-4")}>
+        <DateTile icon={inConsole ? "arrow_forward" : "send"} label={tr("Issued", "Jari hua")} value={when(invoice.issuedAt)} />
         <DateTile icon="event" label={tr("Due", "Aakhri tareekh")} value={when(invoice.dueAt)} />
         {invoice.paidAt && (
-          <DateTile icon="check_circle" label={tr("Paid", "Ada hua")} value={when(invoice.paidAt)} />
+          <DateTile icon={inConsole ? "check" : "check_circle"} label={tr("Paid", "Ada hua")} value={when(invoice.paidAt)} />
         )}
         {invoice.voidedAt && (
           <DateTile icon="block" label={tr("Cancelled", "Mansookh hua")} value={when(invoice.voidedAt)} />
@@ -438,30 +463,43 @@ export function AdminActions({
 
   const settled = invoice.status === "VOID" || invoice.status === "REFUNDED";
   const titleId = `invoice-action-${invoice.id}`;
+  const inConsole = useContext(ConsoleSurface);
 
   return (
-    <div className="mt-5 space-y-3 border-t border-line pt-4">
+    <div className={cx("space-y-3 border-t border-line", inConsole ? "mt-[18px] pt-4" : "mt-5 pt-4")}>
       {error && pending === null && <ErrorState message={error} />}
 
       {pending === null && !settled && (
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="mr-auto flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-faint">
-            <Icon name="admin_panel_settings" className="text-[16px]" />
-            {tr("Administration", "Intezam")}
-          </p>
+        <div className="flex flex-wrap items-center gap-3">
+          {inConsole ? (
+            <span className="mr-auto flex min-w-0 flex-[1_1_240px] flex-col gap-0.5">
+              <span className="font-mono text-[11px] tracking-[0.14em] text-faint uppercase">{tr("Administration", "Intezam")}</span>
+              <span className="text-[12.5px] text-muted">
+                {tr(
+                  "An issued invoice is never edited — a correction is a credit note.",
+                  "Jari invoice kabhi badla nahi jaata — islah credit note se hoti hai.",
+                )}
+              </span>
+            </span>
+          ) : (
+            <p className="mr-auto flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-faint">
+              <Icon name="admin_panel_settings" className="text-[16px]" />
+              {tr("Administration", "Intezam")}
+            </p>
+          )}
           {/* Accepting a payment happens in one place: the "Payments to
               confirm" queue at the top of this page. It used to be offered
               here as well, and the two did different things — the queue
               credited the doctor and emailed the patient, this did neither. */}
           {invoice.status !== "PAID" && (
-            <Button variant="secondary" onClick={() => setPending("void")}>
+            <Button variant="secondary" size={inConsole ? "sm" : "md"} onClick={() => setPending("void")}>
               {tr("Cancel invoice", "Invoice mansookh karein")}
             </Button>
           )}
           {invoice.status === "PAID" && (
             // A paid invoice cannot be voided: money has moved, and pretending
             // the document never existed would leave the payment unexplained.
-            <Button variant="secondary" onClick={() => setPending("credit")}>
+            <Button variant="secondary" size={inConsole ? "sm" : "md"} onClick={() => setPending("credit")}>
               {tr("Issue credit note", "Credit note banayein")}
             </Button>
           )}
