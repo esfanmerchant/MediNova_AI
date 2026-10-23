@@ -63,7 +63,7 @@ export default function AdminRevenue() {
   return (
     <AppShell role="ADMIN">
       <div id="main" className="space-y-6">
-        <ConsoleHeader
+        <ConsoleHeader mark="revenue"
           icon="monitoring"
           eyebrow={tr("Money that has actually been paid", "Woh raqam jo waqai ada ho chuki")}
           title={tr("Revenue", "Aamdani")}

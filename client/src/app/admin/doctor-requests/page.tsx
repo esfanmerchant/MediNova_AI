@@ -217,7 +217,7 @@ export default function DoctorRequestsPage() {
   return (
     <AppShell role="ADMIN">
       <div id="main" className="space-y-6">
-        <ConsoleHeader
+        <ConsoleHeader mark="requests"
           icon="how_to_reg"
           eyebrow={tr("Doctors who want to join", "Doctors jo shamil hona chahte hain")}
           title={tr("Doctor requests", "Doctors ki darkhwastein")}

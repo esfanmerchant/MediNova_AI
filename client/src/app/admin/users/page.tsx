@@ -285,7 +285,7 @@ export default function AdminUsers() {
   return (
     <AppShell role="ADMIN">
       <div id="main" className="space-y-6">
-        <ConsoleHeader
+        <ConsoleHeader mark="people"
           icon="group"
           eyebrow={tr("Everybody on the platform", "Platform par sab log")}
           title={tr("People", "Log")}

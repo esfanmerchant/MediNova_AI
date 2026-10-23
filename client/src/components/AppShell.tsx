@@ -452,21 +452,27 @@ function Breadcrumb({ role, pathname }: { role: Role; pathname: string }) {
     crumbs.length > 2
       ? [crumbs[0], { href: "", label: "…" }, crumbs[crumbs.length - 1]]
       : crumbs;
+  // The console names where you are and nothing above it: "Pharmacy › Catalog",
+  // never "Administration › Pharmacy › Catalog" — the rail already says whose
+  // console this is, and the root crumb was what got cut to "Phar…".
+  const root = role !== "ADMIN";
 
   return (
     <nav aria-label="Breadcrumb" className="hidden min-w-0 lg:block">
       <ol className="flex min-w-0 items-center gap-1.5 text-sm">
-        <li className="min-w-0">
-          <Link
-            href={home}
-            className="truncate rounded text-muted transition-colors hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          >
-            {tr(...PORTAL_LABEL[role])}
-          </Link>
-        </li>
+        {root && (
+          <li className="min-w-0">
+            <Link
+              href={home}
+              className="truncate rounded text-muted transition-colors hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              {tr(...PORTAL_LABEL[role])}
+            </Link>
+          </li>
+        )}
         {crumbs.length === 0 && here && (
           <li className="flex min-w-0 items-center gap-1.5">
-            <Icon name="chevron_right" className="text-[16px] text-faint" />
+            {root && <Icon name="chevron_right" className="text-[16px] text-faint" />}
             <span aria-current="page" className="truncate font-semibold text-strong">
               {tr(...here.label)}
             </span>
@@ -476,7 +482,7 @@ function Breadcrumb({ role, pathname }: { role: Role; pathname: string }) {
           const last = index === shown.length - 1;
           return (
             <li key={crumb.href || "folded"} className="flex min-w-0 items-center gap-1.5">
-              <Icon name="chevron_right" className="shrink-0 text-[16px] text-faint" />
+              {(root || index > 0) && <Icon name="chevron_right" className="shrink-0 text-[16px] text-faint" />}
               {!crumb.href ? (
                 <span aria-hidden className="text-faint">
                   {crumb.label}
@@ -1268,7 +1274,7 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
   const emergencyHref = EMERGENCY_HREF[user.role];
   const searchLabel =
     user.role === "ADMIN"
-      ? tr("Search people, orders, pages", "Log, orders, safhaat dhoondein")
+      ? tr("Search people, orders, invoices…", "Log, orders, invoices dhoondein…")
       : tr("Search pages", "Safhaat mein dhoondein");
   // The console's rail floats inside a 14px margin rather than running edge to
   // edge, so its column is that much wider than the portals' at either size.

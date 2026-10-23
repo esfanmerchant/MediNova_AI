@@ -18,7 +18,7 @@ export default function AdminEmergency() {
   return (
     <AppShell role="ADMIN">
       <div id="main">
-        <ConsoleHeader
+        <ConsoleHeader mark="emergency"
           icon="e911_emergency"
           eyebrow={tr("Break-glass, reviewed afterwards", "Break-glass, baad mein review")}
           title={tr("Emergency access", "Emergency access")}

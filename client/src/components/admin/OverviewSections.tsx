@@ -140,13 +140,7 @@ export function BusiestDoctors({
     <ConsoleCard
       icon="stethoscope"
       title={tr("Busiest doctors", "Sab se masroof doctors")}
-      subtitle={tr("Visits seen in the last 30 days", "Pichhle 30 din mein dekhi gayi visits")}
-      footer={
-        <Link href="/admin/users" className="inline-flex items-center gap-1 font-semibold text-primary hover:underline">
-          {tr("Everybody on the platform", "Platform par sab log")}
-          <Icon name="arrow_forward" className="text-[16px]" />
-        </Link>
-      }
+      subtitle={tr("Visits seen, last 30 days", "Dekhi gayi visits, pichhle 30 din")}
     >
       {doctors.length === 0 ? (
         <p className="px-5 pb-5 text-sm text-muted sm:px-6">
@@ -155,33 +149,19 @@ export function BusiestDoctors({
       ) : (
         <ol className="flex flex-col gap-3 px-5 pb-5 sm:px-6">
           {doctors.map((doctor) => (
-            <li key={doctor.doctorId} className="flex items-center gap-3">
-              <span
-                aria-hidden
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-[#0B3FA8] to-[#14C4C1] text-[11.5px] font-bold text-white"
-              >
-                {doctor.name
-                  .replace(/^Dr\.?\s+/i, "")
-                  .split(/\s+/)
-                  .map((part) => part[0])
-                  .join("")
-                  .slice(0, 2)
-                  .toUpperCase()}
-              </span>
-              <div className="flex min-w-0 flex-1 flex-col gap-1">
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="truncate text-[13.5px] font-semibold text-strong">
-                    {doctor.name} <span className="font-normal text-muted">· {doctor.specialization}</span>
-                  </span>
-                  <span className="shrink-0 text-[13px] font-bold tabular-nums text-strong">{doctor.visits}</span>
-                </div>
-                <span className="h-1.5 overflow-hidden rounded-full bg-sunken">
-                  <span
-                    className="bar-grow-x block h-full rounded-full bg-[#1462C4] dark:bg-[#4A86D8]"
-                    style={{ width: `${(doctor.visits / top) * 100}%` }}
-                  />
+            <li key={doctor.doctorId} className="flex flex-col gap-1.5">
+              <div className="flex items-baseline justify-between gap-2 text-[13px]">
+                <span className="min-w-0 truncate">
+                  <span className="font-semibold text-strong">{doctor.name}</span> <span className="text-muted">· {doctor.specialization}</span>
                 </span>
+                <span className="shrink-0 font-bold tabular-nums text-strong">{doctor.visits}</span>
               </div>
+              <span className="h-1.5 overflow-hidden rounded-full bg-sunken">
+                <span
+                  className="bar-grow-x block h-full rounded-full bg-[#1462C4] dark:bg-[#4A86D8]"
+                  style={{ width: `${(doctor.visits / top) * 100}%` }}
+                />
+              </span>
             </li>
           ))}
         </ol>

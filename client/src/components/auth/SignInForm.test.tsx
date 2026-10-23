@@ -46,8 +46,10 @@ describe("the console's sign-in", () => {
 
     expect(screen.getByRole("heading", { name: "Administrator sign-in" })).toBeInTheDocument();
     expect(screen.queryAllByRole("tab")).toHaveLength(0);
-    expect(screen.getByLabelText("Email")).toBeInTheDocument();
+    expect(screen.getByLabelText("Work email")).toBeInTheDocument();
     expect(screen.getByLabelText("Password")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Create an account" })).toBeNull();
+    // Somebody who is not an administrator is pointed to their own door.
+    expect(screen.getByRole("link", { name: "the main site" })).toHaveAttribute("href", "/login");
   });
 });

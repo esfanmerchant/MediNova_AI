@@ -22,7 +22,7 @@
 import { useRouter } from "next/navigation";
 import { Suspense, useEffect, type ReactNode } from "react";
 
-import { AuthPanel } from "@/components/AuthPanel";
+import { ConsoleAuthFrame } from "@/components/admin/ConsoleAuthFrame";
 import { SignInForm } from "@/components/auth/SignInForm";
 import { Loading } from "@/components/ui";
 import { useTr } from "@/lib/lang";
@@ -50,11 +50,11 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   if (!user) {
     return (
-      <AuthPanel>
+      <ConsoleAuthFrame>
         <Suspense fallback={<Loading />}>
           <SignInForm portal="admin" />
         </Suspense>
-      </AuthPanel>
+      </ConsoleAuthFrame>
     );
   }
 

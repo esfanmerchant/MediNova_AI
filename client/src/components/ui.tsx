@@ -532,21 +532,36 @@ export function Button({
   /** Shows the pulse-line in place of the label and disables the button. */
   loading?: boolean;
 }) {
-  const variants = {
-    primary: "btn-gradient text-white disabled:opacity-60",
-    // Outlined in the gradient: for actions that report rather than commit.
-    secondary: "btn-outline",
-    danger: "bg-critical text-white shadow-sm hover:opacity-90 hover:scale-[1.02] active:scale-[0.97] disabled:opacity-50",
-    ghost: "text-primary hover:bg-gradient-soft active:scale-[0.97]",
-  } as const;
+  const inConsole = useContext(ConsoleSurface);
+  const variants = inConsole
+    ? // The console's system: one navy pill for the page's main verb,
+      // outline for the rest, plain words for the quiet ones. No gradients.
+      ({
+        primary:
+          "rounded-full bg-[#0B3FA8] text-white shadow-[0_10px_22px_-12px_rgba(11,63,168,0.8)] hover:bg-[#0A3796] dark:bg-[#3B6FE0] dark:hover:bg-[#4A7BEA]",
+        secondary: "rounded-full border border-line-strong bg-card text-strong hover:bg-sunken",
+        danger: "rounded-full bg-[#C9363C] text-white hover:bg-[#B52F35]",
+        ghost: "rounded-full text-primary hover:bg-sunken",
+      } as const)
+    : ({
+        primary: "btn-gradient text-white disabled:opacity-60",
+        // Outlined in the gradient: for actions that report rather than commit.
+        secondary: "btn-outline",
+        danger: "bg-critical text-white shadow-sm hover:opacity-90 hover:scale-[1.02] active:scale-[0.97] disabled:opacity-50",
+        ghost: "text-primary hover:bg-gradient-soft active:scale-[0.97]",
+      } as const);
 
-  // Minimum 44px height: the accessible touch-target size.
-  const sizes = { md: "min-h-11 px-4 text-base", lg: "min-h-14 px-6 text-lg" } as const;
+  // Minimum 44px height: the accessible touch-target size. The console's
+  // pills are 40, the size its tables and headers are drawn around.
+  const sizes = inConsole
+    ? ({ md: "min-h-10 px-[18px] text-[13.5px]", lg: "min-h-12 px-6 text-[15px]" } as const)
+    : ({ md: "min-h-11 px-4 text-base", lg: "min-h-14 px-6 text-lg" } as const);
 
   return (
     <button
       className={cx(
-        "relative inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition-[background-color,box-shadow,transform,opacity] duration-200 ease-out",
+        "relative inline-flex items-center justify-center gap-2 font-semibold whitespace-nowrap transition-[background-color,box-shadow,transform,opacity] duration-200 ease-out",
+        !inConsole && "rounded-xl",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
         "disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100",
         variants[variant],
@@ -645,14 +660,26 @@ export function Field({
   children: ReactNode;
   htmlFor: string;
 }) {
+  // The console labels a field above it, in sentence case; the portals float
+  // the label inside.
+  const inConsole = useContext(ConsoleSurface);
   return (
     <div className={cx("space-y-1.5", error && "field-invalid")}>
-      <div className="field-shell">
-        {children}
-        <label htmlFor={htmlFor} className="field-label">
-          {label}
-        </label>
-      </div>
+      {inConsole ? (
+        <div className="flex flex-col gap-[7px]">
+          <label htmlFor={htmlFor} className={cx("text-[13px] font-semibold", error ? "text-critical" : "text-muted")}>
+            {label}
+          </label>
+          <div className="relative">{children}</div>
+        </div>
+      ) : (
+        <div className="field-shell">
+          {children}
+          <label htmlFor={htmlFor} className="field-label">
+            {label}
+          </label>
+        </div>
+      )}
       {hint && !error && (
         <p id={`${htmlFor}-hint`} className="px-1 text-sm text-muted">
           {hint}

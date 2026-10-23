@@ -232,7 +232,7 @@ export default function AdminWithdrawals() {
   return (
     <AppShell role="ADMIN">
       <div id="main" className="space-y-6">
-        <ConsoleHeader
+        <ConsoleHeader mark="withdrawals"
           icon="account_balance"
           eyebrow={tr("Doctors' earnings, paid out", "Doctors ki kamai ki adaigi")}
           title={tr("Withdrawals", "Withdrawals")}

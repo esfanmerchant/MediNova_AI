@@ -38,6 +38,7 @@ export const ICON_NAMES = [
   "arrow_outward",
   "arrow_upward",
   "ask",
+  "asking",
   "assistant",
   "asterisk",
   "auto_awesome",

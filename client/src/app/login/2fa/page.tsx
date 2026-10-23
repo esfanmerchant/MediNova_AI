@@ -20,6 +20,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState, type FormEvent } from "react";
 
 import { AuthPanel } from "@/components/AuthPanel";
+import { ConsoleAuthFrame } from "@/components/admin/ConsoleAuthFrame";
 import { Icon } from "@/components/Icon";
 import {
   AUTH_LINK,
@@ -274,12 +275,21 @@ function TwoFactorForm() {
   );
 }
 
+/** The console's second step wears the console's frame; everybody else's, the public one. */
+function TwoFactorScreen() {
+  const params = useSearchParams();
+  const Frame = params.get("portal") === "admin" ? ConsoleAuthFrame : AuthPanel;
+  return (
+    <Frame>
+      <TwoFactorForm />
+    </Frame>
+  );
+}
+
 export default function TwoFactorPage() {
   return (
-    <AuthPanel>
-      <Suspense fallback={<Loading />}>
-        <TwoFactorForm />
-      </Suspense>
-    </AuthPanel>
+    <Suspense fallback={<Loading />}>
+      <TwoFactorScreen />
+    </Suspense>
   );
 }

@@ -28,12 +28,14 @@ import {
   PastelTile,
   type Need,
 } from "@/components/admin/console";
+import { localToday } from "@/components/admin/AppointmentWeek";
 import { ClinicPulse } from "@/components/admin/ClinicPulse";
+import { TodayByHour } from "@/components/admin/TodayByHour";
 import { BusiestDoctors, PharmacyPipeline, WeekBySpeciality } from "@/components/admin/OverviewSections";
 import { RevenuePanel } from "@/components/admin/RevenueChart";
 import { SetupChecklist } from "@/components/admin/SetupChecklist";
 import { ErrorState, cx } from "@/components/ui";
-import { dashboard, doctorRequests, revenue } from "@/lib/api";
+import { appointments, dashboard, doctorRequests, invoices, revenue, withdrawalReview } from "@/lib/api";
 import { useLang, useTr } from "@/lib/lang";
 import { useSession } from "@/lib/session";
 import { useAsync } from "@/lib/useAsync";
@@ -67,6 +69,15 @@ export default function AdminDashboard() {
     [],
   );
   const series = useAsync(() => revenue.series("day"), []);
+  // Today's visits for the banner's chart, and the counts its sentence and
+  // "Needs you" quote. Each read fails on its own without taking the page.
+  const today = localToday();
+  const visitsToday = useAsync(() => appointments.list({ from: today, to: today, limit: 100 }).catch(() => null), [today], {
+    live: "on-return",
+  });
+  const asking = useAsync(() => appointments.list({ status: "REQUESTED", limit: 1 }).catch(() => null), []);
+  const payouts = useAsync(() => withdrawalReview.pending({ limit: 1 }).catch(() => null), []);
+  const ledger = useAsync(() => invoices.list({ status: "ISSUED", limit: 1 }).catch(() => null), []);
   const { user } = useSession();
   const tr = useTr();
   const lang = useLang();
@@ -81,6 +92,13 @@ export default function AdminDashboard() {
   const currency = data?.revenue.currency ?? "PKR";
   const owed = Number(data?.revenue.owedToDoctors) || 0;
   const money = (value: number) => `${currency} ${rupees.format(value)}`;
+  const needAYes = asking.data?.meta.total ?? 0;
+  const withdrawalsWaiting = payouts.data?.meta.total ?? 0;
+  const outstanding = Number(ledger.data?.meta.outstanding) || 0;
+  const todaysVisits = (visitsToday.data?.data ?? []).filter((visit) => visit.localDate === today && visit.status !== "CANCELLED");
+  // What came in today: the last point of the daily series, when it is today's.
+  const lastPoint = series.data?.points.at(-1);
+  const cameInToday = lastPoint && lastPoint.period.slice(0, 10) === new Date().toISOString().slice(0, 10) ? Number(lastPoint.handled) || 0 : 0;
 
   const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 
@@ -127,6 +145,17 @@ export default function AdminDashboard() {
           detail: tr("Check the licence and documents, then decide.", "License aur documents dekh kar faisla karein."),
           tone: "warning" as const,
         },
+        needAYes > 0 && {
+          key: "asking",
+          href: "/admin/appointments",
+          icon: "calendar_month",
+          title: tr(
+            `${needAYes} ${plural(needAYes, "visit needs", "visits need")} a yes`,
+            `${needAYes} visits ko haan chahiye`,
+          ),
+          detail: tr("Asked for by patients, not yet confirmed.", "Mareezon ne manga, abhi confirm nahi."),
+          tone: "warning" as const,
+        },
         unpaid > 0 && {
           key: "unpaid",
           href: "/admin/billing",
@@ -135,15 +164,21 @@ export default function AdminDashboard() {
             `${unpaid} unpaid ${plural(unpaid, "invoice", "invoices")}`,
             `${unpaid} baqaya invoices`,
           ),
-          detail: tr("Patients who have not paid yet.", "Woh mareez jinhon ne abhi tak adaigi nahi ki."),
+          detail: outstanding
+            ? tr(`${money(outstanding)} waiting on patients.`, `${money(outstanding)} mareezon se baqi.`)
+            : tr("Patients who have not paid yet.", "Woh mareez jinhon ne abhi tak adaigi nahi ki."),
           tone: "warning" as const,
         },
         owed > 0 && {
           key: "owed",
           href: "/admin/withdrawals",
           icon: "account_balance_wallet",
-          title: tr(`Doctors are owed ${currency} ${rupees.format(owed)}`, `Doctors ko ${currency} ${rupees.format(owed)} dene hain`),
-          detail: tr("Their fees, held until they withdraw.", "Un ki fees, withdrawal tak hamare paas."),
+          title: withdrawalsWaiting
+            ? tr(`${withdrawalsWaiting} ${plural(withdrawalsWaiting, "doctor", "doctors")} to pay`, `${withdrawalsWaiting} doctors ko ada karna hai`)
+            : tr(`Doctors are owed ${money(owed)}`, `Doctors ko ${money(owed)} dene hain`),
+          detail: withdrawalsWaiting
+            ? tr(`${money(owed)} owed, withdrawals waiting.`, `${money(owed)} baqi, withdrawals muntazir.`)
+            : tr("Their fees, held until they withdraw.", "Un ki fees, withdrawal tak hamare paas."),
           tone: "calm" as const,
         },
         failedSignIns > FAILED_SIGN_IN_WATCH && {
@@ -171,14 +206,16 @@ export default function AdminDashboard() {
         <ConsoleBanner
           id="overview"
           live
-          eyebrow={new Date()
-            .toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long" })
-            .toUpperCase()}
+          eyebrow={`${new Date()
+            .toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })
+            .replace(",", "")
+            .toUpperCase()} · LIVE`}
+          aside={<TodayByHour visits={visitsToday.data ? todaysVisits : null} />}
           title={firstName ? `${greeting}, ${firstName}.` : `${greeting}.`}
           actions={
             data && (
               <>
-                {unreviewed > 0 ? (
+                {unreviewed > 0 && (
                   // The one red thing on the page, announced as it arrives.
                   <span role="alert" className="contents">
                     <BannerAction href="/admin/emergency" tone="critical" icon="policy">
@@ -188,14 +225,13 @@ export default function AdminDashboard() {
                       )}
                     </BannerAction>
                   </span>
-                ) : (
-                  needs.length > 0 && (
-                    <BannerAction href="#needs" icon="checklist">
-                      {tr("See what needs you", "Dekhein kya baqi hai")}
-                    </BannerAction>
-                  )
                 )}
-                <BannerAction href="/admin/audit" tone="ghost" icon="verified_user">
+                {needs.length > 0 && (
+                  <BannerAction href="#needs">
+                    {needs.length === 1 ? tr("See it", "Dekhein") : tr(`See all ${needs.length}`, `Sab ${needs.length} dekhein`)}
+                  </BannerAction>
+                )}
+                <BannerAction href="/admin/audit" tone="ghost">
                   {tr("Audit trail", "Audit trail")}
                 </BannerAction>
               </>
@@ -220,17 +256,15 @@ export default function AdminDashboard() {
         >
           {data ? (
             <p>
-              {tr(
-                `${counts.patients ?? 0} patients and ${counts.doctors ?? 0} doctors, and `,
-                `${counts.patients ?? 0} mareez aur ${counts.doctors ?? 0} doctors, aur pichhle 7 din mein `,
-              )}
-              <Link href="/admin/appointments">
+              <b>{money(cameInToday)}</b>
+              {tr(" came in today and ", " aaj aaye aur ")}
+              <b>
                 {tr(
-                  `${counts.appointmentsThisWeek ?? 0} ${plural(counts.appointmentsThisWeek ?? 0, "visit", "visits")} booked`,
-                  `${counts.appointmentsThisWeek ?? 0} visits book hui`,
+                  `${todaysVisits.length} ${plural(todaysVisits.length, "visit", "visits")}`,
+                  `${todaysVisits.length} visits`,
                 )}
-              </Link>
-              {tr(" in the last 7 days. ", ". ")}
+              </b>
+              {tr(" are on the books. ", " aaj booked hain. ")}
               {needs.length === 0 ? (
                 tr("Nothing is waiting on you.", "Koi cheez aap ki muntazir nahi.")
               ) : (
@@ -286,7 +320,14 @@ export default function AdminDashboard() {
                   label={tr("Owed to doctors", "Doctors ko dena hai")}
                   unit={currency}
                   value={rupees.format(owed)}
-                  note={tr("Their fees, held until they withdraw", "Un ki fees, withdrawal tak")}
+                  note={
+                    withdrawalsWaiting
+                      ? tr(
+                          `${withdrawalsWaiting} ${plural(withdrawalsWaiting, "withdrawal", "withdrawals")} waiting`,
+                          `${withdrawalsWaiting} withdrawals muntazir`,
+                        )
+                      : tr("Their fees, held until they withdraw", "Un ki fees, withdrawal tak")
+                  }
                   chip={
                     owed > 0
                       ? { text: tr("To pay out", "Ada karna hai"), tone: "warning" }
@@ -308,7 +349,11 @@ export default function AdminDashboard() {
                   icon="receipt_long"
                   label={tr("Unpaid invoices", "Baqaya invoices")}
                   value={rupees.format(unpaid)}
-                  note={tr("Waiting on patients", "Mareezon ki adaigi baqi")}
+                  note={
+                    outstanding
+                      ? tr(`${money(outstanding)} waiting on patients`, `${money(outstanding)} mareezon se baqi`)
+                      : tr("Waiting on patients", "Mareezon ki adaigi baqi")
+                  }
                   chip={unpaid > 0 ? { text: tr("Follow up", "Yaad dilayein"), tone: "warning" } : undefined}
                   href="/admin/billing"
                 />
@@ -317,7 +362,11 @@ export default function AdminDashboard() {
                   icon="lock"
                   label={tr("Failed sign-ins, 7 days", "Nakam sign-ins, 7 din")}
                   value={rupees.format(failedSignIns)}
-                  note={tr("Wrong passwords and blocked tries", "Ghalat password aur roki gayi koshishen")}
+                  note={
+                    failedSignIns > FAILED_SIGN_IN_WATCH
+                      ? tr("More than usual — see the audit trail", "Mamool se zyada — audit trail dekhein")
+                      : tr(`Normal. Over ${FAILED_SIGN_IN_WATCH} turns this amber.`, `Theek hai. ${FAILED_SIGN_IN_WATCH} se zyada par amber.`)
+                  }
                   chip={
                     failedSignIns > FAILED_SIGN_IN_WATCH
                       ? { text: tr("Higher than usual", "Mamool se zyada"), tone: "warning" }
@@ -338,7 +387,7 @@ export default function AdminDashboard() {
                 onRetry={series.reload}
                 footer={
                   series.data && (
-                    <dl className="mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-2xl bg-white/10 sm:grid-cols-4">
+                    <dl className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-2xl bg-white/10 sm:grid-cols-4">
                       {(
                         [
                           [tr("To doctors", "Doctors ko"), money(series.data.points.reduce((sum, point) => sum + (Number(point.toDoctors) || 0), 0)), tr("Their fees, never ours", "Un ki fees, hamari nahi")],
@@ -347,10 +396,9 @@ export default function AdminDashboard() {
                           [tr("Still unpaid", "Abhi baqaya"), tr(`${unpaid} ${plural(unpaid, "invoice", "invoices")}`, `${unpaid} invoices`), tr("Waiting on patients", "Mareezon ki adaigi baqi")],
                         ] as const
                       ).map(([label, value, note]) => (
-                        <div key={label} className="flex flex-col gap-0.5 bg-[#061230]/50 px-4 py-3">
-                          <dt className="mono-caps text-[0.62rem] text-[#8EA1C2]">{label}</dt>
+                        <div key={label} title={note} className="flex flex-col gap-0.5 bg-[#061230]/55 px-4 py-3">
+                          <dt className="text-[11.5px] text-[#9DB0D1]">{label}</dt>
                           <dd className="m-0 font-display text-base font-bold text-white tabular-nums">{value}</dd>
-                          <dd className="m-0 text-[11.5px] text-[#B9C7DD]">{note}</dd>
                         </div>
                       ))}
                     </dl>

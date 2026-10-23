@@ -28,7 +28,7 @@ export default function PharmacySettingsPage() {
   return (
     <AppShell role="ADMIN">
       <div id="main">
-        <ConsoleHeader icon="tune" eyebrow={tr("Pharmacy", "Pharmacy")} title={tr("Pharmacy settings", "Pharmacy settings")}>
+        <ConsoleHeader mark="pharmacy" icon="tune" eyebrow={tr("Pharmacy", "Pharmacy")} title={tr("Pharmacy settings", "Pharmacy settings")}>
           <p>{tr("Delivery, cash on delivery, and the pharmacy's licence.", "Delivery, cash on delivery, aur pharmacy ka licence.")}</p>
         </ConsoleHeader>
         <div className="mt-6">

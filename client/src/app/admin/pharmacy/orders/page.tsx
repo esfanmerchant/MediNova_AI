@@ -176,7 +176,7 @@ export default function PharmacyOrders() {
   return (
     <AppShell role="ADMIN">
       <div id="main">
-        <ConsoleHeader
+        <ConsoleHeader mark="orders"
           icon="local_shipping"
           eyebrow={tr("Pharmacy", "Pharmacy")}
           title={tr("Orders", "Orders")}

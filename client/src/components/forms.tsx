@@ -11,6 +11,7 @@
 
 import { motion, useReducedMotion } from "framer-motion";
 import {
+  useContext,
   useEffect,
   useId,
   useRef,
@@ -20,7 +21,7 @@ import {
 } from "react";
 
 import { Icon } from "@/components/Icon";
-import { cx } from "@/components/ui";
+import { ConsoleSurface, cx } from "@/components/ui";
 
 // ---------------------------------------------------------------------------
 // One-time code
@@ -156,7 +157,7 @@ export function Segmented<T extends string>({
   size = "md",
   className,
 }: {
-  options: { value: T; label: string; icon?: string }[];
+  options: { value: T; label: string; icon?: string; count?: number }[];
   value: T;
   onChange: (next: T) => void;
   label: string;
@@ -165,6 +166,55 @@ export function Segmented<T extends string>({
 }) {
   const reduced = useReducedMotion();
   const layoutId = useId();
+  const inConsole = useContext(ConsoleSurface);
+
+  if (inConsole) {
+    return (
+      <div
+        role="tablist"
+        aria-label={label}
+        className={cx("no-scrollbar inline-flex max-w-full gap-0.5 overflow-x-auto rounded-full bg-sunken p-1", className)}
+      >
+        {options.map((option) => {
+          const active = option.value === value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => onChange(option.value)}
+              className={cx(
+                "relative inline-flex h-[34px] shrink-0 items-center gap-[7px] whitespace-nowrap rounded-full px-3.5 text-[13px] font-semibold transition-colors",
+                "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                active ? "text-strong" : "text-muted hover:text-strong",
+              )}
+            >
+              {active && (
+                <motion.span
+                  layoutId={layoutId}
+                  aria-hidden
+                  transition={reduced ? { duration: 0 } : { type: "spring", stiffness: 460, damping: 36 }}
+                  className="absolute inset-0 rounded-full bg-card shadow-[0_1px_2px_rgba(11,22,48,0.12),0_6px_14px_-8px_rgba(11,22,48,0.3)]"
+                />
+              )}
+              <span className="relative z-10">{option.label}</span>
+              {option.count !== undefined && (
+                <span
+                  className={cx(
+                    "relative z-10 rounded-full px-[7px] py-px font-mono text-[11px] font-semibold tabular-nums text-muted",
+                    active ? "bg-sunken" : "bg-card",
+                  )}
+                >
+                  {option.count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
   // `sm` is compact by intent, but a tab row is how a page changes what it
   // shows, and on a phone that is a thumb target — 36px is not one. It gets
   // the full height under the breakpoint and stays compact above it.

@@ -53,7 +53,7 @@ export default function AdminOrder() {
         ) : order.data ? (
           <>
             <div className="mt-2">
-              <ConsoleHeader
+              <ConsoleHeader mark="orders"
                 icon="local_pharmacy"
                 eyebrow={tr("Pharmacy order", "Pharmacy order")}
                 title={order.data.orderNumber}

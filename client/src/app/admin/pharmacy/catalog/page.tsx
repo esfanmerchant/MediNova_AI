@@ -564,7 +564,7 @@ export default function PharmacyCatalog() {
   return (
     <AppShell role="ADMIN">
       <div id="main">
-        <ConsoleHeader icon="inventory_2" eyebrow={tr("Pharmacy", "Pharmacy")} title={tr("Catalog", "Catalog")}>
+        <ConsoleHeader mark="catalog" icon="inventory_2" eyebrow={tr("Pharmacy", "Pharmacy")} title={tr("Catalog", "Catalog")}>
           <p>
             {tr(
               "Every medicine the pharmacy sells: its price, its stock, and whether it needs a prescription.",

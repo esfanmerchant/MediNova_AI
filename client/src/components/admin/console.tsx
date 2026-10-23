@@ -20,6 +20,7 @@ import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { Icon } from "@/components/Icon";
+import { Pictogram, type PictogramName } from "@/components/admin/Pictogram";
 import { RevealText } from "@/components/motion";
 import { Skeleton, cx } from "@/components/ui";
 import { useTr } from "@/lib/lang";
@@ -58,8 +59,8 @@ export function Art({ name, size, className }: { name: ConsoleArt; size: number;
 }
 
 /** The live dot: the one thing in the console that keeps moving. */
-export function LiveDot({ tone = "teal" }: { tone?: "teal" | "red" }) {
-  const colour = tone === "red" ? "bg-[#FF8A93]" : "bg-[#5EEAD4]";
+export function LiveDot({ tone = "teal" }: { tone?: "teal" | "red" | "green" }) {
+  const colour = tone === "red" ? "bg-[#FF8A93]" : tone === "green" ? "bg-[#22C55E]" : "bg-[#5EEAD4]";
   return (
     <span aria-hidden className="relative inline-flex h-2 w-2">
       <span className={cx("absolute inset-0 animate-ping rounded-full opacity-70", colour)} />
@@ -74,12 +75,14 @@ export interface BannerStat {
 }
 
 /**
- * The page's opening: what this place is, said as a sentence with its numbers
- * in it, and the one picture the page is allowed.
+ * The overview's opening: what today looks like, said as a sentence with its
+ * numbers in it, beside a picture made of data — today's visits by hour —
+ * rather than an illustration. A banner is read for what it says; a drawing
+ * behind the words is the first thing that makes a console look like a
+ * brochure (see the "One look, every page" board on the design canvas).
  *
- * The hospital render is the default because it is the console's own building;
- * a page whose subject has a drawing of its own (the pharmacy's parcel, the
- * audit trail's shield) passes that instead.
+ * The circuit lines are the logo's own motif, held at 9% so they read as
+ * texture, never as content.
  */
 export function ConsoleBanner({
   id,
@@ -88,8 +91,8 @@ export function ConsoleBanner({
   title,
   children,
   actions,
+  aside,
   stats,
-  art = "hospital",
 }: {
   id?: string;
   eyebrow: string;
@@ -99,8 +102,9 @@ export function ConsoleBanner({
   /** The data sentence. Links inside it are the way into each number. */
   children?: ReactNode;
   actions?: ReactNode;
+  /** The right-hand panel: a small chart, never a picture. */
+  aside?: ReactNode;
   stats?: BannerStat[];
-  art?: "hospital" | ConsoleArt | null;
 }) {
   return (
     <section
@@ -108,76 +112,57 @@ export function ConsoleBanner({
       aria-label={title}
       className="console-banner rise-in relative isolate overflow-hidden rounded-[28px] text-white"
     >
-      <Image
-        src="/admin-art/mesh.svg"
-        alt=""
+      <span aria-hidden className="console-dots pointer-events-none absolute inset-0 -z-10" />
+      <svg
         aria-hidden
-        fill
-        priority
-        sizes="100vw"
-        className="-z-10 object-cover opacity-90"
-      />
+        viewBox="0 0 600 260"
+        preserveAspectRatio="xMaxYMid slice"
+        className="pointer-events-none absolute top-0 right-0 -z-10 h-full w-[62%] opacity-[0.09]"
+        fill="none"
+        stroke="#FFFFFF"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      >
+        <path d="M40 210H180L196 170L214 236L230 190H330" />
+        <path d="M330 190H420V120H520" />
+        <path d="M420 120V60H560" />
+        <path d="M380 190V240H600" />
+        <circle cx="520" cy="120" r="5" />
+        <circle cx="560" cy="60" r="5" />
+        <circle cx="600" cy="240" r="5" />
+      </svg>
 
-      <div className="relative">
-        {art === "hospital" && (
-          // Two renders, because the building is lit for the theme around it.
-          // Hidden below `lg`: on a narrower screen it would have to sit behind
-          // the sentence, and art never sits behind words. It stands on the
-          // figures below rather than running under them.
-          <span aria-hidden className="art-melt pointer-events-none absolute right-0 bottom-0 hidden w-[min(46%,540px)] lg:block">
-            <Image
-              src="/hero/hospital-light.webp"
-              alt=""
-              width={1000}
-              height={674}
-              priority
-              className="art-settle h-auto w-full dark:hidden"
-            />
-            <Image
-              src="/hero/hospital-dark.webp"
-              alt=""
-              width={1000}
-              height={674}
-              priority
-              className="art-settle hidden h-auto w-full dark:block"
-            />
-          </span>
-        )}
-        {art && art !== "hospital" && (
-          <span aria-hidden className="pointer-events-none absolute right-8 bottom-0 hidden lg:block">
-            <Art name={art} size={180} />
-          </span>
-        )}
-
-        <div className={cx("relative flex flex-col gap-5 p-6 sm:p-8", art && "lg:max-w-[56%]")}>
-          <p className="mono-caps flex items-center gap-2 text-[0.7rem] text-[#9FE8DC]">
+      <div className="relative grid grid-cols-1 items-center gap-7 p-6 sm:p-8 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+        <div className="flex flex-col gap-3.5">
+          <p className="flex items-center gap-2 font-mono text-[11px] tracking-[0.14em] text-[#9FE8DC]">
             {live && <LiveDot />}
             {eyebrow}
           </p>
-          <h1 className="font-display text-[1.9rem] leading-tight font-bold sm:text-[2.25rem]">
+          <h1 className="font-display text-[2rem] leading-[1.1] font-bold tracking-[-0.02em] sm:text-[2.25rem]">
             <RevealText text={title} at={0.04} />
           </h1>
           {children && (
-            <div className="max-w-xl text-[15.5px] leading-relaxed text-[#D7E3F7] [&_a]:font-semibold [&_a]:text-white [&_a]:underline [&_a]:decoration-white/30 [&_a]:underline-offset-4 hover:[&_a]:decoration-white [&_b]:text-white">
+            <div className="max-w-[520px] text-[15.5px] leading-relaxed text-[#D7E3F7] [&_a]:font-semibold [&_a]:text-white [&_a]:underline [&_a]:decoration-white/40 [&_a]:underline-offset-4 hover:[&_a]:decoration-white [&_b]:font-semibold [&_b]:text-white">
               {children}
             </div>
           )}
-          {actions && <div className="flex flex-wrap items-center gap-2.5">{actions}</div>}
+          {actions && <div className="mt-1 flex flex-wrap items-center gap-2.5">{actions}</div>}
         </div>
+        {aside}
       </div>
 
       {stats && stats.length > 0 && (
         <dl
           className={cx(
-            "relative grid grid-cols-2 border-t border-white/10 bg-[#071B45] sm:grid-cols-4",
-            "[&>div]:border-white/10 [&>div:nth-child(n+3)]:border-t sm:[&>div:nth-child(n+3)]:border-t-0 [&>div+div]:border-l",
+            "relative grid grid-cols-2 border-t border-white/[0.08] bg-[#071B45] sm:grid-cols-4",
+            "[&>div]:border-white/[0.08] [&>div:nth-child(n+3)]:border-t sm:[&>div:nth-child(n+3)]:border-t-0 [&>div+div]:border-l",
             "[&>div:nth-child(3)]:border-l-0 sm:[&>div:nth-child(3)]:border-l",
           )}
         >
           {stats.map((stat) => (
-            <div key={stat.label} className="flex min-w-0 flex-col gap-1 px-5 py-4 sm:px-8">
-              <dt className="text-[12px] font-medium text-[#9DB0D1]">{stat.label}</dt>
-              <dd className="font-display text-lg font-bold whitespace-nowrap tabular-nums sm:text-xl">{stat.value}</dd>
+            <div key={stat.label} className="flex min-w-0 flex-col gap-0.5 px-5 py-3.5 sm:px-8">
+              <dt className="text-[12px] text-[#9DB0D1]">{stat.label}</dt>
+              <dd className="font-display text-lg font-bold whitespace-nowrap tabular-nums text-white sm:text-xl">{stat.value}</dd>
             </div>
           ))}
         </dl>
@@ -200,20 +185,19 @@ export function BannerAction({
 }) {
   const tones = {
     light: "bg-white text-[#0A2A72] hover:bg-[#EAF2FF]",
-    ghost: "border border-white/25 text-white hover:bg-white/10",
-    // #C9363C, not the brighter #E5484D: white on that was 3.9:1.
-    critical: "bg-[#C9363C] text-white shadow-[0_10px_24px_-10px_rgba(229,72,77,0.8)] hover:bg-[#B52F35]",
+    ghost: "border border-white/30 text-white hover:bg-white/10",
+    critical: "bg-[#C9363C] text-white shadow-[0_10px_22px_-10px_rgba(201,54,60,0.8)] hover:bg-[#B52F35]",
   } as const;
   return (
     <Link
       href={href}
       className={cx(
-        "inline-flex min-h-11 items-center gap-2 rounded-full px-5 text-sm font-semibold transition-colors",
+        "inline-flex min-h-10 items-center gap-2 rounded-full px-[18px] text-[13.5px] font-semibold transition-colors",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white",
         tones[tone],
       )}
     >
-      {icon && <Icon name={icon} className="text-[19px]" />}
+      {icon && <Icon name={icon} className="text-[17px]" />}
       {children}
     </Link>
   );
@@ -230,12 +214,16 @@ export function BannerAction({
 export function ConsoleHeader({
   eyebrow,
   icon,
+  mark,
   title,
   children,
   actions,
 }: {
   eyebrow?: ReactNode;
+  /** A small glyph before the eyebrow — only where the page has no pictogram. */
   icon?: string;
+  /** The page's pictogram, beside the title (see Pictogram.tsx). */
+  mark?: PictogramName;
   title: string;
   /** The data sentence. */
   children?: ReactNode;
@@ -243,10 +231,12 @@ export function ConsoleHeader({
 }) {
   return (
     <header className="flex w-full flex-wrap items-end gap-x-6 gap-y-4">
-      <div className="flex max-w-[44rem] min-w-0 flex-col gap-2">
+      <div className="flex max-w-[48rem] min-w-0 items-start gap-4">
+      {mark && <Pictogram name={mark} className="rise-in mt-0.5 hidden sm:grid" />}
+      <div className="flex min-w-0 flex-col gap-2">
         {eyebrow && (
           <p className="rise-in flex items-center gap-2 text-[13px] text-muted">
-            {icon && <Icon name={icon} className="text-[17px]" />}
+            {icon && !mark && <Icon name={icon} className="text-[17px]" />}
             {eyebrow}
           </p>
         )}
@@ -261,6 +251,7 @@ export function ConsoleHeader({
             {children}
           </div>
         )}
+      </div>
       </div>
       {actions && (
         <div className="rise-in ml-auto flex flex-wrap items-center gap-2.5" style={{ animationDelay: "0.16s" }}>
@@ -286,11 +277,11 @@ export function HeaderPill({
   tone?: "primary" | "quiet";
 }) {
   const className = cx(
-    "inline-flex min-h-11 items-center gap-2 rounded-full px-5 text-sm font-semibold transition-colors",
+    "inline-flex min-h-10 items-center gap-2 rounded-full px-[18px] text-[13.5px] font-semibold whitespace-nowrap transition-colors",
     "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
     tone === "primary"
       ? "bg-[#0B3FA8] text-white shadow-[0_12px_24px_-12px_rgba(11,63,168,0.8)] hover:bg-[#0A3796] dark:bg-[#3B6FE0] dark:hover:bg-[#4A7BEA]"
-      : "border border-line bg-card text-strong hover:bg-sunken",
+      : "border border-line-strong bg-card text-strong hover:bg-sunken",
   );
   const inner = (
     <>

@@ -92,8 +92,6 @@ export function ClinicPulse({
   const nowMinute = now.getHours() * 60 + now.getMinutes();
   const showNow = date === today && nowMinute >= open && nowMinute <= close;
 
-  const count = (kinds: string[]) => all.filter((visit) => kinds.includes(KIND[visit.status])).length;
-  const inRoom = all.filter((visit) => visit.status === "IN_PROGRESS" || visit.status === "CHECKED_IN").length;
   const label = new Date(`${date}T00:00:00Z`).toLocaleDateString("en-GB", {
     weekday: "long",
     day: "numeric",
@@ -185,6 +183,11 @@ export function ClinicPulse({
             <Icon name="videocam" className="text-[14px]" />
             {tr("Video visit", "Video visit")}
           </span>
+          {!navigable && (
+            <Link href="/admin/appointments" className="ml-auto font-semibold text-primary hover:underline">
+              {tr("Open appointments", "Appointments kholein")}
+            </Link>
+          )}
         </div>
       }
     >
@@ -196,21 +199,6 @@ export function ClinicPulse({
         <div aria-hidden className="mx-5 mb-5 h-48 animate-pulse rounded-2xl bg-sunken sm:mx-6" />
       ) : (
         <div className="flex flex-col gap-4 px-5 pb-5 sm:px-6">
-          <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {(
-              [
-                [tr("Visits", "Visits"), all.filter((visit) => KIND[visit.status] !== "off").length],
-                [tr("Done", "Mukammal"), count(["done"])],
-                [tr("With a doctor now", "Abhi doctor ke paas"), inRoom],
-                [tr("Need a yes", "Haan chahiye"), count(["ask"])],
-              ] as const
-            ).map(([text, value]) => (
-              <div key={text} className="rounded-2xl bg-sunken/70 px-3.5 py-2.5">
-                <dt className="text-[12px] text-muted">{text}</dt>
-                <dd className="m-0 font-display text-xl font-bold tabular-nums text-strong">{value}</dd>
-              </div>
-            ))}
-          </dl>
 
           {ordered.length === 0 ? (
             <p className="rounded-2xl bg-sunken/60 px-4 py-8 text-center text-sm text-muted">
@@ -242,7 +230,7 @@ export function ClinicPulse({
                     <div className="flex min-w-0 items-center gap-2.5">
                       <span
                         aria-hidden
-                        className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gradient-to-br from-[#0B3FA8] to-[#14C4C1] text-[11px] font-bold text-white"
+                        className="grid h-[34px] w-[34px] shrink-0 place-items-center rounded-full bg-sunken text-[12px] font-bold text-primary"
                       >
                         {initials(lane.name)}
                       </span>

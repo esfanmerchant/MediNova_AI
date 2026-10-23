@@ -19,7 +19,7 @@ export default function AdminAudit() {
   return (
     <AppShell role="ADMIN">
       <div id="main">
-        <ConsoleHeader
+        <ConsoleHeader mark="audit"
           icon="verified_user"
           eyebrow={tr("Who saw what, and when", "Kis ne kya dekha, aur kab")}
           title={tr("Audit trail", "Audit trail")}

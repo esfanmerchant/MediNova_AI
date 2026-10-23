@@ -175,16 +175,21 @@ export function SignInForm({ portal }: { portal: SignInPortal }) {
   return (
     <div className="w-full">
       {admin ? (
-        <>
-          <AuthHeading
-            badge={<MarkBadge />}
-            title={tr("Administrator sign-in", "Admin login")}
-            subtitle={tr("Sign in to the administration console.", "Intezamia console mein login karein.")}
-          />
-          <p className="mb-5 px-1 text-[13px] leading-snug text-muted">
-            {tr("Administrator accounts are created by the hospital.", "Intezamia ke accounts hospital banata hai.")}
+        // The console's own voice: no badge, no card — a heading on a quiet
+        // ground, as the console's pages open (see ConsoleAuthFrame).
+        <div className="mb-6 flex flex-col gap-2">
+          <p className="mono-caps text-[0.7rem] text-faint">{tr("Administration console", "Intezamia console")}</p>
+          <h2 className="font-display text-[2rem] leading-tight font-bold tracking-[-0.02em] text-strong">
+            {tr("Administrator sign-in", "Admin login")}
+          </h2>
+          <p className="text-[15px] leading-relaxed text-muted">
+            {tr("Use the work email your account was made with. Doctors and patients sign in on ", "Woh work email istemal karein jis se aap ka account bana tha. Doctors aur mareez ")}
+            <Link href="/login" className={AUTH_LINK}>
+              {tr("the main site", "main site")}
+            </Link>
+            {tr(".", " par login karte hain.")}
           </p>
-        </>
+        </div>
       ) : (
         <>
           <AuthHeading
@@ -305,7 +310,7 @@ export function SignInForm({ portal }: { portal: SignInPortal }) {
       {error && !HANDLED.has(error.code) && <AuthNotice tone="critical">{error.message}</AuthNotice>}
 
       <form onSubmit={onSubmit} className="space-y-5" noValidate>
-        <Field label={tr("Email", "Email")} htmlFor="email" error={error?.fieldError("email")}>
+        <Field label={admin ? tr("Work email", "Work email") : tr("Email", "Email")} htmlFor="email" error={error?.fieldError("email")}>
           <Input
             id="email"
             name="email"
@@ -360,10 +365,26 @@ export function SignInForm({ portal }: { portal: SignInPortal }) {
           }
         />
 
-        <Button type="submit" size="lg" className="btn-shine w-full" loading={submitting}>
-          {submitting ? tr("Signing in…", "Login ho raha hai…") : tr("Sign in", "Login karein")}
-          {!submitting && <Icon name="arrow_forward" className="text-[20px]" />}
-        </Button>
+        {admin ? (
+          // The console's pill, the same navy as its banner's actions.
+          <button
+            type="submit"
+            disabled={submitting}
+            className={cx(
+              "inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-full bg-[#0B3FA8] text-[15px] font-bold text-white",
+              "shadow-[0_14px_28px_-14px_rgba(11,63,168,0.85)] transition-colors hover:bg-[#0A3796] disabled:opacity-70",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:bg-[#3B6FE0] dark:hover:bg-[#4A7BEA]",
+            )}
+          >
+            {submitting ? tr("Signing in…", "Login ho raha hai…") : tr("Sign in", "Login karein")}
+            {!submitting && <Icon name="arrow_forward" className="text-[20px]" />}
+          </button>
+        ) : (
+          <Button type="submit" size="lg" className="btn-shine w-full" loading={submitting}>
+            {submitting ? tr("Signing in…", "Login ho raha hai…") : tr("Sign in", "Login karein")}
+            {!submitting && <Icon name="arrow_forward" className="text-[20px]" />}
+          </Button>
+        )}
       </form>
 
       {/* Registration is for patients. The console's sign-in does not invite

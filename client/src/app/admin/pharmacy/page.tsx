@@ -128,7 +128,7 @@ export default function PharmacyOverview() {
   return (
     <AppShell role="ADMIN">
       <div id="main">
-        <ConsoleHeader
+        <ConsoleHeader mark="pharmacy"
           icon="local_pharmacy"
           eyebrow={tr("Medicine sales, orders and stock", "Dawaon ki farokht, orders aur stock")}
           title={tr("Pharmacy", "Pharmacy")}

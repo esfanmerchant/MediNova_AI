@@ -184,7 +184,7 @@ export default function TransactionsPage() {
   return (
     <AppShell role="ADMIN">
       <div id="main" className="space-y-6">
-        <ConsoleHeader
+        <ConsoleHeader mark="transactions"
           icon="swap_horiz"
           eyebrow={tr("Every transfer patients have reported", "Har transfer jo mareezon ne bataya")}
           title={tr("Transactions", "Transactions")}

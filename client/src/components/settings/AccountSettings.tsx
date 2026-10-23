@@ -139,7 +139,7 @@ export function AccountSettings({ role }: { role: Role }) {
     <div className="space-y-6">
       {/* The console opens every page with its own header; the portals keep theirs. */}
       {role === "ADMIN" ? (
-        <ConsoleHeader icon="settings" eyebrow={tr("Your account", "Aap ka account")} title={tr("Settings", "Settings")}>
+        <ConsoleHeader mark="settings" icon="settings" eyebrow={tr("Your account", "Aap ka account")} title={tr("Settings", "Settings")}>
           <p>
             {tr(
               "Your details, how you sign in, what you are told about, and how it all looks.",

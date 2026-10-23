@@ -123,7 +123,7 @@ export default function AdminAppointments() {
   return (
     <AppShell role="ADMIN">
       <div id="main">
-        <ConsoleHeader
+        <ConsoleHeader mark="appointments"
           icon="calendar_month"
           eyebrow={tr("Every booking in the hospital", "Hospital ki har booking")}
           title={tr("Appointments", "Appointments")}

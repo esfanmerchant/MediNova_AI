@@ -50,7 +50,7 @@ export default function AdminBilling() {
   return (
     <AppShell role="ADMIN">
       <div id="main">
-        <ConsoleHeader
+        <ConsoleHeader mark="billing"
           icon="receipt_long"
           eyebrow={tr("Invoices, payments and rates", "Invoices, adaigiyan aur rates")}
           title={tr("Billing", "Billing")}
