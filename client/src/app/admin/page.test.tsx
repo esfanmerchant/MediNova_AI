@@ -96,7 +96,7 @@ describe("Needs you", () => {
     const list = await screen.findByRole("region", { name: "Needs you" });
     const items = within(list).getAllByRole("link").map((link) => link.textContent ?? "");
     expect(items[0]).toMatch(/1 emergency access to review/);
-    expect(items[1]).toMatch(/2 doctors are waiting/);
+    expect(items[1]).toMatch(/2 doctors waiting to be approved/);
     expect(items[2]).toMatch(/3 unpaid invoices/);
     expect(items[3]).toMatch(/Doctors are owed PKR 2,000/);
 

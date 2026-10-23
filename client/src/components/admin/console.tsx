@@ -132,7 +132,7 @@ export function ConsoleBanner({
         <circle cx="600" cy="240" r="5" />
       </svg>
 
-      <div className="relative grid grid-cols-1 items-center gap-7 p-6 sm:p-8 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+      <div className="relative grid grid-cols-1 items-center gap-7 px-6 pt-7 pb-6 sm:px-8 lg:grid-cols-2">
         <div className="flex flex-col gap-3.5">
           <p className="flex items-center gap-2 font-mono text-[11px] tracking-[0.14em] text-[#9FE8DC]">
             {live && <LiveDot />}
@@ -142,7 +142,7 @@ export function ConsoleBanner({
             <RevealText text={title} at={0.04} />
           </h1>
           {children && (
-            <div className="max-w-[520px] text-[15.5px] leading-relaxed text-[#D7E3F7] [&_a]:font-semibold [&_a]:text-white [&_a]:underline [&_a]:decoration-white/40 [&_a]:underline-offset-4 hover:[&_a]:decoration-white [&_b]:font-semibold [&_b]:text-white">
+            <div className="max-w-[520px] text-[15.5px] leading-[1.6] text-[#D7E3F7] [&_a]:font-semibold [&_a]:text-white [&_a]:underline [&_a]:decoration-white/40 [&_a]:underline-offset-4 hover:[&_a]:decoration-white [&_b]:font-semibold [&_b]:text-white">
               {children}
             </div>
           )}
@@ -162,7 +162,9 @@ export function ConsoleBanner({
           {stats.map((stat) => (
             <div key={stat.label} className="flex min-w-0 flex-col gap-0.5 px-5 py-3.5 sm:px-8">
               <dt className="text-[12px] text-[#9DB0D1]">{stat.label}</dt>
-              <dd className="font-display text-lg font-bold whitespace-nowrap tabular-nums text-white sm:text-xl">{stat.value}</dd>
+              <dd className="font-display text-lg leading-[normal] font-bold whitespace-nowrap tabular-nums text-white sm:text-[20px]">
+                {stat.value}
+              </dd>
             </div>
           ))}
         </dl>
@@ -217,9 +219,12 @@ export function ConsoleHeader({
   mark,
   title,
   mono = false,
+  wide = false,
   children,
   actions,
 }: {
+  /** A header whose sentence runs long: 780px rather than 760. */
+  wide?: boolean;
   eyebrow?: ReactNode;
   /** A small glyph before the eyebrow — only where the page has no pictogram. */
   icon?: string;
@@ -233,8 +238,8 @@ export function ConsoleHeader({
   actions?: ReactNode;
 }) {
   return (
-    <header className="flex w-full flex-wrap items-end gap-x-6 gap-y-4">
-      <div className="flex max-w-[48rem] min-w-0 items-start gap-4">
+    <header className="flex w-full flex-wrap items-end gap-4">
+      <div className={cx("flex min-w-0 items-start gap-4", wide ? "max-w-[780px]" : "max-w-[760px]")}>
       {mark && <Pictogram name={mark} className="rise-in mt-0.5 hidden sm:grid" />}
       <div className="flex min-w-0 flex-col gap-2">
         {eyebrow && (
@@ -245,17 +250,17 @@ export function ConsoleHeader({
         )}
         <h1
           className={cx(
-            "leading-[1.05] font-bold text-strong",
+            "font-bold text-strong",
             mono
-              ? "!font-mono text-[1.75rem] tracking-[-0.01em] sm:text-[2.1rem]"
-              : "font-display text-[2.1rem] tracking-[-0.03em] sm:text-[2.6rem]",
+              ? "!font-mono text-[1.75rem] leading-[1.08] tracking-[-0.01em] sm:text-[34px]"
+              : "font-display text-[2.1rem] leading-[1.08] tracking-[-0.025em] sm:text-[38px]",
           )}
         >
           <RevealText text={title} at={0.04} />
         </h1>
         {children && (
           <div
-            className="rise-in text-[15.5px] leading-relaxed text-muted [&_a]:font-semibold [&_a]:text-strong [&_a]:underline [&_a]:decoration-[#F59E0B] [&_a]:decoration-2 [&_a]:underline-offset-4 [&_b]:font-semibold [&_b]:text-strong"
+            className="rise-in text-[15.5px] leading-[1.6] text-muted [&_a]:font-semibold [&_a]:text-strong [&_a]:underline [&_a]:decoration-[#F59E0B] [&_a]:decoration-2 [&_a]:underline-offset-4 [&_b]:font-semibold [&_b]:text-strong"
             style={{ animationDelay: "0.12s" }}
           >
             {children}
@@ -290,12 +295,12 @@ export function HeaderPill({
     "inline-flex min-h-10 items-center gap-2 rounded-full px-[18px] text-[13.5px] font-semibold whitespace-nowrap transition-colors",
     "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
     tone === "primary"
-      ? "bg-[#0B3FA8] text-white shadow-[0_12px_24px_-12px_rgba(11,63,168,0.8)] hover:bg-[#0A3796] dark:bg-[#3B6FE0] dark:hover:bg-[#4A7BEA]"
+      ? "bg-[#0B3FA8] text-white shadow-[0_10px_22px_-12px_rgba(11,63,168,0.8)] hover:bg-[#0A3796] dark:bg-[#3B6FE0] dark:hover:bg-[#4A7BEA]"
       : "border border-line-strong bg-card text-strong hover:bg-sunken",
   );
   const inner = (
     <>
-      {icon && <Icon name={icon} className="text-[19px]" />}
+      {icon && <Icon name={icon} className="text-[16px]" />}
       {children}
     </>
   );
@@ -310,6 +315,36 @@ export function HeaderPill({
     <button type="button" onClick={onClick} className={className}>
       {inner}
     </button>
+  );
+}
+
+/**
+ * A worded link in a card's header or foot — "All orders →". `flush` drops
+ * the side padding, for a link that starts a footer line.
+ */
+export function CardLink({
+  href,
+  children,
+  flush = false,
+  className,
+}: {
+  href: string;
+  children: ReactNode;
+  flush?: boolean;
+  className?: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className={cx(
+        "inline-flex h-8 items-center rounded-full text-[12.5px] font-semibold whitespace-nowrap text-primary transition-colors",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+        flush ? "hover:underline" : "px-[13px] hover:bg-[var(--console-soft,var(--surface-sunken))]",
+        className,
+      )}
+    >
+      {children}
+    </Link>
   );
 }
 
@@ -337,7 +372,6 @@ export function PastelTile({
   note,
   chip,
   href,
-  icon,
 }: {
   pastel: Pastel;
   label: string;
@@ -348,41 +382,35 @@ export function PastelTile({
   chip?: { text: string; tone: "warning" | "critical" | "good" };
   /** Makes the whole tile the way to the detail page. */
   href?: string;
-  icon: string;
+  /** Kept for callers; the design's tiles carry no icon. */
+  icon?: string;
 }) {
   const chips = {
-    warning: "bg-[#B45309]/12 text-[#92400E] dark:bg-[#F5A524]/15 dark:text-[#FBD27A]",
-    critical: "bg-[#E5484D]/12 text-[#B4232A] dark:bg-[#E5484D]/20 dark:text-[#FFB4B8]",
-    good: "bg-[#0F766E]/12 text-[#0B5B55] dark:bg-[#5EEAD4]/15 dark:text-[#5EEAD4]",
+    warning: "bg-warning-soft text-warning",
+    critical: "bg-critical-soft text-critical",
+    good: "bg-stable-soft text-stable",
   } as const;
-  const frame = cx(
-    "group relative flex min-h-[150px] flex-col gap-3 rounded-3xl p-5 text-pastel-ink",
-    PASTELS[pastel],
-  );
+  const frame = cx("flex flex-col gap-2 rounded-[22px] p-[18px] text-pastel-ink", PASTELS[pastel]);
   const body = (
     <>
-      <div className="flex items-start justify-between gap-2">
-        <span className="flex items-center gap-2 text-[13px] font-semibold">
-          <Icon name={icon} className="text-[18px] opacity-70" />
-          {label}
-        </span>
+      <span className="flex items-center gap-2">
+        <span className="text-[13px] font-semibold opacity-[0.85]">{label}</span>
         {chip && (
-          <span className={cx("rounded-full px-2.5 py-0.5 text-[11.5px] font-semibold whitespace-nowrap", chips[chip.tone])}>
+          <span
+            className={cx(
+              "ml-auto inline-flex h-6 items-center rounded-full px-[9px] text-[12px] font-semibold whitespace-nowrap",
+              chips[chip.tone],
+            )}
+          >
             {chip.text}
           </span>
         )}
-      </div>
-      <span className="mt-auto font-display text-[2rem] leading-none font-bold tabular-nums">
-        {unit && <span className="mr-1.5 align-[0.45em] text-[13px] font-semibold opacity-80">{unit}</span>}
+      </span>
+      <span className="font-display text-[30px] leading-none font-bold tracking-[-0.02em] tabular-nums">
+        {unit && <span className="mr-[5px] align-[0.45em] text-[13px] font-semibold opacity-80">{unit}</span>}
         {value}
       </span>
-      {note && <span className="text-[12.5px] opacity-70">{note}</span>}
-      {href && (
-        <Icon
-          name="arrow_forward"
-          className="absolute right-5 bottom-5 text-[20px] opacity-0 transition-[opacity,transform] duration-300 group-hover:translate-x-0.5 group-hover:opacity-60"
-        />
-      )}
+      {note && <span className="text-[12.5px] opacity-[0.85]">{note}</span>}
     </>
   );
 
@@ -392,7 +420,7 @@ export function PastelTile({
       href={href}
       className={cx(
         frame,
-        "transition-transform duration-300 ease-out-soft hover:-translate-y-0.5",
+        "transition-shadow duration-300 hover:shadow-card",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
       )}
     >
@@ -434,12 +462,28 @@ export function FinishedState({
   );
 }
 
+/** The icon at the head of a console card: a 38px rounded square on the sunken ground. */
+export function CardIcon({ name, tone = "primary" }: { name: string; tone?: "primary" | "warning" }) {
+  return (
+    <span
+      aria-hidden
+      className={cx(
+        "grid h-[38px] w-[38px] shrink-0 place-items-center rounded-[13px]",
+        tone === "warning" ? "bg-warning-soft text-warning" : "bg-sunken text-primary",
+      )}
+    >
+      <Icon name={name} className="text-[19px]" />
+    </span>
+  );
+}
+
 /** A console card: the plain surface everything that is not a banner or a tile sits on. */
 export function ConsoleCard({
   id,
   title,
   subtitle,
   icon,
+  iconTone,
   action,
   footer,
   children,
@@ -449,6 +493,8 @@ export function ConsoleCard({
   title: string;
   subtitle?: ReactNode;
   icon?: string;
+  /** Amber for a card that is a queue of work waiting on somebody. */
+  iconTone?: "primary" | "warning";
   action?: ReactNode;
   footer?: ReactNode;
   children: ReactNode;
@@ -460,20 +506,20 @@ export function ConsoleCard({
       aria-label={title}
       className={cx("scroll-section flex flex-col rounded-3xl border border-line bg-card shadow-card", className)}
     >
-      <header className="flex flex-wrap items-center gap-3 px-5 pt-5 pb-3 sm:px-6">
-        {icon && (
-          <span aria-hidden className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-sunken text-primary">
-            <Icon name={icon} className="text-[20px]" />
-          </span>
-        )}
-        <div className="min-w-0">
-          <h2 className="font-display text-[1.05rem] font-bold text-strong">{title}</h2>
-          {subtitle && <p className="mt-0.5 text-[13px] text-muted">{subtitle}</p>}
+      <header className="flex flex-wrap items-center gap-3 px-[22px] pt-[18px] pb-3">
+        {icon && <CardIcon name={icon} tone={iconTone} />}
+        <div className="flex min-w-0 flex-col">
+          <h2 className="font-display text-[16px] font-bold text-strong">{title}</h2>
+          {subtitle && <p className="text-[12.5px] text-muted">{subtitle}</p>}
         </div>
         {action && <div className="ml-auto">{action}</div>}
       </header>
       <div className="flex-1">{children}</div>
-      {footer && <footer className="border-t border-line px-5 py-3.5 text-sm sm:px-6">{footer}</footer>}
+      {footer && (
+        <footer className="flex items-center justify-between gap-2.5 border-t border-line px-[22px] py-3 text-[13px] text-muted">
+          {footer}
+        </footer>
+      )}
     </section>
   );
 }
@@ -495,22 +541,31 @@ const PACKS: Record<string, "tablet" | "capsule" | "syrup" | "device"> = {
  * not a tablet, capsule or liquid is drawn as a device box.
  */
 export function MedicinePack({ form, size = 40, className }: { form: string; size?: number; className?: string }) {
-  const pack = PACKS[form] ?? "device";
+  // The design marks a medicine with one line-drawn pill on a soft tile — the
+  // same mark for every form, so a column of them reads as a column.
+  void PACKS[form];
+  const tile = size + 8;
   return (
     <span
       aria-hidden
-      className={cx("grid shrink-0 place-items-center rounded-xl border border-line bg-sunken/70", className)}
-      style={{ width: size + 8, height: size + 8 }}
+      className={cx(
+        "grid shrink-0 place-items-center border border-line bg-[var(--console-soft,var(--surface-sunken))] text-primary",
+        tile <= 36 ? "rounded-[11px]" : "rounded-xl",
+        className,
+      )}
+      style={{ width: tile, height: tile }}
     >
-      <Image
-        src={`/admin-art/pack-${pack}.svg`}
-        alt=""
-        width={size}
-        height={size}
-        draggable={false}
-        className="h-auto select-none"
-        style={{ width: size }}
-      />
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={{ width: Math.round(tile * 0.48), height: Math.round(tile * 0.48) }}
+      >
+        <path d="M10.5 20.5l-7-7a5 5 0 0 1 7-7l7 7a5 5 0 0 1-7 7zM8.5 8.5l7 7" />
+      </svg>
     </span>
   );
 }
@@ -536,21 +591,21 @@ const NEED_TONES = {
  */
 export function NeedsList({ items }: { items: Need[] }) {
   return (
-    <ul className="flex flex-col gap-1 px-3 pb-3">
+    <ul className="flex flex-col gap-0.5 px-2.5 pb-3">
       {items.map((need) => (
         <li key={need.key} className="pop-in">
           <Link
             href={need.href}
-            className="group flex items-center gap-3 rounded-2xl px-3 py-3 transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-primary"
+            className="group flex items-center gap-3 rounded-2xl px-3 py-[11px] transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-primary"
           >
-            <span aria-hidden className={cx("grid h-10 w-10 shrink-0 place-items-center rounded-xl", NEED_TONES[need.tone])}>
-              <Icon name={need.icon} filled={need.tone === "critical"} className="text-[20px]" />
+            <span aria-hidden className={cx("grid h-[38px] w-[38px] shrink-0 place-items-center rounded-xl", NEED_TONES[need.tone])}>
+              <Icon name={need.icon} filled={need.tone === "critical"} className="text-[18px]" />
             </span>
             <span className="flex min-w-0 flex-1 flex-col">
-              <span className="text-[14px] font-semibold text-strong">{need.title}</span>
+              <span className="text-[13.5px] font-semibold text-strong">{need.title}</span>
               <span className="text-[12.5px] text-muted">{need.detail}</span>
             </span>
-            <Icon name="chevron_right" className="text-[20px] text-faint transition-transform group-hover:translate-x-0.5" />
+            <Icon name="chevron_right" className="text-[16px] text-faint transition-transform group-hover:translate-x-0.5" />
           </Link>
         </li>
       ))}
@@ -591,7 +646,7 @@ export function SlowLoadNote() {
 export function ConsoleLoading({ tiles = 4, rows = 4 }: { tiles?: number; rows?: number }) {
   const tr = useTr();
   return (
-    <div className="flex flex-col gap-6" aria-busy="true">
+    <div className="flex flex-col gap-[22px]" aria-busy="true">
       <span className="sr-only" role="status">
         {tr("Loading…", "Load ho raha hai…")}
       </span>
@@ -667,14 +722,44 @@ export function StatusPill({
 /** "23 Oct · 2:41 PM" — how the console writes a moment. */
 export function consoleStamp(iso: string): string {
   const at = new Date(iso);
-  const day = at.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
   const time = at.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-  return `${day} · ${time}`;
+  return `${dayMonth(at)} · ${time}`;
 }
 
 /** "2 Jan 2026" — how the console writes a day. */
 export function consoleDay(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  const at = new Date(iso);
+  return `${dayMonth(at)} ${at.getFullYear()}`;
+}
+
+/**
+ * A Pakistani number grouped the way it is read aloud — "+92 300 418 2291",
+ * or "0345 118 2290" for a wallet's local number. Anything else as stored.
+ */
+export function groupPhone(raw: string, style: "international" | "local" = "international"): string {
+  const digits = raw.replace(/\D/g, "");
+  const national =
+    digits.length === 12 && digits.startsWith("92")
+      ? digits.slice(2)
+      : digits.length === 11 && digits.startsWith("0")
+        ? digits.slice(1)
+        : null;
+  if (!national) return raw;
+  const grouped = `${national.slice(0, 3)} ${national.slice(3, 6)} ${national.slice(6)}`;
+  return style === "local" ? `0${grouped}` : `+92 ${grouped}`;
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/**
+ * "24 Sep", or "Tue 13 Oct" — months in three letters, as the design writes
+ * them. Spelled here rather than by `Intl`, whose en-GB month is now "Sept".
+ */
+export function dayMonth(at: Date, { utc = false, weekday = false }: { utc?: boolean; weekday?: boolean } = {}): string {
+  const date = utc ? at.getUTCDate() : at.getDate();
+  const month = MONTHS[utc ? at.getUTCMonth() : at.getMonth()];
+  return `${weekday ? `${WEEKDAYS[utc ? at.getUTCDay() : at.getDay()]} ` : ""}${date} ${month}`;
 }
 
 /**
@@ -686,11 +771,14 @@ export function Pager({
   limit,
   total,
   onChange,
+  note,
 }: {
   offset: number;
   limit: number;
   total: number;
   onChange: (offset: number) => void;
+  /** Said on the right when everything fits on one page. */
+  note?: string;
 }) {
   const tr = useTr();
   if (total === 0) return null;
@@ -698,7 +786,7 @@ export function Pager({
   const pages = Math.max(1, Math.ceil(total / limit));
   const last = Math.min(total, offset + limit);
   const button =
-    "grid h-8 w-8 place-items-center rounded-full border border-line-strong bg-card text-strong transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-card";
+    "grid h-8 w-8 place-items-center rounded-full border border-line-strong bg-card text-strong transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:hover:bg-card";
   return (
     <div className="flex flex-wrap items-center justify-between gap-2.5 border-t border-line px-[18px] py-3 text-[13px] text-muted">
       <span className="tabular-nums">
@@ -708,6 +796,7 @@ export function Pager({
         </b>
         {tr(` of ${total}`, ` / ${total} dikh rahe hain`)}
       </span>
+      {pages <= 1 && note && <span className="text-[12.5px]">{note}</span>}
       {pages > 1 && (
         <div className="flex items-center gap-1.5">
           <button
@@ -717,7 +806,7 @@ export function Pager({
             onClick={() => onChange(Math.max(0, offset - limit))}
             className={button}
           >
-            <Icon name="chevron_left" className="text-[18px]" />
+            <Icon name="chevron_left" className="text-[16px]" />
           </button>
           <span className="px-1.5 tabular-nums">{tr(`Page ${page} of ${pages}`, `Safha ${page} / ${pages}`)}</span>
           <button
@@ -727,7 +816,7 @@ export function Pager({
             onClick={() => onChange(offset + limit)}
             className={button}
           >
-            <Icon name="chevron_right" className="text-[18px]" />
+            <Icon name="chevron_right" className="text-[16px]" />
           </button>
         </div>
       )}
@@ -802,7 +891,18 @@ export function consoleMoney(amount: string | number, currency = "PKR"): string 
  * Copies one value — an account number, a reference — so it reaches a banking
  * app without being retyped. Says "Copied" by turning into a tick.
  */
-export function CopyButton({ value, label, size = 30 }: { value: string; label: string; size?: number }) {
+export function CopyButton({
+  value,
+  label,
+  size = 30,
+  bordered = false,
+}: {
+  value: string;
+  label: string;
+  size?: number;
+  /** The design's outlined round button, as in a withdrawal's detail boxes. */
+  bordered?: boolean;
+}) {
   const tr = useTr();
   const [copied, setCopied] = useState(false);
   useEffect(() => {
@@ -822,10 +922,15 @@ export function CopyButton({ value, label, size = 30 }: { value: string; label: 
       style={{ width: size, height: size }}
       className={cx(
         "grid shrink-0 place-items-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-        copied ? "bg-stable-soft text-stable" : "text-muted hover:bg-sunken hover:text-strong",
+        bordered && "border border-line-strong",
+        copied
+          ? "bg-stable-soft text-stable"
+          : bordered
+            ? "bg-card text-strong hover:bg-sunken"
+            : "text-strong hover:bg-sunken",
       )}
     >
-      <Icon name={copied ? "check" : "content_copy"} className="text-[15px]" />
+      <Icon name={copied ? "check" : "content_copy"} className="text-[14px]" />
     </button>
   );
 }

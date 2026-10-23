@@ -14,11 +14,11 @@
  * visible. What hover buys is a quieter card, not a secret.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 
 import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/overlays";
-import { Avatar, EkgBars, cx } from "@/components/ui";
+import { Avatar, ConsoleSurface, EkgBars, cx } from "@/components/ui";
 import { ApiError, account } from "@/lib/api";
 import { useTr } from "@/lib/lang";
 
@@ -228,19 +228,48 @@ export function AvatarEditor({
   const itemClass =
     "flex min-h-11 w-full items-center gap-2.5 rounded-xl px-3 text-left text-sm font-semibold text-strong transition-colors hover:bg-gradient-soft hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 
+  // The console draws the design's plain mint circle, with the pencil always
+  // on its corner; the portals keep the gradient ring and the hover reveal.
+  const inConsole = useContext(ConsoleSurface);
+  const picture = preview ?? avatarUrl;
+  const initials = name
+    .replace(/^Dr\.?\s+/i, "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+
   return (
     <div ref={shell} className="group relative shrink-0">
-      <span
-        aria-hidden
-        className="bg-gradient-brand grid shrink-0 place-items-center rounded-full p-[2px]"
-      >
-        <Avatar
-          name={name}
-          src={preview ?? avatarUrl}
-          size="lg"
-          className={cx(busy && "opacity-40")}
-        />
-      </span>
+      {inConsole ? (
+        <span
+          aria-hidden
+          className={cx(
+            "grid h-[72px] w-[72px] place-items-center overflow-hidden rounded-full bg-pastel-mint font-display text-[24px] font-bold text-[#0B7F8B] dark:text-[#5EEAD4]",
+            busy && "opacity-40",
+          )}
+        >
+          {picture ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={picture} alt="" className="h-full w-full object-cover" />
+          ) : (
+            initials || "?"
+          )}
+        </span>
+      ) : (
+        <span
+          aria-hidden
+          className="bg-gradient-brand grid shrink-0 place-items-center rounded-full p-[2px]"
+        >
+          <Avatar
+            name={name}
+            src={picture}
+            size="lg"
+            className={cx(busy && "opacity-40")}
+          />
+        </span>
+      )}
 
       {busy && (
         <span className="absolute inset-0 grid place-items-center rounded-full">
@@ -268,22 +297,27 @@ export function AvatarEditor({
         title={tr("Edit profile picture", "Profile tasveer badlein")}
         aria-label={tr("Edit profile picture", "Profile tasveer badlein")}
         className={cx(
-          // Bigger under the breakpoint: it sits on the corner of the
-          // avatar, where a thumb has least room to be precise.
-          "absolute -bottom-0.5 -right-0.5 grid h-11 w-11 place-items-center rounded-full sm:h-8 sm:w-8",
-          "border border-line bg-card text-muted shadow-card",
-          "transition-[opacity,color,transform] hover:scale-105 hover:text-primary",
+          "absolute grid place-items-center rounded-full",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
           "disabled:cursor-not-allowed disabled:opacity-40",
-          // Hover reveals it. `opacity-0` and not `hidden`, so Tab still lands
-          // on it while it is invisible — and focus then makes it visible.
-          "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
-          // A touch screen has no hover at all, so there it never hides.
-          "[@media(hover:none)]:opacity-100",
-          open && "opacity-100",
+          inConsole
+            ? "-right-1 -bottom-1 h-[30px] w-[30px] border border-line-strong bg-card text-strong transition-colors hover:bg-sunken"
+            : cx(
+                // Bigger under the breakpoint: it sits on the corner of the
+                // avatar, where a thumb has least room to be precise.
+                "-right-0.5 -bottom-0.5 h-11 w-11 sm:h-8 sm:w-8",
+                "border border-line bg-card text-muted shadow-card",
+                "transition-[opacity,color,transform] hover:scale-105 hover:text-primary",
+                // Hover reveals it. `opacity-0` and not `hidden`, so Tab still lands
+                // on it while it is invisible — and focus then makes it visible.
+                "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
+                // A touch screen has no hover at all, so there it never hides.
+                "[@media(hover:none)]:opacity-100",
+                open && "opacity-100",
+              ),
         )}
       >
-        <Icon name="edit" className="text-[16px]" />
+        <Icon name="edit" className={inConsole ? "text-[14px]" : "text-[16px]"} />
       </button>
 
       {open && (

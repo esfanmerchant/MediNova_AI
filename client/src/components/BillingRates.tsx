@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * The rates an administrator owns.
+ * The rates an administrator owns, and the wallets patients pay into — the
+ * console's "Rates and wallets" drawer.
  *
  * The tax rate used to be an environment variable, which put the number a
  * hospital administrator is accountable for behind a redeployment by whoever
@@ -10,23 +11,28 @@
  *
  * **Each figure can be a flat amount or a share of the bill.** Tax is normally
  * a percentage and a platform fee normally a flat charge, but clinics exist
- * that do the opposite, and a screen that hard-codes which is which forces them
- * to misdescribe their own pricing. So all three carry the same switch, and the
- * hint underneath changes to say what the number now means.
+ * that do the opposite. The unit printed in the box — "PKR" before the figure,
+ * "%" after it — is the switch: pressing it reads the same number the other
+ * way, so the box always says what its number means.
  *
  * **The one thing this screen has to be honest about** is which invoices a
  * change reaches. Every invoice stores the rates it charged, so changing a
  * number here touches nothing already issued — a bill a patient has been sent
  * must not quietly grow because somebody corrected a percentage this morning.
- * That is said on the screen rather than left to be discovered, because the
- * opposite assumption is the reasonable one to make.
+ *
+ * The wallets are shown, not laid open: a wrong number sends a patient's
+ * transfer to a stranger, so changing one starts with "Edit" on its row.
+ * Nothing here is a secret — it is published to every patient with a bill — so
+ * it lives in the database, where the administrator whose account it is can
+ * reach it.
  */
 
 import { useEffect, useState } from "react";
 
 import { Icon } from "@/components/Icon";
+import { StatusPill, groupPhone } from "@/components/admin/console";
 import { useToast } from "@/components/overlays";
-import { Button, Card, Field, Input, cx } from "@/components/ui";
+import { Button, Field, Input, cx } from "@/components/ui";
 import { ApiError, billingSettings, type BillingSettings, type FeeMode } from "@/lib/api";
 import { useTr } from "@/lib/lang";
 
@@ -40,16 +46,26 @@ interface Draft {
   tax: Entry;
   platform: Entry;
   late: Entry;
+  payeeName: string;
+  nayapayNumber: string;
+  easypaisaNumber: string;
+  paymentNote: string;
+}
+
+/** "150.00" as the box shows it: "150". */
+function plain(amount: string | null | undefined): string {
+  return (amount ?? "").replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
 }
 
 function draftOf(settings: BillingSettings | null): Draft {
   return {
-    tax: { value: settings?.taxPercent ?? "", mode: settings?.taxMode ?? "PERCENT" },
-    platform: {
-      value: settings?.platformFee ?? "",
-      mode: settings?.platformFeeMode ?? "FIXED",
-    },
-    late: { value: settings?.lateFee ?? "", mode: settings?.lateFeeMode ?? "FIXED" },
+    tax: { value: plain(settings?.taxPercent), mode: settings?.taxMode ?? "PERCENT" },
+    platform: { value: plain(settings?.platformFee), mode: settings?.platformFeeMode ?? "FIXED" },
+    late: { value: plain(settings?.lateFee), mode: settings?.lateFeeMode ?? "FIXED" },
+    payeeName: settings?.payeeName ?? "",
+    nayapayNumber: settings?.nayapayNumber ?? "",
+    easypaisaNumber: settings?.easypaisaNumber ?? "",
+    paymentNote: settings?.paymentNote ?? "",
   };
 }
 
@@ -58,10 +74,8 @@ function draftOf(settings: BillingSettings | null): Draft {
  *
  * People type `15%` into a box labelled "percent" and `PKR 500` or `1,500` into
  * one labelled with a currency, because that is how those quantities are
- * written down everywhere else. Refusing them — which this screen did — is a
- * disabled Save button next to a field that looks perfectly filled in, with a
- * message that does not say what is wrong. The symbols say the same thing the
- * label already says, so they are simply removed.
+ * written down everywhere else. The symbols say the same thing the box already
+ * says, so they are simply removed.
  *
  * Returns null only when what is left is genuinely not a number.
  */
@@ -76,52 +90,9 @@ function parseAmount(raw: string): number | null {
   return Number.isFinite(value) && value >= 0 ? value : null;
 }
 
-function ModeSwitch({
-  value,
-  onChange,
-  currency,
-  label,
-}: {
-  value: FeeMode;
-  onChange: (mode: FeeMode) => void;
-  currency: string;
-  /**
-   * Names what this switches, for anyone not seeing the layout.
-   *
-   * Not simply the figure's name: that is already the label on the box beside
-   * it, and two controls answering to "Tax" is ambiguous to anybody navigating
-   * by label — and was, to the tests.
-   */
-  label: string;
-}) {
-  const options: Array<{ mode: FeeMode; text: string }> = [
-    { mode: "FIXED", text: currency },
-    { mode: "PERCENT", text: "%" },
-  ];
-
-  return (
-    <div role="group" aria-label={label} className="inline-flex rounded-lg border border-line p-0.5">
-      {options.map((option) => (
-        <button
-          key={option.mode}
-          type="button"
-          // `aria-pressed` rather than a radio: this toggles how the field
-          // beside it is read, it is not a value on the form.
-          aria-pressed={value === option.mode}
-          onClick={() => onChange(option.mode)}
-          className={cx(
-            "min-h-11 rounded-md px-3 text-xs font-bold transition-colors sm:min-h-8",
-            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            value === option.mode
-              ? "bg-primary text-primary-on"
-              : "text-muted hover:text-strong",
-          )}
-        >
-          {option.text}
-        </button>
-      ))}
-    </div>
-  );
+/** The section names: mono capitals, as the design labels a drawer's parts. */
+function SectionLabel({ children }: { children: string }) {
+  return <h3 className="font-mono text-[11px] tracking-[0.14em] text-faint uppercase">{children}</h3>;
 }
 
 function RateField({
@@ -130,53 +101,54 @@ function RateField({
   entry,
   onChange,
   currency,
-  fixedHint,
-  percentHint,
   error,
-  switchLabel,
 }: {
   id: string;
   label: string;
   entry: Entry;
   onChange: (entry: Entry) => void;
   currency: string;
-  fixedHint: string;
-  percentHint: string;
   error?: string;
-  /** How the mode switch names itself; see `ModeSwitch`. */
-  switchLabel: string;
 }) {
+  const tr = useTr();
+  const fixed = entry.mode === "FIXED";
   return (
-    <div>
-      {/* The switch sits above the box rather than beside a heading of its
-          own: `Field` is a floating-label shell, so the name of the figure is
-          already inside the input, and repeating it here would print it twice.
-          The switch names what it controls through `aria-label` instead. */}
-      <div className="mb-1.5 flex justify-end">
-        <ModeSwitch
-          label={switchLabel}
-          value={entry.mode}
-          currency={currency}
-          onChange={(mode) => onChange({ ...entry, mode })}
-        />
-      </div>
-      <Field
-        label={label}
-        htmlFor={id}
-        hint={entry.mode === "PERCENT" ? percentHint : fixedHint}
-        error={error}
+    <Field label={label} htmlFor={id} error={error}>
+      <Input
+        id={id}
+        inputMode="decimal"
+        className={cx("tabular-nums", fixed ? "!pl-[50px]" : "!pr-9")}
+        value={entry.value}
+        onChange={(event) => onChange({ ...entry, value: event.target.value })}
+      />
+      {/* The unit is the switch: pressed, the same number is read the other way. */}
+      <button
+        type="button"
+        aria-label={
+          fixed
+            ? tr(`${label}: ${currency} per invoice — change to a percentage`, `${label}: ${currency} har invoice — feesad karein`)
+            : tr(`${label}: a percentage — change to ${currency}`, `${label}: feesad — ${currency} karein`)
+        }
+        title={fixed ? tr("Make it a percentage", "Feesad karein") : tr(`Make it ${currency}`, `${currency} karein`)}
+        onClick={() => onChange({ ...entry, mode: fixed ? "PERCENT" : "FIXED" })}
+        className={cx(
+          "absolute top-1/2 -translate-y-1/2 rounded text-[13px] font-semibold text-muted underline-offset-2 hover:text-strong hover:underline",
+          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+          fixed ? "left-3.5" : "right-3.5",
+        )}
       >
-        <Input
-          id={id}
-          inputMode="decimal"
-          className="tabular-nums"
-          value={entry.value}
-          onChange={(event) => onChange({ ...entry, value: event.target.value })}
-        />
-      </Field>
-    </div>
+        {fixed ? currency : "%"}
+      </button>
+    </Field>
   );
 }
+
+type Wallet = "nayapayNumber" | "easypaisaNumber";
+
+const WALLETS: Array<{ key: Wallet; name: string; tone: "info" | "good" }> = [
+  { key: "nayapayNumber", name: "NayaPay", tone: "info" },
+  { key: "easypaisaNumber", name: "Easypaisa", tone: "good" },
+];
 
 export function BillingRates() {
   const tr = useTr();
@@ -184,6 +156,7 @@ export function BillingRates() {
 
   const [settings, setSettings] = useState<BillingSettings | null>(null);
   const [draft, setDraft] = useState<Draft>(draftOf(null));
+  const [editing, setEditing] = useState<Wallet | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -205,6 +178,7 @@ export function BillingRates() {
   }, []);
 
   const currency = settings?.currency ?? "PKR";
+  const patch = (change: Partial<Draft>) => setDraft((current) => ({ ...current, ...change }));
 
   /** The refusal for one figure, or undefined if it is fine. */
   function problem(entry: Entry): string | undefined {
@@ -225,9 +199,14 @@ export function BillingRates() {
   };
   const valid = !problems.tax && !problems.platform && !problems.late;
   const dirty = JSON.stringify(draft) !== JSON.stringify(draftOf(settings));
+  const anyAccount = Boolean(draft.nayapayNumber.trim() || draft.easypaisaNumber.trim());
 
   async function save() {
     if (!valid) return;
+    if (!dirty) {
+      toast.show({ tone: "info", title: tr("Nothing has changed", "Kuchh nahi badla") });
+      return;
+    }
     setSaving(true);
     try {
       const saved = await billingSettings.update({
@@ -239,14 +218,19 @@ export function BillingRates() {
         platformFeeMode: draft.platform.mode,
         lateFee: String(parseAmount(draft.late.value)),
         lateFeeMode: draft.late.mode,
+        payeeName: draft.payeeName.trim(),
+        nayapayNumber: draft.nayapayNumber.trim(),
+        easypaisaNumber: draft.easypaisaNumber.trim(),
+        paymentNote: draft.paymentNote.trim(),
       });
       setSettings(saved);
       setDraft(draftOf(saved));
+      setEditing(null);
       toast.show({
         tone: "success",
-        title: tr("Rates updated", "Rates tabdeel ho gaye"),
+        title: tr("Rates and wallets saved", "Rates aur wallets mehfooz"),
         body: tr(
-          "Invoices issued from now on will use them. Existing invoices are unchanged.",
+          "Invoices issued from now on use these. Existing invoices are unchanged.",
           "Ab se banne wale invoices inhi par honge. Purane invoices waise hi rahenge.",
         ),
       });
@@ -261,104 +245,132 @@ export function BillingRates() {
     }
   }
 
+  if (loading) return <p className="text-sm text-muted">{tr("Loading…", "Load ho raha hai…")}</p>;
+
   return (
-    <Card
-      icon="percent"
-      title={tr("Rates and fees", "Rates aur fees")}
-      description={tr(
-        "What a new invoice charges on top of the consultation fee. Each one can be an amount or a percentage.",
-        "Naye invoice mein consultation fee ke ilawa kya lagta hai. Har ek raqam ya feesad ho sakta hai.",
-      )}
-    >
-      {loading ? (
-        <p className="text-sm text-muted">{tr("Loading…", "Load ho raha hai…")}</p>
-      ) : (
-        <div className="space-y-5">
-          <div className="grid gap-5 sm:grid-cols-3">
-            <RateField
-              id="rate-tax"
-              label={tr("Tax", "Tax")}
-              switchLabel={tr(
-                "Tax: amount or percentage",
-                "Tax: raqam ya feesad",
-              )}
-              entry={draft.tax}
-              error={problems.tax}
-              currency={currency}
-              onChange={(tax) => setDraft((d) => ({ ...d, tax }))}
-              percentHint={tr(
-                "Of the fee and the platform fee.",
-                "Fee aur platform fee dono par.",
-              )}
-              fixedHint={tr(`Flat ${currency} on every invoice.`, `Har invoice par ${currency}.`)}
+    <div className="flex flex-col gap-6">
+      <section aria-label={tr("Rates", "Rates")} className="flex flex-col gap-3.5">
+        <SectionLabel>{tr("Rates on new invoices", "Naye invoices ke rates")}</SectionLabel>
+        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+          <RateField
+            id="rate-platform"
+            label={tr("Platform fee", "Platform fee")}
+            entry={draft.platform}
+            error={problems.platform}
+            currency={currency}
+            onChange={(platform) => patch({ platform })}
+          />
+          <RateField
+            id="rate-tax"
+            label={tr("Tax", "Tax")}
+            entry={draft.tax}
+            error={problems.tax}
+            currency={currency}
+            onChange={(tax) => patch({ tax })}
+          />
+          {/* Set by the hospital's billing rules rather than here; shown so the
+              late fee beside it reads against the days it waits for. */}
+          <Field label={tr("Days to pay", "Adaigi ke din")} htmlFor="rate-days">
+            <Input
+              id="rate-days"
+              readOnly
+              aria-readonly
+              value={String(settings?.paymentTermsDays ?? "")}
+              title={tr("Fixed for every invoice", "Har invoice ke liye muqarrar")}
+              className="cursor-default !bg-[var(--console-soft,var(--surface-sunken))] tabular-nums"
             />
-
-            <RateField
-              id="rate-platform"
-              label={tr("Platform fee", "Platform fee")}
-              switchLabel={tr(
-                "Platform fee: amount or percentage",
-                "Platform fee: raqam ya feesad",
-              )}
-              entry={draft.platform}
-              error={problems.platform}
-              currency={currency}
-              onChange={(platform) => setDraft((d) => ({ ...d, platform }))}
-              percentHint={tr("Of the consultation fee.", "Consultation fee ka feesad.")}
-              fixedHint={tr(`${currency}, per invoice.`, `${currency}, har invoice par.`)}
-            />
-
-            <RateField
-              id="rate-late"
-              label={tr("Late payment charge", "Der ka charge")}
-              switchLabel={tr(
-                "Late payment charge: amount or percentage",
-                "Der ka charge: raqam ya feesad",
-              )}
-              entry={draft.late}
-              error={problems.late}
-              currency={currency}
-              onChange={(late) => setDraft((d) => ({ ...d, late }))}
-              percentHint={tr("Of the invoice total.", "Invoice ke total ka feesad.")}
-              fixedHint={tr(`${currency}, added once.`, `${currency}, ek baar.`)}
-            />
-          </div>
-
-          {/* The two facts somebody would otherwise have to guess, and would
-              probably guess the wrong way round. */}
-          <div className="space-y-2 rounded-xl border border-line bg-sunken p-4 text-sm text-muted">
-            <p className="flex items-start gap-2">
-              <Icon name="history" className="mt-0.5 shrink-0 text-[18px] text-primary" />
-              <span>
-                {tr(
-                  "These apply to invoices issued from now on. Invoices already issued keep the rates they were charged at.",
-                  "Yeh sirf aage banne wale invoices par lagenge. Jo invoices ban chuke hain, un ke rates wahi rahenge.",
-                )}
-              </span>
-            </p>
-            <p className="flex items-start gap-2">
-              <Icon name="event" className="mt-0.5 shrink-0 text-[18px] text-primary" />
-              <span>
-                {tr(
-                  `A patient has ${settings?.paymentTermsDays ?? 3} days to pay. After that the late charge is added once — never per day.`,
-                  `Mareez ke paas ${settings?.paymentTermsDays ?? 3} din hain. Us ke baad der ka charge ek hi baar lagta hai — rozana nahi.`,
-                )}
-              </span>
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <Button onClick={save} loading={saving} disabled={!dirty || !valid}>
-              {tr("Save rates", "Rates mehfooz karein")}
-            </Button>
-            <span className={cx("text-sm", dirty ? "text-strong" : "text-faint")}>
-              {dirty
-                ? tr("Unsaved changes", "Tabdeeliyan mehfooz nahi hui")
-                : tr("Saved", "Mehfooz hai")}
-            </span>
-          </div>
+          </Field>
+          {/* Added once when a bill passes its due date, never per day. */}
+          <RateField
+            id="rate-late"
+            label={tr("Late fee", "Der ki fees")}
+            entry={draft.late}
+            error={problems.late}
+            currency={currency}
+            onChange={(late) => patch({ late })}
+          />
         </div>
-      )}
-    </Card>
+        <p className="text-[12.5px] text-muted">
+          {tr(
+            "An invoice already issued keeps the rates it was issued with.",
+            "Jaari shuda invoice apne rates par rehta hai.",
+          )}
+        </p>
+      </section>
+
+      <section aria-label={tr("Wallets", "Wallets")} className="flex flex-col gap-3.5">
+        <SectionLabel>{tr("Where patients pay", "Mareez kahan ada karein")}</SectionLabel>
+        {/* Said before the rows, not after a failed save: with no account
+            entered, the Pay button on every bill has nothing to show. */}
+        {!anyAccount && (
+          <p role="status" className="flex items-start gap-2 rounded-2xl bg-warning-soft px-3.5 py-3 text-[13px] text-strong">
+            <Icon name="info" className="mt-px shrink-0 text-[16px] text-warning" />
+            {tr(
+              "Until one is filled in, patients are told online payment is unavailable and to pay at the desk.",
+              "Jab tak ek nahi bharte, mareezon ko likha aayega ke online adaigi mojood nahi aur desk par ada karein.",
+            )}
+          </p>
+        )}
+        {WALLETS.map((wallet) =>
+          editing === wallet.key ? (
+            <div key={wallet.key} className="flex flex-col gap-3.5 rounded-2xl border border-line-strong p-3.5">
+              <span className="flex items-center gap-2">
+                <StatusPill tone={wallet.tone}>{wallet.name}</StatusPill>
+                <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setEditing(null)}>
+                  {tr("Done", "Theek hai")}
+                </Button>
+              </span>
+              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+                <Field
+                  label={tr("Account holder", "Account holder")}
+                  htmlFor="pay-holder"
+                  hint={tr("The name patients see on both wallets.", "Dono wallets par yahi naam dikhega.")}
+                >
+                  <Input id="pay-holder" value={draft.payeeName} maxLength={120} onChange={(event) => patch({ payeeName: event.target.value })} />
+                </Field>
+                <Field label={tr(`${wallet.name} number`, `${wallet.name} number`)} htmlFor={`pay-${wallet.key}`}>
+                  <Input
+                    id={`pay-${wallet.key}`}
+                    inputMode="tel"
+                    className="font-mono"
+                    value={draft[wallet.key]}
+                    maxLength={20}
+                    placeholder="03XX XXX XXXX"
+                    onChange={(event) => patch({ [wallet.key]: event.target.value } as Partial<Draft>)}
+                  />
+                </Field>
+              </div>
+              <Field
+                label={tr("Note for patients", "Mareezon ke liye note")}
+                htmlFor="pay-note"
+                hint={tr("Shown under the wallets on every bill. Optional.", "Har bill par wallets ke neeche. Ikhtiyari.")}
+              >
+                <Input id="pay-note" value={draft.paymentNote} maxLength={300} onChange={(event) => patch({ paymentNote: event.target.value })} />
+              </Field>
+            </div>
+          ) : (
+            <div key={wallet.key} className="flex items-center gap-3 rounded-2xl border border-line p-3.5">
+              <StatusPill tone={wallet.tone}>{wallet.name}</StatusPill>
+              <span className="flex min-w-0 flex-1 flex-col">
+                <b className="font-semibold text-strong">{draft.payeeName || tr("No account holder yet", "Abhi koi account holder nahi")}</b>
+                <span className="font-mono text-[12.5px] text-muted">
+                  {draft[wallet.key] ? groupPhone(draft[wallet.key], "local") : tr("Not set", "Nahi diya gaya")}
+                </span>
+              </span>
+              <Button size="sm" variant="ghost" onClick={() => setEditing(wallet.key)}>
+                {draft[wallet.key] ? tr("Edit", "Badlein") : tr("Add", "Shamil karein")}
+              </Button>
+            </div>
+          ),
+        )}
+      </section>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <Button onClick={save} loading={saving} disabled={!valid}>
+          {tr("Save rates and wallets", "Rates aur wallets mehfooz karein")}
+        </Button>
+        {dirty && <span className="text-[13px] text-muted">{tr("Unsaved changes", "Tabdeeliyan mehfooz nahi hui")}</span>}
+      </div>
+    </div>
   );
 }

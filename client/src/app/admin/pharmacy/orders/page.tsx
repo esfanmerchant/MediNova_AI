@@ -25,11 +25,14 @@ import {
 import { RowMenu } from "@/components/admin/RowMenu";
 import { Segmented } from "@/components/forms";
 import { AdminOrderStatus, PharmacyAdminTabs } from "@/components/pharmacy/AdminTabs";
-import { rupees } from "@/components/pharmacy/shared";
+import { productTitle, rupees } from "@/components/pharmacy/shared";
 import { EmptyState, ErrorState, Loading, SkeletonRows } from "@/components/ui";
-import { pharmacy, type OrderStatus, type PharmacyDashboard } from "@/lib/api";
+import { pharmacy, type OrderItem, type OrderStatus, type PharmacyDashboard } from "@/lib/api";
 import { useTr } from "@/lib/lang";
 import { PAGE_REFRESH_MS, useAsync } from "@/lib/useAsync";
+
+/** "Amoxil 500 mg" — a line as the pharmacist reads it, strength and all. */
+const itemTitle = (item: OrderItem) => productTitle({ name: item.productName, strength: item.strength });
 
 type Filter =
   | { kind: "all" }
@@ -109,7 +112,7 @@ function OrdersBoard({ summary }: { summary: PharmacyDashboard | undefined }) {
   return (
     <section
       aria-label={tr("Orders", "Orders")}
-      className="rise-in mt-6 overflow-hidden rounded-3xl border border-line bg-card shadow-card"
+      className="rise-in mt-[22px] overflow-hidden rounded-3xl border border-line bg-card shadow-card"
     >
       <div className="flex flex-wrap items-center gap-3 px-[18px] py-4">
         <Segmented
@@ -128,14 +131,15 @@ function OrdersBoard({ summary }: { summary: PharmacyDashboard | undefined }) {
           trigger={inMore ? tr(...active.label) : tr("More", "Mazeed")}
           active={inMore}
           align="start"
+          width={230}
           items={MORE.map((entry) => ({
             label: tr(...entry.label),
             hint: summary && entry.count ? String(entry.count(summary)) : undefined,
             onSelect: () => choose(entry),
           }))}
         />
-        <label className="flex h-10 w-full items-center gap-2.5 rounded-full border border-line-strong bg-card pr-3 pl-3.5 text-muted focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary sm:ml-auto sm:w-auto sm:max-w-[340px] sm:min-w-[220px] sm:flex-1">
-          <Icon name="search" className="text-[18px]" />
+        <label className="flex h-10 w-full max-w-full items-center gap-2.5 rounded-full border border-line-strong bg-card pr-3 pl-3.5 text-muted focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary sm:ml-auto sm:w-[340px]">
+          <Icon name="search" className="text-[17px]" />
           <input
             type="search"
             aria-label={tr("Search orders", "Orders dhoondein")}
@@ -217,10 +221,10 @@ function OrdersBoard({ summary }: { summary: PharmacyDashboard | undefined }) {
                         {order.items[0]
                           ? order.items.length > 1
                             ? tr(
-                                `${order.items[0].productName} + ${order.items.length - 1} more`,
-                                `${order.items[0].productName} + ${order.items.length - 1} aur`,
+                                `${itemTitle(order.items[0])} + ${order.items.length - 1} more`,
+                                `${itemTitle(order.items[0])} + ${order.items.length - 1} aur`,
                               )
-                            : order.items[0].productName
+                            : itemTitle(order.items[0])
                           : tr("No items", "Koi cheez nahi")}
                       </td>
                       <td className="whitespace-nowrap text-muted tabular-nums">{consoleStamp(order.createdAt)}</td>
@@ -239,7 +243,13 @@ function OrdersBoard({ summary }: { summary: PharmacyDashboard | undefined }) {
               </tbody>
             </table>
           </div>
-          <Pager offset={offset} limit={PAGE} total={list.data?.meta.total ?? rows.length} onChange={setOffset} />
+          <Pager
+            offset={offset}
+            limit={PAGE}
+            total={list.data?.meta.total ?? rows.length}
+            onChange={setOffset}
+            note={tr("Updates on its own every half minute", "Har aadhe minute khud update hota hai")}
+          />
         </>
       )}
     </section>
@@ -285,7 +295,7 @@ export default function PharmacyOrders() {
             <p>{tr("Check prescriptions, pack, dispatch and deliver.", "Nuskhe check karein, pack, rawana aur deliver karein.")}</p>
           )}
         </ConsoleHeader>
-        <div className="mt-6">
+        <div className="mt-[22px]">
           <PharmacyAdminTabs openOrders={data?.openOrders} />
         </div>
         <Suspense fallback={<Loading />}>

@@ -22,18 +22,9 @@
 import { useCallback, useState } from "react";
 
 import { Icon } from "@/components/Icon";
-import { FinishedState } from "@/components/admin/console";
+import { ConsoleCard, FinishedState, StatusPill, consoleMoney, consoleStamp } from "@/components/admin/console";
 import { Dialog, useToast } from "@/components/overlays";
-import {
-  Badge,
-  Button,
-  Card,
-  ErrorState,
-  Field,
-  Input,
-  SkeletonRows,
-  cx,
-} from "@/components/ui";
+import { Button, ErrorState, Field, Input, SkeletonRows, cx } from "@/components/ui";
 import {
   ApiError,
   paymentReview,
@@ -170,6 +161,15 @@ function ReceiptReadout({
   );
 }
 
+/** Each wallet by the name on its own app, not the enum's capitals. */
+const WALLET: Record<string, string> = {
+  NAYAPAY: "NayaPay",
+  EASYPAISA: "Easypaisa",
+  JAZZCASH: "JazzCash",
+  BANK: "Bank transfer",
+  BANK_TRANSFER: "Bank transfer",
+};
+
 function Claim({
   payment,
   onDecided,
@@ -218,134 +218,119 @@ function Claim({
     }
   }
 
+  const concerns = payment.receipt?.concerns.length ?? 0;
+
   return (
-    <li className="rounded-2xl border border-line bg-card p-4 shadow-card">
-      <div className="grid gap-4 sm:grid-cols-[auto_1fr]">
-        {/* The picture, big enough to read a reference off without opening it,
-            and openable when it is not. */}
-        {payment.proofUrl ? (
-          <button
-            type="button"
-            onClick={() => setZoomed(true)}
-            className="group relative h-36 w-36 shrink-0 overflow-hidden rounded-xl border border-line bg-sunken focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={payment.proofUrl}
-              alt={tr("Payment screenshot", "Adaigi ka screenshot")}
-              className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
-            />
-            <span className="absolute inset-x-0 bottom-0 bg-black/55 py-1 text-center text-[11px] font-semibold text-white">
-              {tr("Open", "Kholein")}
-            </span>
-          </button>
-        ) : (
-          <div className="grid h-36 w-36 shrink-0 place-items-center rounded-xl border border-line bg-sunken text-center text-xs text-muted">
-            {tr("No screenshot", "Koi screenshot nahi")}
-          </div>
-        )}
-
-        <div className="min-w-0 space-y-3">
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <span className="font-display text-lg font-bold text-strong">
-              {payment.currency} {payment.amount}
-            </span>
-            <Badge tone="neutral">{payment.method}</Badge>
-            <span className="text-sm text-muted">
-              {payment.patientName} · {payment.invoiceNumber}
-            </span>
-          </div>
-
-          {/* The two things being compared with the banking app. Monospaced
-              and selectable, because the reviewer will copy the reference. */}
-          <dl className="grid gap-2 sm:grid-cols-2">
-            <div>
-              <dt className="text-[11px] font-bold uppercase tracking-wider text-faint">
-                {tr("Transaction ID", "Transaction ID")}
-              </dt>
-              <dd className="select-all font-mono text-sm font-semibold text-strong">
-                {payment.reference ?? "—"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-[11px] font-bold uppercase tracking-wider text-faint">
-                {tr("Submitted", "Bheja gaya")}
-              </dt>
-              <dd className="text-sm text-muted">
-                {payment.createdAt ? new Date(payment.createdAt).toLocaleString() : "—"}
-              </dd>
-            </div>
-          </dl>
-
-          <ReceiptReadout
-            receipt={payment.receipt}
-            typed={payment.reference}
-            payeeAccount={payment.payeeAccount}
-          />
-
-          {rejecting ? (
-            <div className="space-y-3 rounded-xl border border-line bg-sunken p-3">
-              <Field
-                label={tr("Why is this being rejected?", "Yeh kyun mustarad ho raha hai?")}
-                htmlFor={`reject-${payment.id}`}
-                hint={tr(
-                  "The patient reads this, so tell them what to do next.",
-                  "Mareez yeh parhega — usse batayein ke ab kya kare.",
-                )}
-              >
-                <Input
-                  id={`reject-${payment.id}`}
-                  value={reason}
-                  maxLength={500}
-                  autoFocus
-                  onChange={(event) => setReason(event.target.value)}
-                />
-              </Field>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="danger"
-                  loading={busy}
-                  disabled={reason.trim().length < 3}
-                  onClick={() => decide("reject")}
-                >
-                  {tr("Reject payment", "Adaigi mustarad karein")}
-                </Button>
-                <Button variant="ghost" onClick={() => setRejecting(false)}>
-                  {tr("Cancel", "Cancel")}
-                </Button>
-              </div>
-            </div>
+    <li className="flex flex-col gap-3 rounded-[18px] border border-line bg-[var(--console-soft,var(--surface-sunken))] p-3">
+      <div className="flex flex-wrap items-center gap-3.5">
+        {/* The screenshot, small: the full picture and what was read off it
+            open together, beside each other, under "View receipt". */}
+        <button
+          type="button"
+          onClick={() => setZoomed(true)}
+          aria-label={tr("View receipt", "Raseed dekhein")}
+          className="grid h-16 w-[52px] shrink-0 place-items-center overflow-hidden rounded-[10px] border border-line bg-[linear-gradient(180deg,#E8F0FE,#FFFFFF)] text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:bg-[linear-gradient(180deg,#132E52,#0B1733)]"
+        >
+          {payment.proofUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={payment.proofUrl} alt="" className="h-full w-full object-cover" />
           ) : (
-            <div className="flex flex-wrap gap-2">
-              <Button loading={busy} onClick={() => decide("confirm")}>
-                <Icon name="check" className="text-[20px]" />
-                {/* Names the consequence. A reviewer who thinks this files a
-                    note rather than settling a debt is careless with it once. */}
-                {tr("Confirm and mark paid", "Tasdeeq karein aur ada shuda karein")}
-              </Button>
-              <Button variant="ghost" onClick={() => setRejecting(true)}>
-                {tr("Reject", "Mustard karein")}
-              </Button>
-            </div>
+            <Icon name="phone" className="text-[22px]" />
           )}
-        </div>
+        </button>
+        <span className="flex min-w-0 flex-[1_1_200px] flex-col gap-0.5">
+          <b className="font-semibold text-strong">{payment.patientName}</b>
+          <span className="text-[12.5px] text-muted">
+            <span className="font-mono">{payment.invoiceNumber}</span> · {WALLET[payment.method] ?? payment.method}
+            {payment.reference && (
+              <>
+                {" "}
+                · {tr("ref", "ref")} <span className="font-mono select-all">{payment.reference}</span>
+              </>
+            )}
+          </span>
+        </span>
+        <span className="font-display text-[17px] font-bold text-strong tabular-nums">
+          {consoleMoney(payment.amount, payment.currency)}
+        </span>
+        <span className="w-[120px] text-[12.5px] text-muted tabular-nums">
+          {payment.createdAt ? consoleStamp(payment.createdAt) : "—"}
+        </span>
+        <span className="flex gap-1.5">
+          <Button size="sm" variant="secondary" onClick={() => setZoomed(true)}>
+            {tr("View receipt", "Raseed dekhein")}
+          </Button>
+          {/* "Paid" names the consequence: confirming settles the bill. */}
+          <Button size="sm" loading={busy && !rejecting} onClick={() => decide("confirm")}>
+            {tr("Confirm paid", "Ada shuda tasdeeq")}
+          </Button>
+          <Button size="sm" variant="ghost" className="!text-critical" onClick={() => setRejecting(true)}>
+            {tr("Reject", "Mustard karein")}
+          </Button>
+        </span>
       </div>
+
+      {/* What the reading of the screenshot doubts, said where the decision is
+          made. A clean reading says nothing here. */}
+      {concerns > 0 && (
+        <p className="flex items-center gap-1.5 px-1 text-[12.5px] font-semibold text-warning">
+          <Icon name="warning" className="text-[15px]" />
+          {tr(
+            `${concerns === 1 ? "One thing" : `${concerns} things`} on the screenshot to check — see the receipt.`,
+            `Screenshot par ${concerns} cheezein dekhni hain — raseed dekhein.`,
+          )}
+        </p>
+      )}
+
+      {rejecting && (
+        <div className="space-y-3 rounded-xl border border-line bg-card p-3">
+          <Field
+            label={tr("Why is this being rejected?", "Yeh kyun mustarad ho raha hai?")}
+            htmlFor={`reject-${payment.id}`}
+            hint={tr(
+              "The patient reads this, so tell them what to do next.",
+              "Mareez yeh parhega — usse batayein ke ab kya kare.",
+            )}
+          >
+            <Input
+              id={`reject-${payment.id}`}
+              value={reason}
+              maxLength={500}
+              autoFocus
+              onChange={(event) => setReason(event.target.value)}
+            />
+          </Field>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="danger" size="sm" loading={busy} disabled={reason.trim().length < 3} onClick={() => decide("reject")}>
+              {tr("Reject payment", "Adaigi mustarad karein")}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setRejecting(false)}>
+              {tr("Cancel", "Cancel")}
+            </Button>
+          </div>
+        </div>
+      )}
 
       <Dialog
         open={zoomed}
         onClose={() => setZoomed(false)}
         size="lg"
-        title={tr("Payment screenshot", "Adaigi ka screenshot")}
-        description={`${payment.patientName} · ${payment.currency} ${payment.amount}`}
+        title={tr("Payment receipt", "Adaigi ki raseed")}
+        description={`${payment.patientName} · ${consoleMoney(payment.amount, payment.currency)} · ${payment.invoiceNumber}`}
       >
-        {payment.proofUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={payment.proofUrl}
-            alt={tr("Payment screenshot", "Adaigi ka screenshot")}
-            className="mx-auto max-h-[70vh] w-auto rounded-xl border border-line"
-          />
-        )}
+        <div className="flex flex-col gap-4">
+          {payment.proofUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={payment.proofUrl}
+              alt={tr("Payment screenshot", "Adaigi ka screenshot")}
+              className="mx-auto max-h-[60vh] w-auto rounded-xl border border-line"
+            />
+          ) : (
+            <p className="text-[13.5px] text-muted">{tr("No screenshot was sent with this payment.", "Is adaigi ke saath koi screenshot nahi bheja gaya.")}</p>
+          )}
+          <ReceiptReadout receipt={payment.receipt} typed={payment.reference} payeeAccount={payment.payeeAccount} />
+        </div>
       </Dialog>
     </li>
   );
@@ -362,16 +347,30 @@ export function PaymentQueue() {
   const rows = queue.data?.data ?? [];
 
   return (
-    <Card
-      icon="fact_check"
+    <ConsoleCard
+      icon="checklist"
+      iconTone="warning"
       title={tr("Payments to confirm", "Tasdeeq talab adaigiyan")}
-      description={tr(
-        "Check each transfer in your banking app before confirming it.",
-        "Tasdeeq se pehle har transfer apni banking app mein dekh lein.",
+      subtitle={tr(
+        "Check each against the banking app before confirming — confirming pays the bill.",
+        "Tasdeeq se pehle har aik ko banking app se mila lein — tasdeeq bill ada kar deti hai.",
       )}
+      action={
+        rows.length > 0 && (
+          <StatusPill tone="warning">{tr(`${rows.length} waiting`, `${rows.length} muntazir`)}</StatusPill>
+        )
+      }
     >
-      {queue.loading && <SkeletonRows rows={2} />}
-      {queue.error && <ErrorState message={queue.error.message} onRetry={queue.reload} />}
+      {queue.loading && (
+        <div className="px-3.5 pb-3.5">
+          <SkeletonRows rows={2} />
+        </div>
+      )}
+      {queue.error && (
+        <div className="px-3.5 pb-3.5">
+          <ErrorState message={queue.error.message} onRetry={queue.reload} />
+        </div>
+      )}
       {queue.data && rows.length === 0 && (
         <FinishedState
           size={130}
@@ -383,12 +382,12 @@ export function PaymentQueue() {
         />
       )}
       {rows.length > 0 && (
-        <ul className="space-y-4">
+        <ul className="flex flex-col gap-2 px-3.5 pb-3.5">
           {rows.map((payment) => (
             <Claim key={payment.id} payment={payment} onDecided={reload} />
           ))}
         </ul>
       )}
-    </Card>
+    </ConsoleCard>
   );
 }

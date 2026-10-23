@@ -23,6 +23,8 @@ import { useAsync } from "@/lib/useAsync";
 export default function PharmacySettingsPage() {
   const tr = useTr();
   const settings = useAsync(() => pharmacy.settings(), [], { live: false });
+  // For the count on the Orders tab; the page does without it.
+  const summary = useAsync(() => pharmacy.dashboard().catch(() => null), []);
 
   return (
     <AppShell role="ADMIN">
@@ -35,10 +37,10 @@ export default function PharmacySettingsPage() {
             )}
           </p>
         </ConsoleHeader>
-        <div className="mt-6">
-          <PharmacyAdminTabs />
+        <div className="mt-[22px]">
+          <PharmacyAdminTabs openOrders={summary.data?.openOrders} />
         </div>
-        <div className="mt-6">
+        <div className="mt-[22px]">
           {settings.loading && !settings.data ? (
             <SkeletonRows rows={4} />
           ) : settings.error ? (
@@ -52,17 +54,24 @@ export default function PharmacySettingsPage() {
   );
 }
 
-/** A money field: "PKR" set inside it, before the figure. */
+/** "3000.00" from the API as the field shows it: "3000". */
+function plain(amount: string | null | undefined): string {
+  return (amount ?? "").replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
+}
+
+/** A money field: "PKR" set inside it, before the figure, grouped as it is read — "2,500". */
 function Money({ id, value, onChange }: { id: string; value: string; onChange: (value: string) => void }) {
+  const [whole, fraction] = value.split(".");
+  const shown = `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}${fraction !== undefined ? `.${fraction}` : ""}`;
   return (
     <>
-      <span aria-hidden className="pointer-events-none absolute top-1/2 left-3.5 z-10 -translate-y-1/2 text-[13px] text-muted">
+      <span aria-hidden className="pointer-events-none absolute top-1/2 left-3.5 z-10 -translate-y-1/2 text-[13px] font-semibold text-muted">
         PKR
       </span>
       <Input
         id={id}
         inputMode="decimal"
-        value={value}
+        value={shown}
         onChange={(event) => onChange(event.target.value.replace(/[^\d.]/g, ""))}
         className="!pl-[50px]"
       />
@@ -73,7 +82,7 @@ function Money({ id, value, onChange }: { id: string; value: string; onChange: (
 function Section({ icon, title, subtitle, children }: { icon: string; title: string; subtitle: string; children: ReactNode }) {
   return (
     <ConsoleCard icon={icon} title={title} subtitle={subtitle} className="rise-in">
-      <div className="flex flex-col gap-4 px-5 pt-1 pb-6 sm:px-6">{children}</div>
+      <div className="flex flex-col gap-4 px-[22px] pt-1 pb-[22px]">{children}</div>
     </ConsoleCard>
   );
 }
@@ -86,10 +95,10 @@ function SettingsForm({ initial }: { initial: PharmacySettings }) {
   const [license, setLicense] = useState(initial.licenseNumber ?? "");
   const [phone, setPhone] = useState(initial.phone ?? "");
   const [address, setAddress] = useState(initial.address ?? "");
-  const [fee, setFee] = useState(initial.deliveryFee);
-  const [freeAbove, setFreeAbove] = useState(initial.freeDeliveryAbove ?? "");
+  const [fee, setFee] = useState(plain(initial.deliveryFee));
+  const [freeAbove, setFreeAbove] = useState(plain(initial.freeDeliveryAbove));
   const [cod, setCod] = useState(initial.codEnabled);
-  const [codMax, setCodMax] = useState(initial.codMaxAmount ?? "");
+  const [codMax, setCodMax] = useState(plain(initial.codMaxAmount));
   const [cities, setCities] = useState<string[]>(initial.cities);
   const [city, setCity] = useState("");
   const [busy, setBusy] = useState(false);
@@ -100,10 +109,10 @@ function SettingsForm({ initial }: { initial: PharmacySettings }) {
     setLicense(from.licenseNumber ?? "");
     setPhone(from.phone ?? "");
     setAddress(from.address ?? "");
-    setFee(from.deliveryFee);
-    setFreeAbove(from.freeDeliveryAbove ?? "");
+    setFee(plain(from.deliveryFee));
+    setFreeAbove(plain(from.freeDeliveryAbove));
     setCod(from.codEnabled);
-    setCodMax(from.codMaxAmount ?? "");
+    setCodMax(plain(from.codMaxAmount));
     setCities(from.cities);
     setCity("");
   };
@@ -155,7 +164,7 @@ function SettingsForm({ initial }: { initial: PharmacySettings }) {
   };
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-[22px]">
       {!saved.licenseNumber && (
         <div role="status" className="rise-in flex items-center gap-3.5 rounded-[18px] bg-warning-soft px-[18px] py-3.5 text-sm text-strong">
           <span aria-hidden className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-card text-warning">
@@ -171,7 +180,7 @@ function SettingsForm({ initial }: { initial: PharmacySettings }) {
         </div>
       )}
 
-      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-[22px] lg:grid-cols-2">
         <Section icon="storefront" title={tr("The pharmacy", "Pharmacy")} subtitle={tr("Printed on every pharmacy invoice", "Har pharmacy invoice par chhapta hai")}>
           <Field label={tr("Name", "Naam")} htmlFor="ph-name">
             <Input id="ph-name" value={name} maxLength={120} onChange={(event) => setName(event.target.value)} />
@@ -181,7 +190,13 @@ function SettingsForm({ initial }: { initial: PharmacySettings }) {
             htmlFor="ph-license"
             hint={tr("Issued by the provincial health department.", "Soobai mehkama-e-sehat ka jaari karda.")}
           >
-            <Input id="ph-license" value={license} maxLength={80} onChange={(event) => setLicense(event.target.value)} />
+            <Input
+              id="ph-license"
+              value={license}
+              maxLength={80}
+              placeholder={tr("e.g. 05-352-0091-123456P", "maslan 05-352-0091-123456P")}
+              onChange={(event) => setLicense(event.target.value)}
+            />
           </Field>
           <Field label={tr("Phone", "Phone")} htmlFor="ph-phone">
             <Input id="ph-phone" inputMode="tel" value={phone} maxLength={40} onChange={(event) => setPhone(event.target.value)} />
@@ -196,7 +211,7 @@ function SettingsForm({ initial }: { initial: PharmacySettings }) {
           title={tr("Delivery and payment", "Delivery aur payment")}
           subtitle={tr("What a patient pays to have it brought", "Mareez ghar mangwane ka kya deta hai")}
         >
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
             <Field label={tr("Delivery fee", "Delivery fees")} htmlFor="ph-fee">
               <Money id="ph-fee" value={fee} onChange={setFee} />
             </Field>
@@ -205,9 +220,9 @@ function SettingsForm({ initial }: { initial: PharmacySettings }) {
             </Field>
           </div>
 
-          <div className="flex items-start gap-3.5 rounded-2xl border border-line bg-sunken/50 px-4 py-3.5">
+          <div className="flex items-start gap-3.5 rounded-2xl border border-line bg-[var(--console-soft)] px-4 py-3.5">
             <span className="flex flex-1 flex-col gap-0.5">
-              <span id="ph-cod-label" className="text-sm font-semibold text-strong">
+              <span id="ph-cod-label" className="text-[14px] font-semibold text-strong">
                 {tr("Cash on delivery", "Cash on delivery")}
               </span>
               <span className="text-[12.5px] text-muted">{tr("Patients pay the rider at the door.", "Mareez darwaze par rider ko ada karte hain.")}</span>
@@ -243,21 +258,21 @@ function SettingsForm({ initial }: { initial: PharmacySettings }) {
             </Field>
           )}
 
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-[7px]">
             <label htmlFor="ph-city" className="text-[13px] font-semibold text-muted">
               {tr("Cities delivered to", "Jin sheharon mein delivery")}
             </label>
             <div className="flex min-h-11 flex-wrap gap-1.5 rounded-xl border border-line-strong bg-card p-2 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary">
               {cities.map((name) => (
-                <span key={name} className="inline-flex h-7 items-center gap-1.5 rounded-full bg-info-soft pr-1.5 pl-2.5 text-[12.5px] font-semibold text-info">
+                <span key={name} className="inline-flex h-7 items-center gap-1.5 rounded-full bg-info-soft px-[9px] text-[12px] font-semibold text-info">
                   {name}
                   <button
                     type="button"
                     aria-label={tr(`Remove ${name}`, `${name} hatayein`)}
                     onClick={() => setCities(cities.filter((existing) => existing !== name))}
-                    className="grid h-5 w-5 place-items-center rounded-full hover:bg-card/70 focus-visible:outline-2 focus-visible:outline-primary"
+                    className="grid h-4 w-4 place-items-center rounded-full hover:bg-card/70 focus-visible:outline-2 focus-visible:outline-primary"
                   >
-                    <Icon name="close" className="text-[14px]" />
+                    <Icon name="close" className="text-[12px]" />
                   </button>
                 </span>
               ))}

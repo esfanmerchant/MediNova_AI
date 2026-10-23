@@ -17,12 +17,13 @@
 import Link from "next/link";
 
 import { AppShell } from "@/components/AppShell";
-import { Icon } from "@/components/Icon";
 import {
   BannerAction,
+  CardLink,
   ConsoleBanner,
   ConsoleCard,
   ConsoleLoading,
+  dayMonth,
   FinishedState,
   NeedsList,
   PastelTile,
@@ -32,7 +33,7 @@ import { localToday } from "@/components/admin/AppointmentWeek";
 import { ClinicPulse } from "@/components/admin/ClinicPulse";
 import { TodayByHour } from "@/components/admin/TodayByHour";
 import { BusiestDoctors, PharmacyPipeline, WeekBySpeciality } from "@/components/admin/OverviewSections";
-import { RevenuePanel } from "@/components/admin/RevenueChart";
+import { RevenuePanel, inWindow } from "@/components/admin/RevenueChart";
 import { SetupChecklist } from "@/components/admin/SetupChecklist";
 import { ErrorState, cx } from "@/components/ui";
 import { appointments, dashboard, doctorRequests, invoices, revenue, withdrawalReview } from "@/lib/api";
@@ -54,6 +55,25 @@ const ACTION_LABELS: Record<string, [string, string]> = {
 const FAILED_SIGN_IN_WATCH = 20;
 
 const rupees = new Intl.NumberFormat("en-PK", { maximumFractionDigits: 0 });
+
+/** Small counts read as words in a sentence — "Five things need you". */
+const WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+const spell = (n: number) => WORDS[n] ?? String(n);
+
+/** What an access-denied entry was reaching for, in the words of the page it lives on. */
+const AREAS: Record<string, [string, string]> = {
+  Patient: ["patient record", "mareez ka record"],
+  Invoice: ["billing", "billing"],
+  Payment: ["billing", "billing"],
+  Prescription: ["prescriptions", "nuskhe"],
+  MedicalDocument: ["documents", "documents"],
+};
+
+/** "21 Oct, 9:11 PM" — the security card's stamp. */
+function stamp(iso: string): string {
+  const at = new Date(iso);
+  return `${dayMonth(at)}, ${at.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+}
 
 export default function AdminDashboard() {
   // This dashboard carries the recent security events, and the API audits the
@@ -81,7 +101,7 @@ export default function AdminDashboard() {
   const { user } = useSession();
   const tr = useTr();
   const lang = useLang();
-  const locale = lang === "ur" ? "en-PK" : undefined;
+  const english = lang !== "ur";
 
   const counts = data?.counts ?? {};
   const unreviewed = counts.unreviewedEmergencyGrants ?? 0;
@@ -96,13 +116,23 @@ export default function AdminDashboard() {
   const withdrawalsWaiting = payouts.data?.meta.total ?? 0;
   const outstanding = Number(ledger.data?.meta.outstanding) || 0;
   const todaysVisits = (visitsToday.data?.data ?? []).filter((visit) => visit.localDate === today && visit.status !== "CANCELLED");
+  // The thirty days the money panel draws, for the strip under it.
+  const window30 = series.data ? inWindow(series.data.points, "day") : undefined;
   // What came in today: the last point of the daily series, when it is today's.
   const lastPoint = series.data?.points.at(-1);
   const cameInToday = lastPoint && lastPoint.period.slice(0, 10) === new Date().toISOString().slice(0, 10) ? Number(lastPoint.handled) || 0 : 0;
 
   const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
+  const nowMs = new Date().getTime();
+  const daysSince = (iso: string) => Math.max(0, Math.floor((nowMs - Date.parse(iso)) / 86_400_000));
+  const oldest = data?.oldest;
+  const askingToday = todaysVisits.filter((visit) => visit.status === "REQUESTED").length;
+  const lateDays = oldest?.unpaidInvoiceDueAt ? Math.floor((nowMs - Date.parse(oldest.unpaidInvoiceDueAt)) / 86_400_000) : 0;
+  const waited = oldest?.applicationSubmittedAt ? daysSince(oldest.applicationSubmittedAt) : null;
 
-  // Worst first: a person's records open under break-glass outrank money.
+  // Worst first: a person's records opened under break-glass outrank money.
+  // An access that is open right now is said by the security card; the line
+  // here is the review, which is the thing that waits on a person.
   const needs: Need[] = !data
     ? []
     : [
@@ -114,24 +144,12 @@ export default function AdminDashboard() {
             `${unreviewed} emergency ${plural(unreviewed, "access", "accesses")} to review`,
             `${unreviewed} emergency ${plural(unreviewed, "access", "accesses")} ka review`,
           ),
-          detail: tr(
-            "Every break-glass access is signed off afterwards.",
-            "Har break-glass access ka baad mein sign-off hota hai.",
-          ),
-          tone: "critical" as const,
-        },
-        openGrants > 0 && {
-          key: "open",
-          href: "/admin/emergency",
-          icon: "e911_emergency",
-          title: tr(
-            `${openGrants} emergency ${plural(openGrants, "access is", "accesses are")} open now`,
-            `${openGrants} emergency access abhi khuli hai`,
-          ),
-          detail: tr(
-            "Records are being read under break-glass right now.",
-            "Is waqt break-glass ke tehat records parhe ja rahe hain.",
-          ),
+          detail: oldest?.unreviewedGrant
+            ? tr(
+                `${oldest.unreviewedGrant.requesterName ?? "Someone"} opened a record on ${dayMonth(new Date(oldest.unreviewedGrant.grantedAt))}`,
+                `${oldest.unreviewedGrant.requesterName ?? "Kisi"} ne ${dayMonth(new Date(oldest.unreviewedGrant.grantedAt))} ko record khola`,
+              )
+            : tr("Every break-glass access is signed off afterwards", "Har break-glass access ka baad mein sign-off hota hai"),
           tone: "critical" as const,
         },
         waitingDoctors > 0 && {
@@ -139,10 +157,18 @@ export default function AdminDashboard() {
           href: "/admin/doctor-requests",
           icon: "how_to_reg",
           title: tr(
-            `${waitingDoctors} ${plural(waitingDoctors, "doctor is", "doctors are")} waiting to be approved`,
+            `${waitingDoctors} ${plural(waitingDoctors, "doctor", "doctors")} waiting to be approved`,
             `${waitingDoctors} doctors approval ke muntazir`,
           ),
-          detail: tr("Check the licence and documents, then decide.", "License aur documents dekh kar faisla karein."),
+          detail:
+            waited === null
+              ? tr("Check the licence and documents, then decide", "License aur documents dekh kar faisla karein")
+              : waited === 0
+                ? tr("Oldest came in today", "Sab se purani aaj aayi")
+                : tr(
+                    `Oldest has waited ${waited} ${plural(waited, "day", "days")}`,
+                    `Sab se purani ${waited} din se muntazir`,
+                  ),
           tone: "warning" as const,
         },
         needAYes > 0 && {
@@ -153,7 +179,12 @@ export default function AdminDashboard() {
             `${needAYes} ${plural(needAYes, "visit needs", "visits need")} a yes`,
             `${needAYes} visits ko haan chahiye`,
           ),
-          detail: tr("Asked for by patients, not yet confirmed.", "Mareezon ne manga, abhi confirm nahi."),
+          detail: askingToday
+            ? tr(
+                needAYes === 1 ? "It is today" : `${askingToday} of them ${plural(askingToday, "is", "are")} today`,
+                needAYes === 1 ? "Yeh aaj hai" : `In mein se ${askingToday} aaj hain`,
+              )
+            : tr("None of them is today", "In mein se koi aaj nahi"),
           tone: "warning" as const,
         },
         unpaid > 0 && {
@@ -164,21 +195,26 @@ export default function AdminDashboard() {
             `${unpaid} unpaid ${plural(unpaid, "invoice", "invoices")}`,
             `${unpaid} baqaya invoices`,
           ),
-          detail: outstanding
-            ? tr(`${money(outstanding)} waiting on patients.`, `${money(outstanding)} mareezon se baqi.`)
-            : tr("Patients who have not paid yet.", "Woh mareez jinhon ne abhi tak adaigi nahi ki."),
+          detail: [
+            outstanding ? money(outstanding) : null,
+            lateDays > 0
+              ? tr(`oldest ${lateDays} ${plural(lateDays, "day", "days")} late`, `sab se purani ${lateDays} din late`)
+              : tr("none late yet", "abhi koi late nahi"),
+          ]
+            .filter(Boolean)
+            .join(" · "),
           tone: "warning" as const,
         },
         owed > 0 && {
           key: "owed",
           href: "/admin/withdrawals",
-          icon: "account_balance_wallet",
+          icon: "account_balance",
           title: withdrawalsWaiting
             ? tr(`${withdrawalsWaiting} ${plural(withdrawalsWaiting, "doctor", "doctors")} to pay`, `${withdrawalsWaiting} doctors ko ada karna hai`)
             : tr(`Doctors are owed ${money(owed)}`, `Doctors ko ${money(owed)} dene hain`),
           detail: withdrawalsWaiting
-            ? tr(`${money(owed)} owed, withdrawals waiting.`, `${money(owed)} baqi, withdrawals muntazir.`)
-            : tr("Their fees, held until they withdraw.", "Un ki fees, withdrawal tak hamare paas."),
+            ? tr(`${money(owed)} in withdrawals`, `${money(owed)} withdrawals mein`)
+            : tr("Their fees, held until they withdraw", "Un ki fees, withdrawal tak hamare paas"),
           tone: "calm" as const,
         },
         failedSignIns > FAILED_SIGN_IN_WATCH && {
@@ -186,10 +222,12 @@ export default function AdminDashboard() {
           href: "/admin/audit",
           icon: "lock",
           title: tr(`${failedSignIns} failed sign-ins this week`, `Is hafte ${failedSignIns} nakam sign-ins`),
-          detail: tr("More than usual. The audit trail shows from where.", "Mamool se zyada. Audit trail batata hai kahan se."),
+          detail: tr("More than usual, the audit trail shows from where", "Mamool se zyada, audit trail batata hai kahan se"),
           tone: "warning" as const,
         },
       ].filter((need): need is Need => Boolean(need));
+  // The sentence reads the first line in words: "first one emergency access to review".
+  const firstNeed = needs[0] ? needs[0].title.replace(/^\d+/, (digits) => (english ? spell(Number(digits)) : digits)) : "";
 
   const hour = new Date().getHours();
   const greeting =
@@ -202,7 +240,7 @@ export default function AdminDashboard() {
 
   return (
     <AppShell role="ADMIN">
-      <div id="main" className="space-y-6">
+      <div id="main" className="space-y-[22px]">
         <ConsoleBanner
           id="overview"
           live
@@ -228,7 +266,7 @@ export default function AdminDashboard() {
                 )}
                 {needs.length > 0 && (
                   <BannerAction href="#needs">
-                    {needs.length === 1 ? tr("See it", "Dekhein") : tr(`See all ${needs.length}`, `Sab ${needs.length} dekhein`)}
+                    {needs.length === 1 ? tr("See it", "Dekhein") : tr(`See all ${spell(needs.length)}`, `Sab ${needs.length} dekhein`)}
                   </BannerAction>
                 )}
                 <BannerAction href="/admin/audit" tone="ghost">
@@ -270,10 +308,10 @@ export default function AdminDashboard() {
               ) : (
                 <>
                   {tr(
-                    `${needs.length} ${plural(needs.length, "thing needs", "things need")} you, first `,
+                    `${spell(needs.length).charAt(0).toUpperCase()}${spell(needs.length).slice(1)} ${plural(needs.length, "thing needs", "things need")} you, first `,
                     `${needs.length} cheezein aap ki muntazir hain, pehle `,
                   )}
-                  <Link href={needs[0].href}>{needs[0].title.charAt(0).toLowerCase() + needs[0].title.slice(1)}</Link>.
+                  <Link href={needs[0].href}>{firstNeed.charAt(0).toLowerCase() + firstNeed.slice(1)}</Link>.
                 </>
               )}
             </p>
@@ -288,7 +326,7 @@ export default function AdminDashboard() {
         {error && <ErrorState message={error.message} onRetry={reload} />}
 
         {data && (
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,380px)] xl:grid-rows-[auto_1fr] xl:items-start">
+          <div className="grid gap-[22px] xl:grid-cols-[minmax(0,70fr)_minmax(320px,39fr)] xl:grid-rows-[auto_1fr] xl:items-start">
             {/* First in the document, so a phone reaches it straight after the
                 banner; the grid moves it to the right-hand column on a wide
                 screen, beside the figures it is the to-do list for. */}
@@ -312,7 +350,7 @@ export default function AdminDashboard() {
               )}
             </ConsoleCard>
 
-            <div className="flex min-w-0 flex-col gap-6 xl:col-start-1 xl:row-span-2 xl:row-start-1">
+            <div className="flex min-w-0 flex-col gap-[22px] xl:col-start-1 xl:row-span-2 xl:row-start-1">
               <section id="totals" aria-label={tr("Money and access", "Raqam aur rasai")} className="scroll-section stagger grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <PastelTile
                   pastel="sky"
@@ -386,19 +424,19 @@ export default function AdminDashboard() {
                 error={series.error}
                 onRetry={series.reload}
                 footer={
-                  series.data && (
-                    <dl className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-2xl bg-white/10 sm:grid-cols-4">
+                  window30 && (
+                    <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl bg-white/10 sm:grid-cols-4">
                       {(
                         [
-                          [tr("To doctors", "Doctors ko"), money(series.data.points.reduce((sum, point) => sum + (Number(point.toDoctors) || 0), 0)), tr("Their fees, never ours", "Un ki fees, hamari nahi")],
-                          [tr("Medicine", "Dawa"), money(series.data.points.reduce((sum, point) => sum + (Number(point.pharmacy) || 0), 0)), tr("Pharmacy sales", "Pharmacy ki farokht")],
-                          [tr("MediNova fees", "MediNova fees"), money(series.data.points.reduce((sum, point) => sum + (Number(point.platformFee) || 0), 0)), tr("Ours", "Hamari")],
+                          [tr("To doctors", "Doctors ko"), money(window30.reduce((sum, point) => sum + (Number(point.toDoctors) || 0), 0)), tr("Their fees, never ours", "Un ki fees, hamari nahi")],
+                          [tr("Medicine", "Dawa"), money(window30.reduce((sum, point) => sum + (Number(point.pharmacy) || 0), 0)), tr("Pharmacy sales", "Pharmacy ki farokht")],
+                          [tr("MediNova fees", "MediNova fees"), money(window30.reduce((sum, point) => sum + (Number(point.platformFee) || 0), 0)), tr("Ours", "Hamari")],
                           [tr("Still unpaid", "Abhi baqaya"), tr(`${unpaid} ${plural(unpaid, "invoice", "invoices")}`, `${unpaid} invoices`), tr("Waiting on patients", "Mareezon ki adaigi baqi")],
                         ] as const
                       ).map(([label, value, note]) => (
                         <div key={label} title={note} className="flex flex-col gap-0.5 bg-[#061230]/55 px-4 py-3">
                           <dt className="text-[11.5px] text-[#9DB0D1]">{label}</dt>
-                          <dd className="m-0 font-display text-base font-bold text-white tabular-nums">{value}</dd>
+                          <dd className="m-0 font-display text-[14px] font-bold text-white">{value}</dd>
                         </div>
                       ))}
                     </dl>
@@ -409,7 +447,7 @@ export default function AdminDashboard() {
               <WeekBySpeciality />
             </div>
 
-            <div className="flex flex-col gap-6 xl:col-start-2 xl:row-start-2">
+            <div className="flex flex-col gap-[22px] xl:col-start-2 xl:row-start-2">
               <PharmacyPipeline />
               <BusiestDoctors doctors={data.busiestDoctors ?? []} />
 
@@ -426,24 +464,17 @@ export default function AdminDashboard() {
                     : tr("No emergency access is open right now", "Abhi koi emergency access khuli nahi")
                 }
                 footer={
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <Link href="/admin/audit" className="inline-flex items-center gap-1.5 font-semibold text-primary hover:underline">
-                      <Icon name="verified_user" className="text-[18px]" />
-                      {tr("Open the audit trail", "Audit trail kholein")}
-                    </Link>
-                    <Link
-                      href="/admin/users"
-                      className={cx(
-                        "text-[13px] hover:underline",
-                        counts.suspendedAccounts ? "font-semibold text-warning" : "text-muted",
-                      )}
-                    >
+                  <>
+                    <CardLink href="/admin/audit" flush>
+                      {tr("Open the audit trail →", "Audit trail kholein →")}
+                    </CardLink>
+                    <Link href="/admin/users" className="text-muted hover:underline">
                       {tr(
                         `${counts.suspendedAccounts ?? 0} suspended ${plural(counts.suspendedAccounts ?? 0, "account", "accounts")}`,
                         `${counts.suspendedAccounts ?? 0} muattal accounts`,
                       )}
                     </Link>
-                  </div>
+                  </>
                 }
               >
                 {data.recentSecurityEvents.length === 0 ? (
@@ -454,36 +485,33 @@ export default function AdminDashboard() {
                     description={tr("No security events have been recorded this week.", "Is hafte koi security waqia darj nahi hua.")}
                   />
                 ) : (
-                  <ul className="divide-y divide-line px-5 pb-2 sm:px-6">
+                  <ul className="flex flex-col px-[22px] pb-2">
                     {data.recentSecurityEvents.map((event) => {
                       const breakGlass = event.severity === "BREAK_GLASS";
+                      // Who, then what: the person and the door they were at.
+                      const who =
+                        event.action === "LOGIN_FAILED"
+                          ? (event.actorEmail ?? tr("unknown email", "na-maloom email"))
+                          : (event.actorName ?? tr("Unknown account", "Na-maloom account"));
+                      const what = breakGlass
+                        ? tr("break glass", "break glass")
+                        : event.action === "ACCESS_DENIED" && event.entityType
+                          ? tr(...(AREAS[event.entityType] ?? [event.entityType.replace(/(?<!^)([A-Z])/g, " $1").toLowerCase(), event.entityType]))
+                          : event.ipAddress;
                       return (
-                        <li key={event.id} className="flex items-start gap-3 py-3">
+                        <li key={event.id} className="flex gap-2.5 border-t border-line py-2.5">
                           <span
                             aria-hidden
-                            className={cx("mt-1.5 h-2 w-2 shrink-0 rounded-full", breakGlass ? "bg-critical" : "bg-warning")}
+                            className={cx("mt-1.5 h-2 w-2 shrink-0 rounded-full", breakGlass ? "bg-critical" : "bg-[#F59E0B]")}
                           />
                           <div className="flex min-w-0 flex-1 flex-col">
-                            <span className="text-[14px] font-semibold text-strong">
+                            <span className="text-[13.5px] font-semibold text-strong">
                               {tr(...(ACTION_LABELS[event.action] ?? [event.action, event.action]))}
                             </span>
-                            <span className="text-[12.5px] text-muted">
-                              <span className={breakGlass ? "text-critical" : "text-warning"}>
-                                {event.severity.toLowerCase().replace("_", " ")}
-                              </span>
-                              {event.ipAddress && <span className="tabular-nums"> · {event.ipAddress}</span>}
-                            </span>
+                            <span className="truncate text-[12.5px] text-muted">{[who, what].filter(Boolean).join(" · ")}</span>
                           </div>
-                          <time
-                            dateTime={event.timestamp}
-                            className="shrink-0 text-[12.5px] whitespace-nowrap text-faint tabular-nums"
-                          >
-                            {new Date(event.timestamp).toLocaleString(locale, {
-                              day: "numeric",
-                              month: "short",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
+                          <time dateTime={event.timestamp} className="shrink-0 text-[12.5px] whitespace-nowrap text-faint tabular-nums">
+                            {stamp(event.timestamp)}
                           </time>
                         </li>
                       );

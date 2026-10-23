@@ -17,7 +17,6 @@ import { ConsoleHeader, consoleMoney } from "@/components/admin/console";
 import { InvoiceDrawer, INVOICE_HELD, peekHeldInvoice, takeHeldInvoice } from "@/components/admin/InvoiceDrawer";
 import { BillingRates } from "@/components/BillingRates";
 import { exportInvoicesCsv } from "@/components/billing";
-import { PaymentAccount } from "@/components/PaymentAccount";
 import { PaymentQueue } from "@/components/PaymentQueue";
 import { Drawer, useToast } from "@/components/overlays";
 import { Button } from "@/components/ui";
@@ -90,7 +89,7 @@ export default function AdminBilling() {
 
   return (
     <AppShell role="ADMIN">
-      <div id="main" className="space-y-6">
+      <div id="main" className="space-y-[22px]">
         <ConsoleHeader
           mark="billing"
           eyebrow={tr("Invoices, payments and rates", "Invoices, adaigiyan aur rates")}
@@ -102,7 +101,7 @@ export default function AdminBilling() {
                 {tr("Download CSV", "CSV download")}
               </Button>
               <Button variant="secondary" onClick={() => setRates(true)}>
-                <Icon name="tune" className="text-[18px]" />
+                <Icon name="settings" className="text-[18px]" />
                 {tr("Rates and wallets", "Rates aur wallets")}
               </Button>
             </>
@@ -126,7 +125,7 @@ export default function AdminBilling() {
               <>
                 <b>{consoleMoney(owed)}</b>{" "}
                 {tr(
-                  `is still due on ${dueCount} ${dueCount === 1 ? "invoice" : "invoices"}, and an issued invoice is never edited.`,
+                  `is still owed on ${dueCount} ${dueCount === 1 ? "invoice" : "invoices"}, and an issued invoice is never edited.`,
                   `${dueCount} invoices par abhi baqi hai, aur jari shuda invoice kabhi badla nahi jaata.`,
                 )}
               </>
@@ -163,16 +162,9 @@ export default function AdminBilling() {
           open={rates}
           onClose={() => setRates(false)}
           title={tr("Rates and wallets", "Rates aur wallets")}
-          description={tr(
-            "What a new invoice charges, and where patients send the money.",
-            "Naya invoice kya charge karta hai, aur mareez raqam kahan bhejte hain.",
-          )}
-          width={620}
+          width={560}
         >
-          <div className="flex flex-col gap-6">
-            <BillingRates />
-            <PaymentAccount />
-          </div>
+          <BillingRates />
         </Drawer>
       </div>
     </AppShell>

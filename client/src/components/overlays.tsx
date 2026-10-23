@@ -26,7 +26,7 @@ import {
 import { createPortal } from "react-dom";
 
 import { Icon } from "@/components/Icon";
-import { cx } from "@/components/ui";
+import { ConsoleSurface, cx } from "@/components/ui";
 import { useTr } from "@/lib/lang";
 import { SPRING, TRANSITION, useCalmMotion } from "@/lib/motion";
 // Portals need the document, which the server does not have.
@@ -114,8 +114,9 @@ function useDismiss(open: boolean, onClose: () => void) {
  */
 export function Floating({ children }: { children: ReactNode }) {
   const mounted = useMounted();
+  const inConsole = useContext(ConsoleSurface);
   if (!mounted) return null;
-  return createPortal(children, document.body);
+  return createPortal(inConsole ? <div className="console-tokens contents">{children}</div> : children, document.body);
 }
 
 // ---------------------------------------------------------------------------
@@ -130,6 +131,7 @@ export function Floating({ children }: { children: ReactNode }) {
  * under a dimming that is still arriving.
  */
 function Backdrop({ onClose, label = "Close" }: { onClose: () => void; label?: string }) {
+  const inConsole = useContext(ConsoleSurface);
   return (
     <motion.button
       type="button"
@@ -140,7 +142,10 @@ function Backdrop({ onClose, label = "Close" }: { onClose: () => void; label?: s
       exit={{ opacity: 0 }}
       transition={TRANSITION.base}
       onClick={onClose}
-      className="absolute inset-0 cursor-default bg-[#071129]/55 backdrop-blur-sm"
+      className={cx(
+        "absolute inset-0 cursor-default",
+        inConsole ? "bg-[#050D1F]/[0.38] backdrop-blur-[2px]" : "bg-[#071129]/55 backdrop-blur-sm",
+      )}
     />
   );
 }
@@ -178,6 +183,7 @@ export function AnimatedModal({
 }) {
   const mounted = useMounted();
   const calm = useCalmMotion();
+  const inConsole = useContext(ConsoleSurface);
   const panel = useRef<HTMLDivElement>(null);
   useFocusTrap(panel, open && trap);
   useDismiss(open && trap, onClose);
@@ -192,6 +198,7 @@ export function AnimatedModal({
             "fixed inset-0 flex justify-center p-4",
             placement === "center" ? "items-center" : "items-start pt-[12vh]",
             layer,
+            inConsole && "console-tokens",
           )}
         >
           <Backdrop onClose={onClose} />
@@ -242,6 +249,7 @@ export function AnimatedDrawer({
 }) {
   const mounted = useMounted();
   const calm = useCalmMotion();
+  const inConsole = useContext(ConsoleSurface);
   const panel = useRef<HTMLDivElement>(null);
   useFocusTrap(panel, open);
   useDismiss(open, onClose);
@@ -254,7 +262,7 @@ export function AnimatedDrawer({
   return createPortal(
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-[100]">
+        <div className={cx("fixed inset-0 z-[100]", inConsole && "console-tokens")}>
           <Backdrop onClose={onClose} />
           <motion.aside
             ref={panel}
@@ -269,7 +277,8 @@ export function AnimatedDrawer({
             transition={calm ? TRANSITION.fast : SPRING}
             style={{ width }}
             className={cx(
-              "absolute inset-y-0 flex max-w-[92vw] flex-col border-line bg-card shadow-float",
+              "absolute inset-y-0 flex max-w-[92vw] flex-col border-line bg-card",
+              inConsole ? "shadow-[-30px_0_60px_-30px_rgba(5,13,31,0.5)]" : "shadow-float",
               side === "right" ? "right-0 border-l" : "left-0 border-r",
               className,
             )}
@@ -388,29 +397,40 @@ export function Drawer({
 }) {
   const tr = useTr();
   const labelId = useId();
+  const inConsole = useContext(ConsoleSurface);
 
   return (
     <AnimatedDrawer open={open} onClose={onClose} labelledBy={labelId} side={side} width={width}>
-      <header className="flex items-start gap-3 border-b border-line px-5 py-4">
+      <header
+        className={cx(
+          "flex gap-3 border-b border-line",
+          inConsole ? "items-center px-[22px] py-[18px]" : "items-start px-5 py-4",
+        )}
+      >
         <div className="min-w-0 flex-1">
-          <h2 id={labelId} className={titleHidden ? "sr-only" : "font-display text-lg font-bold text-strong"}>
+          <h2 id={labelId} className={titleHidden ? "sr-only" : "font-display text-lg leading-tight font-bold text-strong"}>
             {title}
           </h2>
           {description && (
-            <p className={titleHidden ? "pt-1.5 text-[13px] text-muted" : "mt-0.5 text-sm text-muted"}>{description}</p>
+            <p className={titleHidden ? "text-[13px] text-muted" : "mt-0.5 text-sm text-muted"}>{description}</p>
           )}
         </div>
         <button
           type="button"
           aria-label={tr("Close", "Band karein")}
           onClick={onClose}
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted transition-[background-color,color,transform] hover:rotate-90 hover:bg-sunken hover:text-strong focus-visible:outline-2 focus-visible:outline-primary"
+          className={cx(
+            "grid shrink-0 place-items-center rounded-full transition-[background-color,color,transform] focus-visible:outline-2 focus-visible:outline-primary",
+            inConsole
+              ? "h-8 w-8 border border-line-strong bg-card text-strong hover:bg-sunken"
+              : "h-9 w-9 text-muted hover:rotate-90 hover:bg-sunken hover:text-strong",
+          )}
         >
-          <Icon name="close" className="text-[20px]" />
+          <Icon name="close" className={inConsole ? "text-[16px]" : "text-[20px]"} />
         </button>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">{children}</div>
+      <div className={cx("min-h-0 flex-1 overflow-y-auto", inConsole ? "p-[22px]" : "px-5 py-5")}>{children}</div>
 
       {footer && (
         <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-line bg-card px-5 py-4">

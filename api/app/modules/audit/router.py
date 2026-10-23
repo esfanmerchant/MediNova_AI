@@ -23,7 +23,7 @@ cannot become a back door into records an administrator is otherwise refused.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -31,6 +31,7 @@ from sqlalchemy import func, select
 
 from app.api.deps import CurrentAuth, DbSession, client_ip, require_permission
 from app.api.responses import Page, ok, pagination
+from app.db.base import utcnow
 from app.db.enums import AuditAction, AuditSeverity
 from app.db.models import AuditLog, User
 from app.modules.audit.service import AuditEntry, record_audit, verify_audit_chain
@@ -84,19 +85,20 @@ async def list_entries(
     actually here for, and burying the count behind a filter means it is only
     seen by someone who already suspected there was something to see.
     """
-    filters: list[Any] = []
+    # Everything but the severity, kept apart for the counts on the severity
+    # tabs: each tab's number is what that tab would show, whichever is open.
+    unsevered: list[Any] = []
     if action is not None:
-        filters.append(AuditLog.action == action)
-    if severity is not None:
-        filters.append(AuditLog.severity == severity)
+        unsevered.append(AuditLog.action == action)
     if user_id is not None:
-        filters.append(AuditLog.user_id == user_id)
+        unsevered.append(AuditLog.user_id == user_id)
     if patient_id is not None:
-        filters.append(AuditLog.patient_id == patient_id)
+        unsevered.append(AuditLog.patient_id == patient_id)
     if since is not None:
-        filters.append(AuditLog.timestamp >= _naive_utc(since))
+        unsevered.append(AuditLog.timestamp >= _naive_utc(since))
     if until is not None:
-        filters.append(AuditLog.timestamp < _naive_utc(until))
+        unsevered.append(AuditLog.timestamp < _naive_utc(until))
+    filters = [*unsevered, AuditLog.severity == severity] if severity is not None else unsevered
 
     total = (
         await db.execute(select(func.count()).select_from(AuditLog).where(*filters))
@@ -126,13 +128,33 @@ async def list_entries(
             ).all()
         }
 
+    alerting = [AuditSeverity.SECURITY, AuditSeverity.BREAK_GLASS]
     security_events = (
         await db.execute(
             select(func.count())
             .select_from(AuditLog)
+            .where(*filters, AuditLog.severity.in_(alerting))
+        )
+    ).scalar_one()
+    by_severity = {
+        str(level): count
+        for level, count in (
+            await db.execute(
+                select(AuditLog.severity, func.count())
+                .where(*unsevered, AuditLog.severity.in_(alerting))
+                .group_by(AuditLog.severity)
+            )
+        ).all()
+    }
+    # The page's sentence: what went wrong at the gate in the last seven days,
+    # whatever the table below is filtered to.
+    alerts_this_week = (
+        await db.execute(
+            select(func.count())
+            .select_from(AuditLog)
             .where(
-                *filters,
-                AuditLog.severity.in_([AuditSeverity.SECURITY, AuditSeverity.BREAK_GLASS]),
+                AuditLog.severity.in_(alerting),
+                AuditLog.timestamp >= utcnow() - timedelta(days=7),
             )
         )
     ).scalar_one()
@@ -161,7 +183,12 @@ async def list_entries(
 
     return ok(
         [_serialize(row, names.get(row.user_id or "")) for row in rows],
-        {**page.meta(total), "securityEvents": security_events},
+        {
+            **page.meta(total),
+            "securityEvents": security_events,
+            "bySeverity": {str(level): by_severity.get(str(level), 0) for level in alerting},
+            "alertsThisWeek": alerts_this_week,
+        },
     )
 
 

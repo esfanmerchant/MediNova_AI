@@ -49,7 +49,14 @@ export function TodayByHour({ visits }: { visits: Appointment[] | null }) {
   const peak = Math.max(1, ...byHour.map((h) => h.count));
   const count = (stage: Stage) => held.filter((e) => e.stage === stage).length;
   const now = new Date();
-  const nowAt = ((now.getHours() + now.getMinutes() / 60 - OPEN) / (CLOSE - OPEN)) * 100;
+  const nowHour = now.getHours() + now.getMinutes() / 60;
+  const nowAt = ((nowHour - OPEN) / (CLOSE - OPEN)) * 100;
+  // The axis names the present: the tick nearest the red line reads "now".
+  const ticks = [9, 12, 15, 18, 21];
+  const nearest =
+    nowAt >= 0 && nowAt <= 100
+      ? ticks.reduce((best, tick) => (Math.abs(tick - nowHour) < Math.abs(best - nowHour) ? tick : best))
+      : null;
 
   return (
     <div className="flex flex-col gap-3 rounded-[20px] border border-white/10 bg-[#061230]/[0.42] p-[18px]">
@@ -79,11 +86,9 @@ export function TodayByHour({ visits }: { visits: Appointment[] | null }) {
         )}
       </div>
       <div aria-hidden className="flex justify-between font-mono text-[10.5px] text-[#8EA1C2]">
-        <span>09</span>
-        <span>12</span>
-        <span>15</span>
-        <span>18</span>
-        <span>21</span>
+        {ticks.map((tick) => (
+          <span key={tick}>{tick === nearest ? tr("now", "abhi") : String(tick).padStart(2, "0")}</span>
+        ))}
       </div>
       <div className="flex flex-wrap gap-3.5 text-[12.5px] text-[#D7E3F7]">
         <span className="inline-flex items-center gap-[7px]">

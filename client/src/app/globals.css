@@ -222,13 +222,15 @@
   --color-pastel-blush: var(--pastel-blush);
   --color-pastel-ink: var(--pastel-ink);
 
-  /* The brand radii, mapped onto the utilities the components already use. */
+  /* The brand radii, mapped onto the utilities the components already use.
+     Each goes through a variable, because `@theme inline` writes the value
+     into the utility: a literal here could not be re-scaled by the console. */
   --radius-sm: var(--ms-radius-sm);
-  --radius-md: 10px;
-  --radius-lg: 12px;
+  --radius-md: var(--ms-radius-md, 10px);
+  --radius-lg: var(--ms-radius-md-lg, 12px);
   --radius-xl: var(--ms-radius);
   --radius-2xl: var(--ms-radius-lg);
-  --radius-3xl: 28px;
+  --radius-3xl: var(--ms-radius-xl, 28px);
 
   --shadow-sm: var(--shadow-sm);
   --shadow-card: var(--shadow-card);
@@ -257,12 +259,20 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-h1,
-h2,
-h3 {
-  font-family: var(--font-display-face), var(--font-body), sans-serif;
-  letter-spacing: -0.02em;
-  text-wrap: balance;
+@layer base {
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display-face), var(--font-body), sans-serif;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  /* The console's headings wrap where the line runs out, as the design's do. */
+  .console-tokens :is(h1, h2, h3) {
+    text-wrap: wrap;
+    letter-spacing: normal;
+  }
 }
 
 ::selection {
@@ -473,6 +483,18 @@ h3 {
   text-align: center;
   vertical-align: middle;
 }
+/* The console's line icons size like the font they replace: 1em square.
+   Layered, so a utility on one — `hidden`, a size — still wins. */
+@layer components {
+  .console-icon {
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    flex-shrink: 0;
+    vertical-align: -0.125em;
+  }
+}
+
 .msym-fill {
   font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24;
 }
@@ -2067,7 +2089,7 @@ video-player-container.consult-stage video-player[data-role="self"] {
     color: var(--text-strong);
   }
   .console-table thead th {
-    background: color-mix(in srgb, var(--surface-sunken) 50%, var(--surface-card));
+    background: var(--console-soft, color-mix(in srgb, var(--surface-sunken) 50%, var(--surface-card)));
     text-align: left;
     font-size: 12px;
     font-weight: 600;
@@ -2093,9 +2115,92 @@ video-player-container.consult-stage video-player[data-role="self"] {
     transition: background-color 0.15s ease;
   }
   .console-table tbody tr:hover > td {
-    background: color-mix(in srgb, var(--surface-sunken) 50%, var(--surface-card));
+    background: var(--console-soft, color-mix(in srgb, var(--surface-sunken) 50%, var(--surface-card)));
   }
   .console-table tbody tr:last-child > td {
     border-bottom: 0;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   The administration console, to the Final design boards.
+   ---------------------------------------------------------------------------
+   The console sets its own values for the shared tokens, so every utility the
+   pages already use (`bg-sunken`, `text-muted`, `border-line`, `bg-warning-soft`)
+   lands on the design's colours without a page changing. Text sits at the
+   design's 14px and the browser's own line height, which is what the boards'
+   rows, tiles and lists are measured in. `console-tokens` carries the values
+   (portals — drawers, dialogs, menus — wear it too); `console-scope` is the
+   shell, which also paints the page's ground. */
+.console-tokens {
+  --console-bg: #eef3f9;
+  --console-soft: #f6f9fc;
+  --surface-canvas: #eef3f9;
+  --surface-card: #ffffff;
+  --surface-sunken: #eaf0f7;
+  --line: #e1e8f1;
+  --line-strong: #cdd8e6;
+  --text-strong: #0b1630;
+  --text-muted: #52627d;
+  --text-faint: #5e6d86;
+  --brand-primary: #0b3fa8;
+  --status-stable: #047857;
+  --status-stable-soft: #dff5ea;
+  --status-warning: #a64b07;
+  --status-warning-soft: #fdf0d5;
+  --status-critical: #c42b31;
+  --status-critical-soft: #fce6e6;
+  --status-info: #0f6a96;
+  --status-info-soft: #e0eef9;
+  --shadow-card: 0 1px 2px rgb(11 22 48 / 0.05), 0 12px 30px -18px rgb(11 22 48 / 0.18);
+  /* The boards' radii: 6 for a swatch, 8 for a chip, 12 for a field or an
+     icon tile, 16 for a box inside a card, 24 for the card itself. Set on the
+     variables the radius utilities read (see the theme above). */
+  --ms-radius-md: 6px;
+  --ms-radius-md-lg: 8px;
+  --ms-radius: 12px;
+  --ms-radius-lg: 16px;
+  --ms-radius-xl: 24px;
+  font-size: 14px;
+  line-height: normal;
+}
+.console-scope {
+  background:
+    radial-gradient(900px 500px at 92% -8%, rgb(26 143 199 / 0.12), transparent 60%),
+    var(--console-bg);
+}
+.dark .console-tokens {
+  --console-bg: #050d1f;
+  --console-soft: #0e1c3d;
+  --surface-canvas: #050d1f;
+  --surface-card: #0b1733;
+  --surface-sunken: #112247;
+  --line: #1a2a4f;
+  --line-strong: #28406f;
+  --text-strong: #eaf1fb;
+  --text-muted: #a6b5ce;
+  --text-faint: #8296b3;
+  --brand-primary: #86abff;
+  --status-stable: #3ddc9f;
+  --status-stable-soft: #0b2f24;
+  --status-warning: #fbbf24;
+  --status-warning-soft: #3a2a08;
+  --status-critical: #ff8a8e;
+  --status-critical-soft: #451418;
+  --status-info: #7cc0ea;
+  --status-info-soft: #0c2c44;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 16px 36px -18px rgb(0 0 0 / 0.7);
+}
+
+/* The console's bar is open on the page's ground; once the page scrolls under
+   it, it takes that ground back, frosted, so nothing reads through it. */
+.console-topbar .topbar-fill {
+  background: var(--console-bg);
+}
+[data-scrolled] .console-topbar .topbar-fill {
+  opacity: 0.88;
+}
+[data-scrolled] .console-topbar {
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }

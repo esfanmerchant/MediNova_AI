@@ -13,9 +13,9 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState, type ReactNode } from "react";
 
-import { AppShell } from "@/components/AppShell";
+import { AppShell, useDetailCrumb } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
-import { Art, ConsoleCard, ConsoleHeader, MedicinePack, StatusPill, consoleStamp } from "@/components/admin/console";
+import { Art, ConsoleCard, ConsoleHeader, MedicinePack, StatusPill, consoleStamp, groupPhone } from "@/components/admin/console";
 import { Dialog } from "@/components/overlays";
 import { AdminOrderStatus } from "@/components/pharmacy/AdminTabs";
 import { STEP_LABEL, rupees } from "@/components/pharmacy/shared";
@@ -44,6 +44,7 @@ export default function AdminOrder() {
   const tr = useTr();
   const order = useAsync(() => pharmacy.order(id), [id], { refreshMs: 30_000 });
   const data = order.data;
+  useDetailCrumb(data?.orderNumber);
 
   return (
     <AppShell role="ADMIN">
@@ -66,7 +67,7 @@ export default function AdminOrder() {
           </div>
         ) : data ? (
           <>
-            <div className="mt-2">
+            <div className="mt-3">
               <ConsoleHeader
                 mark="orders"
                 mono
@@ -90,8 +91,8 @@ export default function AdminOrder() {
 
             <Progress order={data} />
 
-            <div className="mt-6 grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-              <div className="min-w-0 space-y-6">
+            <div className="mt-[22px] grid grid-cols-1 items-start gap-[22px] lg:grid-cols-[minmax(0,1fr)_360px]">
+              <div className="min-w-0 space-y-[22px]">
                 <NextStep order={data} onChanged={order.reload} />
 
                 <ConsoleCard
@@ -101,7 +102,7 @@ export default function AdminOrder() {
                 >
                   <ul>
                     {data.items.map((item) => (
-                      <li key={item.id} className="flex items-center gap-3 border-t border-line px-5 py-3 sm:px-6">
+                      <li key={item.id} className="flex items-center gap-3 border-t border-line px-[22px] py-3">
                         <MedicinePack form={item.form} size={34} />
                         <div className="min-w-0 flex-1">
                           <p className="font-semibold text-strong">
@@ -121,7 +122,7 @@ export default function AdminOrder() {
                       </li>
                     ))}
                   </ul>
-                  <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1.5 border-t border-line px-5 pt-3.5 pb-5 text-sm sm:px-6">
+                  <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1.5 border-t border-line px-[22px] pt-3.5 pb-[18px] text-[14px]">
                     <dt className="text-muted">{tr("Medicines", "Dawaiyan")}</dt>
                     <dd className="text-right tabular-nums">{rupees(data.subtotal)}</dd>
                     <dt className="text-muted">{tr("Delivery", "Delivery")}</dt>
@@ -132,7 +133,7 @@ export default function AdminOrder() {
                 </ConsoleCard>
               </div>
 
-              <div className="space-y-6">
+              <div className="space-y-[22px]">
                 <SideCard label={tr("Deliver to", "Yahan bhejein")}>
                   <p className="text-[15px] font-semibold text-strong">{data.recipientName}</p>
                   <p className="text-[13.5px] leading-normal text-muted">
@@ -143,14 +144,14 @@ export default function AdminOrder() {
                   {data.phone && (
                     <a
                       href={`tel:${data.phone}`}
-                      className="mt-1 inline-flex w-fit items-center gap-1.5 text-[13.5px] font-semibold text-primary tabular-nums hover:underline"
+                      className="mt-1 inline-flex h-8 w-fit items-center gap-2 text-[12.5px] font-semibold text-primary tabular-nums hover:underline"
                     >
-                      <Icon name="call" className="text-[17px]" />
-                      {data.phone}
+                      <Icon name="call" className="text-[15px]" />
+                      {groupPhone(data.phone)}
                     </a>
                   )}
                   {data.deliveryNotes && (
-                    <p className="mt-1.5 rounded-xl bg-sunken/70 px-3 py-2.5 text-[13px] text-strong">“{data.deliveryNotes}”</p>
+                    <p className="mt-1.5 rounded-xl bg-[var(--console-soft)] px-3 py-2.5 text-[13px] text-strong">“{data.deliveryNotes}”</p>
                   )}
                 </SideCard>
                 {data.trackingNumber && (
@@ -219,7 +220,7 @@ function Progress({ order }: { order: Order }) {
   return (
     <section
       aria-label={tr("Progress", "Pesh-raft")}
-      className="rise-in mt-6 overflow-x-auto rounded-3xl border border-line bg-card px-6 py-5 shadow-card"
+      className="rise-in mt-[22px] overflow-x-auto rounded-3xl border border-line bg-card px-6 py-5 shadow-card"
     >
       <ol className="grid min-w-[40rem]" style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}>
         {steps.map((step, index) => {
@@ -242,7 +243,10 @@ function Progress({ order }: { order: Order }) {
                           : "bg-card text-faint ring-2 ring-line-strong ring-inset",
                   )}
                 >
-                  <Icon name={bad ? "close" : step.done ? "check" : now ? STEP_ICON[step.key] : "more_horiz"} className="text-[15px]" />
+                  {/* A step still to come is an empty ring. */}
+                  {(bad || step.done || now) && (
+                    <Icon name={bad ? "close" : step.done ? "check" : STEP_ICON[step.key]} className="text-[14px]" />
+                  )}
                 </span>
                 {index < steps.length - 1 && (
                   <span
@@ -444,11 +448,11 @@ function NextStep({ order, onChanged }: { order: Order; onChanged: () => void })
         {order.status === "DELIVERED" ? (
           <Art name="parcel" size={56} className="shrink-0" />
         ) : (
-          <span aria-hidden className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-card text-primary">
+          <span aria-hidden className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] bg-card text-primary">
             <Icon name={icon} className="text-[22px]" />
           </span>
         )}
-        <div className="flex min-w-[15rem] flex-1 flex-col gap-0.5">
+        <div className="flex min-w-[15rem] flex-[1_1_240px] flex-col gap-[3px]">
           <span className="font-mono text-[11px] tracking-[0.14em] uppercase opacity-80">{tr("Next step", "Agla qadam")}</span>
           <span className="font-display text-[17px] font-bold">{title}</span>
           {detail && <span className="text-[13px] opacity-85">{detail}</span>}

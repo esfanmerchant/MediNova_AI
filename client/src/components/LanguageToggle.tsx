@@ -26,7 +26,10 @@ const OPTIONS = [
   { value: "en", label: "English" },
 ] as const;
 
-export function LanguageToggle({ onDark = false }: { onDark?: boolean }) {
+/** The console reads in the order the design sets: English, then Urdu. */
+const CONSOLE_OPTIONS = [OPTIONS[1], OPTIONS[0]] as const;
+
+export function LanguageToggle({ onDark = false, console = false }: { onDark?: boolean; console?: boolean }) {
   const lang = useLang();
   const calm = useCalmMotion();
   // One per toggle: the header and the account menu can both be on screen,
@@ -41,11 +44,12 @@ export function LanguageToggle({ onDark = false }: { onDark?: boolean }) {
       role="group"
       aria-label="Language / Zubaan"
       className={cx(
-        "flex items-center rounded-full border p-0.5 text-xs font-semibold",
+        "flex items-center rounded-full border font-semibold",
+        console ? "p-[3px] text-[12.5px]" : "p-0.5 text-xs",
         onDark ? "border-white/25 bg-white/10" : "border-line-strong bg-card",
       )}
     >
-      {OPTIONS.map((option) => {
+      {(console ? CONSOLE_OPTIONS : OPTIONS).map((option) => {
         const active = lang === option.value;
         return (
           <button
@@ -57,13 +61,16 @@ export function LanguageToggle({ onDark = false }: { onDark?: boolean }) {
               setLang(option.value);
             }}
             className={cx(
-              "relative min-h-11 rounded-full px-3 transition-[color,transform] duration-150 active:scale-[0.97]",
+              "relative rounded-full px-3 transition-[color,transform] duration-150 active:scale-[0.97]",
+              console ? "h-8" : "min-h-11",
               "focus-visible:outline-2 focus-visible:outline-offset-2",
               onDark ? "focus-visible:outline-white" : "focus-visible:outline-primary",
               active
                 ? onDark
                   ? "text-[#053B38]"
-                  : // `text-primary-on`, not `text-white`. The primary colour is a
+                  : console
+                    ? "text-white"
+                    : // `text-primary-on`, not `text-white`. The primary colour is a
                     // deep blue on a light ground and a pale one on a dark
                     // ground, so white on it is 12:1 in one theme and 2.6:1 in
                     // the other — the token exists precisely to follow it.
@@ -80,7 +87,7 @@ export function LanguageToggle({ onDark = false }: { onDark?: boolean }) {
                 transition={calm || !touched ? { duration: 0 } : SPRING}
                 className={cx(
                   "absolute inset-0 rounded-full",
-                  onDark ? "bg-accent-bright" : "bg-primary",
+                  onDark ? "bg-accent-bright" : console ? "bg-[#0B3FA8] dark:bg-[#3B6FE0]" : "bg-primary",
                 )}
               />
             )}

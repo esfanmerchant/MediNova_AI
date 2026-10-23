@@ -45,9 +45,9 @@ const TAB_STATUS: Record<Tab, ApplicationStatus> = {
 
 const KINDS: Array<{ kind: ApplicationDocumentKind; icon: string; label: [string, string] }> = [
   { kind: "REGISTRATION_CERTIFICATE", icon: "description", label: ["Registration certificate", "Registration certificate"] },
-  { kind: "DEGREE", icon: "school", label: ["Degree", "Degree"] },
-  { kind: "NATIONAL_ID", icon: "badge", label: ["National ID", "Shanakhti card"] },
-  { kind: "PHOTO", icon: "account_box", label: ["Photo", "Tasveer"] },
+  { kind: "DEGREE", icon: "star", label: ["Degree", "Degree"] },
+  { kind: "NATIONAL_ID", icon: "key", label: ["National ID", "Shanakhti card"] },
+  { kind: "PHOTO", icon: "group", label: ["Photo", "Tasveer"] },
 ];
 
 const DAY_MS = 86_400_000;
@@ -303,7 +303,7 @@ export default function DoctorRequestsPage() {
 
   return (
     <AppShell role="ADMIN">
-      <div id="main" className="space-y-6">
+      <div id="main" className="space-y-[22px]">
         <ConsoleHeader
           mark="requests"
           eyebrow={tr("Doctors who want to join", "Doctors jo shamil hona chahte hain")}

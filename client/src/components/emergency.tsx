@@ -426,7 +426,7 @@ function ReviewRow({ grant, onReviewed }: { grant: EmergencyGrant; onReviewed: (
 
       <div className="flex min-w-[16rem] flex-[1_1_24rem] flex-col gap-1.5">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-semibold text-strong">{requester}</span>
+          <b className="text-[14px] font-semibold text-strong">{requester}</b>
           <StatusPill dot tone={grant.live ? "critical" : "neutral"}>
             {grant.live ? tr("Still open", "Abhi khuli hai") : tr("Ended", "Khatam")}
           </StatusPill>
@@ -436,7 +436,7 @@ function ReviewRow({ grant, onReviewed }: { grant: EmergencyGrant; onReviewed: (
           <span className="ml-auto text-[12.5px] text-muted tabular-nums">{consoleStamp(grant.grantedAt)}</span>
         </div>
 
-        <p className="text-sm text-strong">
+        <p className="text-[14px] text-strong">
           “<span>{grant.reason}</span>”
         </p>
 
@@ -552,13 +552,16 @@ function LiveGrant({ grant, onEnded }: { grant: EmergencyGrant; onEnded: (next: 
           <LiveDot tone="red" />
           {tr("Open now", "Abhi khuli")}
         </p>
-        <p className="font-display text-lg leading-snug font-bold text-white sm:text-xl">
+        <p className="font-display text-lg leading-[normal] font-bold text-white sm:text-[20px]">
           {tr(
-            `${grant.requesterName ?? "A deleted account"} has emergency access to record ${grant.patientMrn ?? grant.patientId}`,
-            `${grant.requesterName ?? "Hataya gaya account"} ke paas record ${grant.patientMrn ?? grant.patientId} ki emergency access hai`,
+            `${grant.requesterName ?? "A deleted account"} has emergency access to record `,
+            `${grant.requesterName ?? "Hataya gaya account"} ke paas record `,
           )}
+          {/* The record number in the face a number is read in. */}
+          <span className="font-mono text-[17px] font-normal">{grant.patientMrn ?? grant.patientId}</span>
+          {tr("", " ki emergency access hai")}
         </p>
-        <p className="text-sm text-[#F7C9CD]">“{grant.reason}”</p>
+        <p className="text-[14px] text-[#F7C9CD]">“{grant.reason}”</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-white/[0.08] px-3.5 py-2.5">

@@ -27,10 +27,11 @@ import {
   StatusPill,
   consoleMoney,
   consoleStamp,
+  groupPhone,
 } from "@/components/admin/console";
 import { useNow } from "@/components/doctorApplication/shared";
 import { useToast } from "@/components/overlays";
-import { Button, ErrorState, Field, Input, SkeletonRows } from "@/components/ui";
+import { Button, ErrorState, Field, Input, SkeletonRows, cx } from "@/components/ui";
 import { ApiError, withdrawalReview, type PendingWithdrawal, type WithdrawalMethod } from "@/lib/api";
 import { useTr } from "@/lib/lang";
 import { useAsync, QUEUE_REFRESH_MS } from "@/lib/useAsync";
@@ -46,18 +47,21 @@ const METHOD: Record<WithdrawalMethod, string> = {
 };
 
 /** A value the administrator will copy into their banking app, with the button that does it. */
-function Detail({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function Detail({ label, value, shown, mono }: { label: string; value: string; shown?: string; mono?: boolean }) {
   const tr = useTr();
   // A dt and a dd, and nothing else, inside the group — the copy button lives
-  // in the dd beside the value it copies.
+  // in the dd beside the value it copies, set against the box's right edge.
+  // It copies the value as stored; `shown` is only how it reads.
   return (
-    <div className="flex flex-col gap-0.5 rounded-[14px] border border-line bg-card py-2 pr-1.5 pl-3">
+    <div className="relative flex flex-col gap-0.5 rounded-[14px] border border-line bg-card py-2.5 pr-12 pl-3">
       <dt className="text-[12px] text-muted">{label}</dt>
-      <dd className="m-0 flex items-center gap-2">
-        <span className={mono ? "min-w-0 flex-1 truncate font-mono text-[12.5px] font-semibold text-strong" : "min-w-0 flex-1 truncate text-[13.5px] font-semibold text-strong"}>
-          {value}
+      <dd className="m-0">
+        <span className={cx("block truncate font-semibold text-strong", mono ? "font-mono text-[12.5px]" : "text-[13.5px]")}>
+          {shown ?? value}
         </span>
-        <CopyButton value={value} label={tr(`Copy ${label.toLowerCase()}`, `${label} copy karein`)} />
+        <span className="absolute top-1/2 right-3 -translate-y-1/2">
+          <CopyButton bordered value={value} label={tr(`Copy ${label.toLowerCase()}`, `${label} copy karein`)} />
+        </span>
       </dd>
     </div>
   );
@@ -121,7 +125,7 @@ function Request({ withdrawal, onDecided }: { withdrawal: PendingWithdrawal; onD
   const bank = withdrawal.method === "BANK";
 
   return (
-    <li className="flex flex-col gap-3.5 rounded-[20px] border border-line bg-sunken/40 px-[18px] py-4">
+    <li className="flex flex-col gap-3.5 rounded-[20px] border border-line bg-[var(--console-soft,var(--surface-sunken))] px-[18px] py-4">
       <div className="flex flex-wrap items-center gap-3">
         <span aria-hidden className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-pastel-sky text-[13px] font-bold text-primary">
           {initialsOf(withdrawal.doctorName)}
@@ -142,7 +146,12 @@ function Request({ withdrawal, onDecided }: { withdrawal: PendingWithdrawal; onD
 
       <dl className="grid gap-2.5 sm:grid-cols-3">
         <Detail label={tr("Account name", "Account ka naam")} value={withdrawal.accountName} />
-        <Detail label={bank ? tr("Account number", "Account number") : tr("Mobile number", "Mobile number")} value={withdrawal.accountNumber} mono />
+        <Detail
+          label={bank ? tr("Account number", "Account number") : tr("Mobile number", "Mobile number")}
+          value={withdrawal.accountNumber}
+          shown={bank ? undefined : groupPhone(withdrawal.accountNumber, "local")}
+          mono
+        />
         <Detail
           label={bank ? tr("Bank", "Bank") : tr("Service", "Service")}
           value={withdrawal.bankName ?? METHOD[withdrawal.method]}
@@ -247,7 +256,7 @@ export default function AdminWithdrawals() {
 
   return (
     <AppShell role="ADMIN">
-      <div id="main" className="space-y-6">
+      <div id="main" className="space-y-[22px]">
         <ConsoleHeader
           mark="withdrawals"
           eyebrow={tr("Doctors' earnings, paid out", "Doctors ki kamai ki adaigi")}

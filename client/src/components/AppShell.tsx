@@ -2,10 +2,12 @@
 
 import { AnimatePresence, MotionConfig, animate, motion } from "framer-motion";
 import dynamic from "next/dynamic";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -155,11 +157,11 @@ const NAV: Record<Role, NavGroup[]> = {
       label: ["Money", "Paisa"],
       items: [
         { href: "/admin/revenue", label: ["Revenue", "Aamdani"], icon: "monitoring" },
-        { href: "/admin/billing", label: ["Billing", "Billing"], icon: "payments" },
+        { href: "/admin/billing", label: ["Billing", "Billing"], icon: "receipt_long" },
         {
           href: "/admin/transactions",
           label: ["Transactions", "Transactions"],
-          icon: "receipt_long",
+          icon: "swap_horiz",
         },
         { href: "/admin/withdrawals", label: ["Withdrawals", "Withdrawals"], icon: "account_balance" },
       ],
@@ -383,7 +385,7 @@ function InactivityWarning() {
  * surprised by the banner either. Device classes exempt from idle expiry — a
  * ward monitor — have no window, so they get no line.
  */
-function SessionMeter() {
+function SessionMeter({ onlyWhenShort = false }: { onlyWhenShort?: boolean }) {
   const { session, secondsRemaining } = useSession();
   const tr = useTr();
   const limit = session?.idleTimeoutSeconds ?? null;
@@ -392,6 +394,9 @@ function SessionMeter() {
   // Full until the first tick lands, so the line never appears a second late
   // and nudges the whole page down two pixels.
   const left = secondsRemaining === null ? 1 : Math.max(0, Math.min(1, secondsRemaining / limit));
+  // The console's bar is open and quiet; the line appears there only when the
+  // last fifth of the session is running out, which is when it is news.
+  if (onlyWhenShort && left > 0.2) return null;
 
   return (
     <div
@@ -411,6 +416,31 @@ function SessionMeter() {
 // Breadcrumb
 // ---------------------------------------------------------------------------
 
+/**
+ * The name a detail page gives itself in the breadcrumb — an order number in
+ * place of "Detail". Held outside React so the page can set it without the
+ * shell above it re-rendering the page.
+ */
+let detailCrumb: string | null = null;
+const detailListeners = new Set<() => void>();
+
+function subscribeDetailCrumb(listener: () => void) {
+  detailListeners.add(listener);
+  return () => detailListeners.delete(listener);
+}
+
+/** Names the page in the breadcrumb while it is showing. */
+export function useDetailCrumb(label: string | null | undefined) {
+  useEffect(() => {
+    detailCrumb = label ?? null;
+    detailListeners.forEach((listener) => listener());
+    return () => {
+      detailCrumb = null;
+      detailListeners.forEach((listener) => listener());
+    };
+  }, [label]);
+}
+
 function humanise(segment: string): string {
   return segment.replace(/-/g, " ").replace(/^./, (character) => character.toUpperCase());
 }
@@ -425,6 +455,7 @@ function humanise(segment: string): string {
  */
 function Breadcrumb({ role, pathname }: { role: Role; pathname: string }) {
   const tr = useTr();
+  const named = useSyncExternalStore(subscribeDetailCrumb, () => detailCrumb, () => null);
   const segments = pathname.split("/").filter(Boolean);
   const flat = NAV[role]?.flatMap((group) => group.items) ?? [];
   const home = homePathFor(role);
@@ -438,7 +469,13 @@ function Breadcrumb({ role, pathname }: { role: Role; pathname: string }) {
     const isIdish = index > 0 && (segment.length > 12 || /\d/.test(segment));
     crumbs.push({
       href,
-      label: known ? tr(...known.label) : isIdish ? tr("Detail", "Tafseel") : humanise(segment),
+      label: known
+        ? tr(...known.label)
+        : isIdish
+          ? index === segments.length - 1 && named
+            ? named
+            : tr("Detail", "Tafseel")
+          : humanise(segment),
     });
   }
 
@@ -448,18 +485,21 @@ function Breadcrumb({ role, pathname }: { role: Role; pathname: string }) {
   // keep their section and where you are, and fold what is between into an
   // ellipsis. Four crumbs in the space between the logo and the search field
   // each truncated to a letter, which said nothing at all.
-  const shown =
-    crumbs.length > 2
-      ? [crumbs[0], { href: "", label: "…" }, crumbs[crumbs.length - 1]]
-      : crumbs;
   // The console names where you are and nothing above it: "Pharmacy › Catalog",
   // never "Administration › Pharmacy › Catalog" — the rail already says whose
-  // console this is, and the root crumb was what got cut to "Phar…".
+  // console this is, and the root crumb was what got cut to "Phar…". A deep
+  // page there is its section and its own name: "Pharmacy › ORD-2026-0141".
   const root = role !== "ADMIN";
+  const shown =
+    crumbs.length > 2
+      ? root
+        ? [crumbs[0], { href: "", label: "…" }, crumbs[crumbs.length - 1]]
+        : [crumbs[0], crumbs[crumbs.length - 1]]
+      : crumbs;
 
   return (
     <nav aria-label="Breadcrumb" className="hidden min-w-0 lg:block">
-      <ol className="flex min-w-0 items-center gap-1.5 text-sm">
+      <ol className={cx("flex min-w-0 items-center gap-1.5", root ? "text-sm" : "text-[13.5px]")}>
         {root && (
           <li className="min-w-0">
             <Link
@@ -473,7 +513,7 @@ function Breadcrumb({ role, pathname }: { role: Role; pathname: string }) {
         {crumbs.length === 0 && here && (
           <li className="flex min-w-0 items-center gap-1.5">
             {root && <Icon name="chevron_right" className="text-[16px] text-faint" />}
-            <span aria-current="page" className="truncate font-semibold text-strong">
+            <span aria-current="page" className={root ? "truncate font-semibold text-strong" : "truncate text-muted"}>
               {tr(...here.label)}
             </span>
           </li>
@@ -488,7 +528,10 @@ function Breadcrumb({ role, pathname }: { role: Role; pathname: string }) {
                   {crumb.label}
                 </span>
               ) : last ? (
-                <span aria-current="page" className="truncate font-semibold text-strong">
+                <span
+                  aria-current="page"
+                  className={!root && shown.length === 1 ? "truncate text-muted" : "truncate font-semibold text-strong"}
+                >
                   {crumb.label}
                 </span>
               ) : (
@@ -504,6 +547,18 @@ function Breadcrumb({ role, pathname }: { role: Role; pathname: string }) {
         })}
       </ol>
     </nav>
+  );
+}
+
+function initialsOf(name: string): string {
+  return (
+    name
+      .replace(/^Dr\.?\s+/i, "")
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? "")
+      .join("") || "?"
   );
 }
 
@@ -555,6 +610,7 @@ function AccountMenu({
   onDark?: boolean;
 }) {
   const tr = useTr();
+  const inConsole = useContext(ConsoleSurface);
   const [open, setOpen] = useState(false);
   const shell = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -601,44 +657,61 @@ function AccountMenu({
           variant === "card"
             ? cx(
                 onDark
-                  ? "flex w-full items-center gap-3 rounded-2xl p-2.5 text-left transition-colors hover:bg-white/[0.07]"
+                  ? "flex w-full items-center gap-2.5 rounded-2xl bg-white/[0.06] p-2.5 text-left transition-colors hover:bg-white/[0.1]"
                   : "bg-gradient-soft hover-lift-sm flex w-full items-center gap-3 rounded-2xl border border-line/70 p-3 text-left",
                 collapsed && "justify-center p-2",
               )
-            : "flex items-center gap-2.5 rounded-full p-1 pr-2 transition-[background-color,transform] hover:scale-[1.02] hover:bg-gradient-soft",
+            : inConsole
+              ? "flex items-center gap-2.5 rounded-full py-0.5 pr-1 pl-1 transition-colors hover:bg-sunken"
+              : "flex items-center gap-2.5 rounded-full p-1 pr-2 transition-[background-color,transform] hover:scale-[1.02] hover:bg-gradient-soft",
         )}
       >
-        {/* A 2px gradient ring: the one place the brand touches a person's own
-            initials, so the card reads as *theirs* rather than as a row. */}
-        <span aria-hidden className="bg-gradient-brand grid shrink-0 place-items-center rounded-full p-[2px]">
-          <Avatar name={user.name} src={user.avatarUrl} size="sm" />
-        </span>
+        {onDark || inConsole ? (
+          <span
+            aria-hidden
+            className={cx(
+              "grid h-9 w-9 shrink-0 place-items-center rounded-full text-[12.5px] font-bold",
+              onDark ? "bg-[#5EEAD4] text-[#04212A]" : "border-2 border-[#5EEAD4] bg-pastel-mint text-[#08636C] dark:text-[#5EEAD4]",
+            )}
+          >
+            {initialsOf(user.name)}
+          </span>
+        ) : (
+          /* A 2px gradient ring: the one place the brand touches a person's own
+             initials, so the card reads as *theirs* rather than as a row. */
+          <span aria-hidden className="bg-gradient-brand grid shrink-0 place-items-center rounded-full p-[2px]">
+            <Avatar name={user.name} src={user.avatarUrl} size="sm" />
+          </span>
+        )}
 
         {variant === "card" && !collapsed && (
           <span className="min-w-0">
-            <span className={cx("block truncate text-sm font-semibold", onDark ? "text-white" : "text-strong")}>
+            <span className={cx("block truncate font-semibold", onDark ? "text-[13.5px] text-white" : "text-sm text-strong")}>
               {user.name}
             </span>
             {onDark ? (
-              <span className="block text-xs text-[#8EA1C2]">{tr(...ROLE_LABEL[user.role])}</span>
+              <span className="block text-[12px] text-[#8EA1C2]">{tr(...ROLE_LABEL[user.role])}</span>
             ) : (
               <RoleChip role={user.role} className="mt-0.5" />
             )}
           </span>
         )}
         {variant === "avatar" && (
-          <span className="hidden text-left sm:block">
-            <span className="block max-w-[10rem] truncate text-sm font-semibold text-strong">
+          <span className="hidden text-left leading-tight sm:block">
+            <span className={cx("block max-w-[10rem] truncate font-semibold text-strong", inConsole ? "text-[13.5px]" : "text-sm")}>
               {user.name}
             </span>
-            <span className="block text-[11px] text-faint">{tr(...ROLE_LABEL[user.role])}</span>
+            <span className={cx("block", inConsole ? "text-[12px] text-muted" : "text-[11px] text-faint")}>
+              {tr(...ROLE_LABEL[user.role])}
+            </span>
           </span>
         )}
         <Icon
           name="expand_more"
           className={cx(
-            "text-[20px] text-faint transition-transform",
-            variant === "card" ? (collapsed ? "hidden" : "ml-auto") : "hidden sm:block",
+            "transition-transform",
+            onDark ? "text-[16px] text-[#B9C7DD]" : "text-[20px] text-faint",
+            variant === "card" ? (collapsed ? "hidden" : "ml-auto") : inConsole ? "hidden" : "hidden sm:block",
             open && "rotate-180",
           )}
         />
@@ -820,18 +893,42 @@ function Rail({
       aria-expanded={!collapsed}
       onClick={onToggle}
       className={cx(
-        "grid h-9 w-9 shrink-0 place-items-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2",
+        "grid shrink-0 place-items-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2",
         onDark
-          ? "text-[#8EA1C2] hover:bg-white/10 hover:text-white focus-visible:outline-[#5EEAD4]"
-          : "text-faint hover:bg-gradient-soft hover:text-primary focus-visible:outline-primary",
-        collapsed && "mx-auto mb-3",
+          ? "ml-auto h-7 w-7 text-[#8EA1C2] hover:bg-white/10 hover:text-white focus-visible:outline-[#5EEAD4]"
+          : "h-9 w-9 text-faint hover:bg-gradient-soft hover:text-primary focus-visible:outline-primary",
+        collapsed && (onDark ? "mx-auto" : "mx-auto mb-3"),
       )}
     >
       <Icon
         name="chevron_left"
-        className={cx("text-[22px] transition-transform duration-300", collapsed && "rotate-180")}
+        className={cx(
+          onDark ? "text-[16px]" : "text-[22px]",
+          "transition-transform duration-300",
+          collapsed && "rotate-180",
+        )}
       />
     </button>
+  );
+
+  // The console's brand: the mark on a white tile, the name, and whose console
+  // this is — as the design draws it.
+  const consoleBrand = (
+    <Link
+      href="/"
+      onClick={onNavigate}
+      className="flex min-w-0 items-center gap-2.5 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#5EEAD4]"
+    >
+      <span className="grid h-[38px] w-[38px] shrink-0 place-items-center rounded-xl bg-white p-[5px]">
+        <Image src="/brand/medinova-mark.png" alt="" width={28} height={28} className="h-full w-full object-contain" />
+      </span>
+      {!collapsed && (
+        <span className="flex min-w-0 flex-col gap-px">
+          <span className="font-display text-[17px] leading-tight font-bold text-white">MediNova AI</span>
+          <span className="text-[12px] leading-tight text-[#8EA1C2]">{tr("Administration", "Intezamia")}</span>
+        </span>
+      )}
+    </Link>
   );
 
   return (
@@ -841,29 +938,42 @@ function Rail({
     // Not `overflow-hidden`: the collapsed tooltips and the account dropdown are
     // both wider than the rail and have to escape it. The one thing that does
     // need clipping — the circuit field — clips itself.
-    <div className={cx("relative flex h-full flex-col", onDark && "console-rail")}>
+    <div
+      className={cx(
+        "relative flex h-full flex-col",
+        onDark && "console-rail gap-4 px-3.5 pt-[18px] pb-3.5",
+      )}
+    >
       {onDark && <span aria-hidden className="console-rail-glow" />}
-      <div
-        className={cx(
-          "relative flex items-center",
-          onDark ? "py-4" : "py-5",
-          collapsed ? "justify-center px-3" : "justify-between px-4",
-        )}
-      >
-        <Link
-          href="/"
-          onClick={onNavigate}
-          className="rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        >
-          <Logo variant={collapsed ? "mark" : onDark ? "white" : "full"} size={collapsed ? "sm" : "md"} />
-        </Link>
-        {!collapsed && collapseButton}
-      </div>
+      {onDark ? (
+        <div className={cx("relative flex items-center gap-2", collapsed ? "flex-col justify-center" : "px-1.5 py-0.5")}>
+          {consoleBrand}
+          {collapseButton}
+        </div>
+      ) : (
+        <>
+          <div
+            className={cx(
+              "relative flex items-center py-5",
+              collapsed ? "justify-center px-3" : "justify-between px-4",
+            )}
+          >
+            <Link
+              href="/"
+              onClick={onNavigate}
+              className="rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              <Logo variant={collapsed ? "mark" : "full"} size={collapsed ? "sm" : "md"} />
+            </Link>
+            {!collapsed && collapseButton}
+          </div>
 
-      {collapsed && collapseButton}
+          {collapsed && collapseButton}
+        </>
+      )}
 
       {emergencyHref && (
-        <div className={cx(onDark ? "mb-3" : "mb-4", collapsed ? "px-3" : "px-4")}>
+        <div className={cx(onDark ? "relative" : "mb-4", !onDark && (collapsed ? "px-3" : "px-4"))}>
           {/* The one red thing in the rail — the fastest route to the screen
               somebody needs when there is no time to navigate. */}
           <Link
@@ -871,20 +981,32 @@ function Rail({
             onClick={onNavigate}
             title={tr("Emergency access", "Emergency access")}
             className={cx(
-              "group flex w-full items-center justify-center gap-2 rounded-xl bg-critical text-sm font-bold text-white shadow-md",
-              "transition-[transform,opacity] hover:scale-[1.03] hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-critical",
-              onDark ? "min-h-10" : "min-h-11",
+              "group flex w-full items-center justify-center gap-2 font-bold text-white",
+              "focus-visible:outline-2 focus-visible:outline-offset-2",
+              onDark
+                ? "h-10 rounded-xl bg-[#C9363C] text-[13.5px] transition-colors hover:bg-[#B52F35] focus-visible:outline-[#FF8A93]"
+                : "min-h-11 rounded-xl bg-critical text-sm shadow-md transition-[transform,opacity] hover:scale-[1.03] hover:opacity-90 focus-visible:outline-critical",
             )}
           >
-            <Icon name="warning" filled className="icon-wiggle text-[20px]" />
+            <Icon name="warning" filled className={onDark ? "text-[17px]" : "icon-wiggle text-[20px]"} />
             {!collapsed && tr("Emergency access", "Emergency access")}
           </Link>
         </div>
       )}
 
-      <nav ref={navRef} aria-label="Main" className="relative min-h-0 flex-1 overflow-y-auto px-3">
+      <nav
+        ref={navRef}
+        aria-label="Main"
+        // The rail stays in view, so it is the window's height: on a short
+        // window the groups sit 8px apart rather than 12 so the last item is
+        // not cut off at the edge of the scroll.
+        className={cx(
+          "relative min-h-0 flex-1 overflow-y-auto",
+          onDark ? "flex flex-col gap-3 [@media(max-height:940px)]:gap-2" : "px-3",
+        )}
+      >
         {groups.map((group) => (
-          <div key={group.label[0]} className={onDark ? "mb-2.5" : "mb-4"}>
+          <div key={group.label[0]} className={onDark ? "flex flex-col gap-0.5" : "mb-4"}>
             <AnimatePresence initial={false} mode="popLayout">
               {!collapsed ? (
                 <motion.p
@@ -892,7 +1014,10 @@ function Rail({
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1, transition: { ...TRANSITION.base, delay: 0.06 } }}
                   exit={{ opacity: 0, transition: TRANSITION.fast }}
-                  className={cx("mono-caps px-3 text-[0.68rem]", onDark ? "mb-1 text-[#6F82A6]" : "mb-1.5 text-faint")}
+                  className={cx(
+                    "mono-caps px-3",
+                    onDark ? "pb-1 text-[10px] tracking-[0.16em] text-[#8296B3]" : "mb-1.5 text-[0.68rem] text-faint",
+                  )}
                 >
                   {tr(...group.label)}
                 </motion.p>
@@ -918,7 +1043,7 @@ function Rail({
                         aria-hidden
                         className={
                           onDark
-                            ? "absolute inset-0 rounded-[14px] bg-[#5EEAD4] shadow-[0_14px_28px_-14px_rgba(94,234,212,0.85)]"
+                            ? "absolute inset-0 rounded-[13px] bg-[#5EEAD4] shadow-[0_14px_28px_-14px_rgba(94,234,212,0.85)]"
                             : "bg-gradient-soft absolute inset-0 rounded-xl"
                         }
                       >
@@ -938,13 +1063,13 @@ function Rail({
                       onClick={onNavigate}
                       title={collapsed ? tr(...item.label) : undefined}
                       className={cx(
-                        "group relative flex items-center gap-3 rounded-xl text-[0.9375rem] transition-[color,background-color] duration-200",
+                        "group relative flex items-center gap-3 transition-[color,background-color] duration-200",
                         // Twelve destinations and five headings have to fit a
                         // 900px laptop screen without the console's rail scrolling.
-                        onDark ? "min-h-[38px] py-1.5" : "min-h-11 py-2.5",
+                        onDark ? "min-h-[38px] rounded-[13px] text-[14px]" : "min-h-11 rounded-xl py-2.5 text-[0.9375rem]",
                         "focus-visible:outline-2 focus-visible:outline-offset-2",
                         onDark ? "focus-visible:outline-[#5EEAD4]" : "focus-visible:outline-primary",
-                        collapsed ? "justify-center px-0" : "px-3.5",
+                        collapsed ? "justify-center px-0" : onDark ? "px-3" : "px-3.5",
                         active
                           ? onDark
                             ? "font-bold text-[#04212A]"
@@ -954,7 +1079,7 @@ function Rail({
                             : "font-medium text-muted hover:bg-sunken hover:text-strong",
                       )}
                     >
-                      <Icon name={item.icon} filled={active} className="icon-wiggle text-[20px]" />
+                      <Icon name={item.icon} filled={active} className={onDark ? "text-[18px]" : "icon-wiggle text-[20px]"} />
                       {/* Fades rather than blinks as the rail opens and
                           closes. On the way out it is lifted out of the row
                           first, so the icon settles into the middle while the
@@ -975,12 +1100,13 @@ function Rail({
                       {item.badge === "pendingDoctorApplications" && pendingApplications > 0 && (
                         <span
                           className={cx(
-                            "ml-auto rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums",
+                            "ml-auto rounded-full text-[11px] font-bold tabular-nums",
                             onDark
-                              ? active
-                                ? "bg-[#04212A] text-[#5EEAD4]"
-                                : "bg-white/10 text-white"
-                              : "bg-gradient-brand text-white shadow-sm",
+                              ? cx(
+                                  "grid h-5 min-w-[22px] place-items-center px-1.5 font-mono",
+                                  active ? "bg-[#04212A] text-[#5EEAD4]" : "bg-white/[0.12] text-white",
+                                )
+                              : "bg-gradient-brand px-2 py-0.5 text-white shadow-sm",
                             collapsed &&
                               "absolute right-1 top-1 ml-0 px-1.5 py-0 text-[10px] leading-4",
                           )}
@@ -1018,22 +1144,25 @@ function Rail({
           production build has no badge and does not need it. */}
       <div
         className={cx(
-          "relative mt-2",
-          onDark ? "pt-4" : "pt-6",
-          process.env.NODE_ENV === "development" ? "pb-12" : "pb-4",
-          collapsed ? "px-3" : "px-4",
+          "relative",
+          onDark ? "mt-auto" : "mt-2 pt-6",
+          // Room for the development badge, which otherwise sits on the card.
+          process.env.NODE_ENV === "development" ? "pb-12" : onDark ? "" : "pb-4",
+          !onDark && (collapsed ? "px-3" : "px-4"),
         )}
       >
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 overflow-hidden"
-          style={{
-            maskImage: "linear-gradient(to top, black 40%, transparent)",
-            WebkitMaskImage: "linear-gradient(to top, black 40%, transparent)",
-          }}
-        >
-          <CircuitNodes density="low" />
-        </div>
+        {!onDark && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 overflow-hidden"
+            style={{
+              maskImage: "linear-gradient(to top, black 40%, transparent)",
+              WebkitMaskImage: "linear-gradient(to top, black 40%, transparent)",
+            }}
+          >
+            <CircuitNodes density="low" />
+          </div>
+        )}
 
         <div className="relative">
           <AccountMenu
@@ -1284,12 +1413,13 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
     // A person who has asked for less motion gets it from Framer too, not only
     // from the CSS: the springs in this shell are not stylesheet transitions.
     <MotionConfig reducedMotion={motionPreference === "reduced" ? "always" : "user"}>
-      <div data-app-shell className="flex min-h-screen">
+      <ConsoleSurface.Provider value={consoleShell}>
+      <div data-app-shell className={cx("flex min-h-screen", consoleShell && "console-tokens console-scope")}>
         {/* Desktop rail — sticky, so a long table never scrolls navigation out
             of reach. Its width animates rather than snapping. */}
         <motion.aside
           initial={false}
-          animate={{ width: (collapsed ? 84 : 264) + (consoleShell ? 14 : 0) }}
+          animate={{ width: consoleShell ? (collapsed ? 84 : 258) + 14 : collapsed ? 84 : 264 }}
           transition={SPRING}
           // `z-30`: the account card's dropdown opens out over the page, and
           // the frosted rail is its own stacking context — without this it
@@ -1365,7 +1495,16 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
           <div ref={topbar} className="sticky top-0 z-40">
             <InactivityWarning />
 
-            <header className="glass safe-topbar relative flex items-center gap-3 rounded-none border-x-0 border-t-0 border-b border-line/80 px-4 !shadow-none sm:px-6">
+            <header
+              className={cx(
+                "relative flex items-center",
+                // The console's bar is open: it sits on the page's ground and
+                // only takes a surface once the page has scrolled under it.
+                consoleShell
+                  ? "console-topbar gap-2.5 px-4 pt-[max(16px,env(safe-area-inset-top))] pb-1.5 sm:px-7"
+                  : "glass safe-topbar gap-3 rounded-none border-x-0 border-t-0 border-b border-line/80 px-4 !shadow-none sm:px-6",
+              )}
+            >
               <span aria-hidden className="topbar-fill" />
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 <button
@@ -1390,16 +1529,28 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
               {/* Search. A button dressed as a field: there is nothing to type
                   into until the palette is open, and a field that silently
                   discards the first keystroke is worse than a button. */}
-              <div className="hidden min-w-0 shrink md:block md:w-[min(20rem,26vw)]">
+              <div className={cx("hidden min-w-0 shrink md:block", consoleShell ? "md:w-[min(340px,28vw)]" : "md:w-[min(20rem,26vw)]")}>
                 <button
                   type="button"
                   onClick={() => setPaletteOpen(true)}
                   aria-keyshortcuts="Control+K Meta+K"
-                  className="flex h-9 w-full items-center gap-2 rounded-full border border-line-strong bg-sunken/60 px-3 text-sm text-faint transition-colors hover:border-primary/40 hover:text-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  className={cx(
+                    "flex w-full items-center rounded-full border border-line-strong transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                    consoleShell
+                      ? "h-10 gap-2.5 bg-card pr-3 pl-3.5 text-[13.5px] text-muted hover:bg-sunken/40"
+                      : "h-9 gap-2 bg-sunken/60 px-3 text-sm text-faint hover:border-primary/40 hover:text-muted",
+                  )}
                 >
-                  <Icon name="search" className="shrink-0 text-[18px]" />
+                  <Icon name="search" className={cx("shrink-0", consoleShell ? "text-[17px]" : "text-[18px]")} />
                   <span className="truncate">{searchLabel}</span>
-                  <kbd className="mono-caps ml-auto shrink-0 rounded-md border border-line-strong bg-card px-1.5 py-0.5 text-[10px] text-faint">
+                  <kbd
+                    className={cx(
+                      "ml-auto shrink-0 rounded-md border border-line-strong",
+                      consoleShell
+                        ? "bg-sunken/50 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-muted"
+                        : "mono-caps bg-card px-1.5 py-0.5 text-[10px] text-faint",
+                    )}
+                  >
                     ⌘K
                   </kbd>
                 </button>
@@ -1434,10 +1585,10 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
                     somebody looking for the switch — and it is one tap away
                     inside, next to the theme. */}
                 <div className="hidden shrink-0 sm:block">
-                  <LanguageToggle />
+                  <LanguageToggle console={consoleShell} />
                 </div>
                 <div className="hidden shrink-0 sm:block">
-                  <ThemeToggle />
+                  <ThemeToggle console={consoleShell} />
                 </div>
                 {user.role === "ADMIN" && <NewMenu />}
                 <NotificationBell role={user.role} />
@@ -1445,7 +1596,7 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
               </div>
             </header>
 
-            <SessionMeter />
+            <SessionMeter onlyWhenShort={consoleShell} />
             <OfflineBanner />
             <span aria-hidden className="topbar-shadow" />
           </div>
@@ -1453,14 +1604,15 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
           <main
             id="main"
             className={cx(
-              "mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 sm:px-8 sm:py-8",
-              // Room under the last card for the phone's tab bar.
-              consoleShell && "pb-32 sm:pb-32 lg:pb-8",
+              "w-full flex-1",
+              consoleShell
+                ? // The design's column: 28px in from the rail, starting just
+                  // under the bar, as wide as 1260px and no wider.
+                  "max-w-[1260px] px-4 pt-2 pb-32 sm:px-7 lg:pb-14"
+                : "mx-auto max-w-[1400px] px-4 py-6 sm:px-8 sm:py-8",
             )}
           >
-            <ConsoleSurface.Provider value={consoleShell}>
-              <PageTransition>{children}</PageTransition>
-            </ConsoleSurface.Provider>
+            <PageTransition>{children}</PageTransition>
           </main>
         </div>
 
@@ -1487,6 +1639,7 @@ export function AppShell({ role, children }: { role: Role; children: ReactNode }
           }
         />
       </div>
+      </ConsoleSurface.Provider>
     </MotionConfig>
   );
 }

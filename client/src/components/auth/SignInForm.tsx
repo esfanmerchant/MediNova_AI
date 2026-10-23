@@ -177,12 +177,12 @@ export function SignInForm({ portal }: { portal: SignInPortal }) {
       {admin ? (
         // The console's own voice: no badge, no card — a heading on a quiet
         // ground, as the console's pages open (see ConsoleAuthFrame).
-        <div className="mb-6 flex flex-col gap-2">
-          <p className="mono-caps text-[0.7rem] text-faint">{tr("Administration console", "Intezamia console")}</p>
-          <h2 className="font-display text-[2rem] leading-tight font-bold tracking-[-0.02em] text-strong">
+        <div className="mb-[22px] flex flex-col gap-2">
+          <p className="font-mono text-[11px] tracking-[0.16em] text-faint uppercase">{tr("Administration console", "Intezamia console")}</p>
+          <h2 className="font-display text-[2rem] leading-[normal] font-bold tracking-[-0.02em] text-strong">
             {tr("Administrator sign-in", "Admin login")}
           </h2>
-          <p className="text-[15px] leading-relaxed text-muted">
+          <p className="text-[15px] leading-[1.55] text-muted">
             {tr("Use the work email your account was made with. Doctors and patients sign in on ", "Woh work email istemal karein jis se aap ka account bana tha. Doctors aur mareez ")}
             <Link href="/login" className={AUTH_LINK}>
               {tr("the main site", "main site")}
@@ -309,7 +309,7 @@ export function SignInForm({ portal }: { portal: SignInPortal }) {
 
       {error && !HANDLED.has(error.code) && <AuthNotice tone="critical">{error.message}</AuthNotice>}
 
-      <form onSubmit={onSubmit} className="space-y-5" noValidate>
+      <form onSubmit={onSubmit} className={admin ? "space-y-[22px]" : "space-y-5"} noValidate>
         <Field label={admin ? tr("Work email", "Work email") : tr("Email", "Email")} htmlFor="email" error={error?.fieldError("email")}>
           <Input
             id="email"
@@ -323,7 +323,7 @@ export function SignInForm({ portal }: { portal: SignInPortal }) {
           />
         </Field>
 
-        <div className="space-y-1.5">
+        <div className={admin ? "space-y-2" : "space-y-1.5"}>
           <PasswordField
             id="password"
             label={tr("Password", "Password")}
@@ -332,7 +332,7 @@ export function SignInForm({ portal }: { portal: SignInPortal }) {
             error={error?.fieldError("password")}
           />
           <p className="text-right">
-            <Link href="/forgot-password" className={cx(AUTH_LINK, "text-sm")}>
+            <Link href="/forgot-password" className={cx(AUTH_LINK, admin ? "text-[13.5px]" : "text-sm")}>
               {tr("Forgot your password?", "Password bhool gaye?")}
             </Link>
           </p>
@@ -355,7 +355,7 @@ export function SignInForm({ portal }: { portal: SignInPortal }) {
           label={
             <span>
               {tr("This is a shared computer", "Yeh mushtarka computer hai")}
-              <span className="mt-0.5 block text-[13px] text-muted">
+              <span className={cx("mt-0.5 block text-muted", admin ? "text-[12.5px]" : "text-[13px]")}>
                 {tr(
                   "Signs out after two minutes of inactivity.",
                   "Do minute ghair-faal rehne par khud sign out ho jayega.",
@@ -371,13 +371,13 @@ export function SignInForm({ portal }: { portal: SignInPortal }) {
             type="submit"
             disabled={submitting}
             className={cx(
-              "inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-full bg-[#0B3FA8] text-[15px] font-bold text-white",
-              "shadow-[0_14px_28px_-14px_rgba(11,63,168,0.85)] transition-colors hover:bg-[#0A3796] disabled:opacity-70",
+              "inline-flex h-[50px] w-full items-center justify-center gap-2 rounded-full bg-[#0B3FA8] text-[15px] font-semibold text-white",
+              "shadow-[0_10px_22px_-12px_rgba(11,63,168,0.8)] transition-colors hover:bg-[#0A3796] disabled:opacity-70",
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:bg-[#3B6FE0] dark:hover:bg-[#4A7BEA]",
             )}
           >
             {submitting ? tr("Signing in…", "Login ho raha hai…") : tr("Sign in", "Login karein")}
-            {!submitting && <Icon name="arrow_forward" className="text-[20px]" />}
+            {!submitting && <Icon name="arrow_forward" className="text-[18px]" />}
           </button>
         ) : (
           <Button type="submit" size="lg" className="btn-shine w-full" loading={submitting}>

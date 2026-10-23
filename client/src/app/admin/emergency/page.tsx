@@ -23,9 +23,10 @@ export default function AdminEmergency() {
 
   return (
     <AppShell role="ADMIN">
-      <div id="main" className="space-y-6">
+      <div id="main" className="space-y-[22px]">
         <ConsoleHeader
           mark="emergency"
+          wide
           eyebrow={tr("Break-glass, reviewed afterwards", "Break-glass, baad mein review")}
           title={tr("Emergency access", "Emergency access")}
         >

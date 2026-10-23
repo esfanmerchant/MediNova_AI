@@ -20,7 +20,6 @@
 import { motion } from "framer-motion";
 import Link from "next/link";
 import {
-  createContext,
   useContext,
   useEffect,
   useId,
@@ -31,6 +30,7 @@ import {
 } from "react";
 
 import { Icon } from "@/components/Icon";
+import { ConsoleSurface } from "@/components/consoleSurface";
 import { CountUp } from "@/components/motion";
 import { useTr } from "@/lib/lang";
 import { SPRING, pulse, useCalmMotion } from "@/lib/motion";
@@ -109,14 +109,7 @@ function useTilt(ref: React.RefObject<HTMLElement | null>, enabled: boolean, max
   return { onMove, onLeave, onDown, onUp };
 }
 
-/**
- * True inside the administration console. The shell sets it, and the shared
- * Card reads it to wear the console's surface — larger corners, an open
- * header — so the components the console borrows from the portals (the
- * payment queue, the invoice ledger, the audit panel) match the console's own
- * cards without the portals changing at all.
- */
-export const ConsoleSurface = createContext(false);
+export { ConsoleSurface };
 
 export function Card({
   title,
@@ -554,8 +547,14 @@ export function Button({
 
   // Minimum 44px height: the accessible touch-target size. The console's
   // pills are 40, the size its tables and headers are drawn around.
+  // The console's plain-word button sits closer to its words (8px a side),
+  // as the design's does; every console button's icon is 16px.
   const sizes = inConsole
-    ? ({ sm: "min-h-8 gap-1.5 px-[13px] text-[12.5px]", md: "min-h-10 px-[18px] text-[13.5px]", lg: "min-h-12 px-6 text-[15px]" } as const)
+    ? ({
+        sm: "min-h-8 gap-1.5 px-[13px] text-[12.5px]",
+        md: cx("min-h-10 text-[13.5px]", variant === "ghost" ? "px-2" : "px-[18px]"),
+        lg: "min-h-12 px-6 text-[15px]",
+      } as const)
     : ({ sm: "min-h-11 px-3 text-sm", md: "min-h-11 px-4 text-base", lg: "min-h-14 px-6 text-lg" } as const);
 
   return (
@@ -567,6 +566,7 @@ export function Button({
         "disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100",
         variants[variant],
         sizes[size],
+        inConsole && "[&_.console-icon]:text-[16px]",
         className,
       )}
       disabled={disabled || loading}
@@ -665,7 +665,7 @@ export function Field({
   // the label inside.
   const inConsole = useContext(ConsoleSurface);
   return (
-    <div className={cx("space-y-1.5", error && "field-invalid")}>
+    <div className={cx(inConsole ? "space-y-[7px]" : "space-y-1.5", error && "field-invalid")}>
       {inConsole ? (
         <div className="flex flex-col gap-[7px]">
           <label htmlFor={htmlFor} className={cx("text-[13px] font-semibold", error ? "text-critical" : "text-muted")}>
@@ -682,7 +682,7 @@ export function Field({
         </div>
       )}
       {hint && !error && (
-        <p id={`${htmlFor}-hint`} className="px-1 text-sm text-muted">
+        <p id={`${htmlFor}-hint`} className={inConsole ? "text-[12.5px] text-muted" : "px-1 text-sm text-muted"}>
           {hint}
         </p>
       )}
@@ -702,7 +702,10 @@ export function Field({
 }
 
 const CONTROL =
-  "input-base block w-full rounded-xl border bg-card px-3.5 py-2.5 text-base text-strong placeholder:text-faint hover:border-faint";
+  "input-base block w-full rounded-xl border bg-card px-3.5 text-strong placeholder:text-faint hover:border-faint";
+
+/** The console's controls are the design's: 44px tall, 14px text. */
+const CONTROL_SIZE = { console: "h-11 text-[14px]", portal: "min-h-11 py-2.5 text-base" } as const;
 
 export function Input({
   className,
@@ -714,6 +717,7 @@ export function Input({
   /** React 19 passes refs as props; declaring it lets a form focus this field. */
   ref?: React.Ref<HTMLInputElement>;
 }) {
+  const inConsole = useContext(ConsoleSurface);
   return (
     <input
       aria-invalid={invalid || undefined}
@@ -722,7 +726,7 @@ export function Input({
       placeholder={placeholder ?? " "}
       className={cx(
         CONTROL,
-        "min-h-11",
+        CONTROL_SIZE[inConsole ? "console" : "portal"],
         invalid ? "border-critical" : "border-line-strong",
         className,
       )}
@@ -740,11 +744,12 @@ export function Textarea({
   invalid?: boolean;
   ref?: React.Ref<HTMLTextAreaElement>;
 }) {
+  const inConsole = useContext(ConsoleSurface);
   return (
     <textarea
       aria-invalid={invalid || undefined}
       placeholder={placeholder ?? " "}
-      className={cx(CONTROL, invalid ? "border-critical" : "border-line-strong", className)}
+      className={cx(CONTROL, "py-2.5", inConsole ? "text-[14px]" : "text-base", invalid ? "border-critical" : "border-line-strong", className)}
       {...props}
     />
   );
@@ -761,13 +766,15 @@ export function Select({
   invalid?: boolean;
   ref?: React.Ref<HTMLSelectElement>;
 }) {
+  const inConsole = useContext(ConsoleSurface);
   return (
     <span className="relative block">
       <select
         aria-invalid={invalid || undefined}
         className={cx(
           CONTROL,
-          "min-h-11 appearance-none pr-10",
+          CONTROL_SIZE[inConsole ? "console" : "portal"],
+          "appearance-none pr-10",
           invalid ? "border-critical" : "border-line-strong",
           className,
         )}
@@ -789,12 +796,17 @@ export function Checkbox({
   className,
   ...props
 }: Omit<React.InputHTMLAttributes<HTMLInputElement>, "type"> & { label: ReactNode }) {
+  // The console's is the design's plain square: 18px, a thin border.
+  const inConsole = useContext(ConsoleSurface);
   return (
-    <label className={cx("group inline-flex cursor-pointer items-start gap-3", className)}>
+    <label className={cx("group inline-flex cursor-pointer items-start", inConsole ? "gap-2.5" : "gap-3", className)}>
       <input type="checkbox" className="peer sr-only" {...props} />
       <span
         aria-hidden
-        className="check-box mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border-2 border-line-strong bg-card transition-[border-color,background-color,box-shadow] duration-200 peer-checked:border-transparent peer-checked:bg-primary peer-focus-visible:shadow-focus group-hover:border-primary"
+        className={cx(
+          "check-box mt-0.5 grid shrink-0 place-items-center bg-card transition-[border-color,background-color,box-shadow] duration-200 peer-checked:border-transparent peer-checked:bg-primary peer-focus-visible:shadow-focus group-hover:border-primary",
+          inConsole ? "mr-[3px] ml-1 h-[18px] w-[18px] rounded-[4px] border-[1.5px] border-[#767676]" : "h-5 w-5 rounded-md border-2 border-line-strong",
+        )}
       >
         <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none">
           <path
@@ -807,7 +819,7 @@ export function Checkbox({
           />
         </svg>
       </span>
-      <span className="text-sm text-strong">{label}</span>
+      <span className={inConsole ? "text-[14px] text-strong" : "text-sm text-strong"}>{label}</span>
     </label>
   );
 }

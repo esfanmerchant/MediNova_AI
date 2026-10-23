@@ -26,7 +26,7 @@ import { useHydrated } from "@/lib/useHydrated";
 
 const TURN = { ...SPRING, opacity: { duration: DURATION.base, ease: EASE } };
 
-export function ThemeToggle({ onDark = false }: { onDark?: boolean }) {
+export function ThemeToggle({ onDark = false, console = false }: { onDark?: boolean; console?: boolean }) {
   const tr = useTr();
   const calm = useCalmMotion();
   const { resolvedTheme, setTheme } = useThemeSwitch();
@@ -57,6 +57,24 @@ export function ThemeToggle({ onDark = false }: { onDark?: boolean }) {
     ];
     return () => runs.forEach((run) => run && run.stop());
   }, [dark, mounted, calm]);
+
+  // The console's switch is one round button showing the theme it turns on —
+  // a moon by day, a sun by night — as the design draws it.
+  if (console) {
+    return (
+      <button
+        type="button"
+        role="switch"
+        aria-checked={dark}
+        aria-label={label}
+        title={label}
+        onClick={() => setTheme(dark ? "light" : "dark")}
+        className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-line-strong bg-card text-strong transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      >
+        <Icon name={dark ? "light_mode" : "dark_mode"} className="text-[18px]" />
+      </button>
+    );
+  }
 
   return (
     <button

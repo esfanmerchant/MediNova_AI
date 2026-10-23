@@ -35,14 +35,13 @@ export interface RowMenuItem {
   icon?: string;
 }
 
-const WIDTH = 210;
-
 export function RowMenu({
   label,
   items,
   trigger,
   active = false,
   align = "end",
+  width = 210,
 }: {
   label: string;
   items: RowMenuItem[];
@@ -52,6 +51,7 @@ export function RowMenu({
   active?: boolean;
   /** Which edge of the button the menu lines up with. */
   align?: "start" | "end";
+  width?: number;
 }) {
   const [open, setOpen] = useState(false);
   const [place, setPlace] = useState<{ top: number; left: number } | null>(null);
@@ -68,12 +68,17 @@ export function RowMenu({
     if (!open || !button.current) return;
     const rect = button.current.getBoundingClientRect();
     const height = menu.current?.offsetHeight ?? 150;
-    const below = rect.bottom + 6 + height <= window.innerHeight;
+    // In a table row the menu lines up with the cell's inner edge, as the
+    // design draws it, rather than with the small button inside the cell.
+    const cell = button.current.closest("td");
+    const end = cell ? cell.getBoundingClientRect().right - parseFloat(getComputedStyle(cell).paddingRight) : rect.right;
+    const gap = cell ? 2 : 8;
+    const below = rect.bottom + gap + height <= window.innerHeight;
     setPlace({
-      top: below ? rect.bottom + 6 : Math.max(8, rect.top - 6 - height),
-      left: Math.max(8, Math.min(window.innerWidth - WIDTH - 8, align === "start" ? rect.left : rect.right - WIDTH)),
+      top: below ? rect.bottom + gap : Math.max(8, rect.top - gap - height),
+      left: Math.max(8, Math.min(window.innerWidth - width - 8, align === "start" ? rect.left : end - width)),
     });
-  }, [open, align]);
+  }, [open, align, width]);
 
   useEffect(() => {
     if (!open) return;
@@ -129,18 +134,18 @@ export function RowMenu({
           "hover:bg-sunken focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
           trigger
             ? "inline-flex h-8 items-center gap-1.5 px-[13px] text-[12.5px] font-semibold whitespace-nowrap"
-            : "grid h-8 w-8 place-items-center text-strong",
+            : "inline-grid h-8 w-8 place-items-center align-middle text-strong",
           active ? "border-[#0B3FA8] text-primary dark:border-[#7DA2FF]" : "border-line-strong text-strong",
-          open ? "bg-sunken" : "bg-card",
+          "bg-card",
         )}
       >
         {trigger ? (
           <>
             {trigger}
-            <Icon name="expand_more" className={cx("text-[18px] transition-transform", open && "rotate-180")} />
+            <Icon name="expand_more" className="text-[16px]" />
           </>
         ) : (
-          <Icon name="more_horiz" className="text-[20px]" />
+          <Icon name="more_horiz" className="text-[18px]" />
         )}
       </button>
       {open && (
@@ -152,7 +157,7 @@ export function RowMenu({
             aria-label={label}
             onKeyDown={onKeyDown}
             onClick={(event) => event.stopPropagation()}
-            style={{ top: place?.top ?? -9999, left: place?.left ?? -9999, width: WIDTH }}
+            style={{ top: place?.top ?? -9999, left: place?.left ?? -9999, width }}
             className="rise-in fixed z-[60] rounded-2xl border border-line bg-card p-1.5 shadow-[0_24px_48px_-20px_rgba(11,22,48,0.35)]"
           >
             {items.map((item) => (
@@ -171,7 +176,7 @@ export function RowMenu({
                     item.danger ? "font-semibold text-critical" : "font-medium text-strong",
                   )}
                 >
-                  {item.icon && <Icon name={item.icon} className="text-[18px]" />}
+                  {item.icon && <Icon name={item.icon} className="text-[17px]" />}
                   <span className="flex-1">{item.label}</span>
                   {item.hint && <span className="text-[12px] font-normal text-muted tabular-nums">{item.hint}</span>}
                 </button>

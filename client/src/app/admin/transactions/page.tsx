@@ -50,7 +50,7 @@ import {
 } from "@/components/admin/console";
 import { Segmented } from "@/components/forms";
 import { EmptyState, ErrorState, SkeletonRows } from "@/components/ui";
-import { paymentReview, type LedgerPayment, type PaymentClaimStatus } from "@/lib/api";
+import { paymentReview, type LedgerPayment, type PaymentClaimStatus, type ReceiptConcern } from "@/lib/api";
 import { useTr } from "@/lib/lang";
 import { PAGE_REFRESH_MS, useAsync } from "@/lib/useAsync";
 
@@ -78,10 +78,20 @@ const STATUS: Record<PaymentClaimStatus, { tone: PillTone; label: [string, strin
 function Account({ value }: { value: string | null }) {
   const tr = useTr();
   if (!value) {
-    return <span className="block text-[12px] text-faint italic">{tr("account not read", "account nahi parha gaya")}</span>;
+    return <span className="block font-mono text-[12px] text-faint italic">{tr("account not read", "account nahi parha gaya")}</span>;
   }
   return <span className="block font-mono text-[12px] text-muted select-all">{value}</span>;
 }
+
+/** The first thing the reading of a screenshot doubts, in two or three words. */
+const CONCERN: Record<ReceiptConcern, [string, string]> = {
+  WRONG_DESTINATION: ["Wrong account", "Ghalat account"],
+  REFERENCE_MISMATCH: ["Reference differs", "Reference mukhtalif"],
+  AMOUNT_MISMATCH: ["Amount differs", "Raqam mukhtalif"],
+  STALE_RECEIPT: ["Old receipt", "Purani raseed"],
+  NOT_A_RECEIPT: ["Not a receipt", "Raseed nahi"],
+  PAID_FROM_A_HOSPITAL_ACCOUNT: ["From our own account", "Hamare account se"],
+};
 
 /**
  * One transfer.
@@ -93,24 +103,37 @@ function Account({ value }: { value: string | null }) {
 function Row({ payment }: { payment: LedgerPayment }) {
   const tr = useTr();
   const status = STATUS[payment.status];
-  const flagged = payment.receipt?.concerns.length ?? 0;
+  const concerns = payment.receipt?.concerns ?? [];
+  // The account mismatch is the one that sends money astray, so it is named first.
+  const first = concerns.includes("WRONG_DESTINATION") ? "WRONG_DESTINATION" : concerns[0];
   const ours = (Number(payment.platformFee) + Number(payment.tax)).toFixed(2);
+  const doctorShare = Number(payment.doctorShare) || 0;
 
   return (
     <tr>
       <td className="whitespace-nowrap text-muted tabular-nums">{payment.createdAt ? consoleStamp(payment.createdAt) : "—"}</td>
       {/* From: who, which bill, and the account their screenshot says it left. */}
       <td>
-        <span className="block font-semibold whitespace-nowrap">{payment.payerName}</span>
-        <span className="block font-mono text-[12px] text-muted">{payment.invoiceNumber}</span>
-        <Account value={payment.payerAccount} />
+        <span className="flex flex-col gap-0.5">
+          <b className="font-semibold whitespace-nowrap">{payment.payerName}</b>
+          <span className="font-mono text-[12px] whitespace-nowrap text-muted">
+            {payment.invoiceNumber} ·{" "}
+            {payment.payerAccount ? (
+              <span className="select-all">{payment.payerAccount}</span>
+            ) : (
+              tr("account not read", "account nahi parha gaya")
+            )}
+          </span>
+        </span>
       </td>
       {/* To: the service and the account that same screenshot says it went to.
           Whether that destination is the account this patient was actually
           given is a different question, answered by the flag in Status. */}
       <td>
-        <span className="block">{payment.receiptWallet ?? payment.method}</span>
-        <Account value={payment.receiptReceiverAccount} />
+        <span className="flex flex-col gap-0.5">
+          <span>{payment.receiptWallet ?? payment.method}</span>
+          <Account value={payment.receiptReceiverAccount} />
+        </span>
       </td>
       <td>
         {payment.reference ? (
@@ -124,18 +147,21 @@ function Row({ payment }: { payment: LedgerPayment }) {
       </td>
       <td className="text-right font-semibold whitespace-nowrap tabular-nums">{consoleMoney(payment.amount, payment.currency)}</td>
       {/* The split, as the invoice recorded it. */}
-      <td className="text-right whitespace-nowrap text-muted tabular-nums">{consoleMoney(payment.doctorShare, payment.currency)}</td>
+      <td className="text-right whitespace-nowrap text-muted tabular-nums">
+        {doctorShare > 0 ? consoleMoney(payment.doctorShare, payment.currency) : "—"}
+      </td>
       <td className="text-right whitespace-nowrap text-muted tabular-nums">{consoleMoney(ours, payment.currency)}</td>
       <td>
-        <span className="flex flex-col items-start gap-1">
+        {/* Who decided is a hover away; the line itself is the outcome. */}
+        <span className="flex flex-col items-start gap-1" title={payment.reviewedBy ? tr(`By ${payment.reviewedBy}`, `${payment.reviewedBy} ne`) : undefined}>
           <StatusPill dot tone={status.tone}>
             {tr(...status.label)}
           </StatusPill>
-          {payment.reviewedBy && <span className="text-[12px] text-muted">{payment.reviewedBy}</span>}
-          {flagged > 0 && (
-            <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-warning">
-              <Icon name="warning" className="text-[14px]" />
-              {tr(`${flagged} flagged`, `${flagged} nishan-zad`)}
+          {first && (
+            <span className="inline-flex items-center gap-[5px] text-[12px] font-semibold text-warning">
+              <Icon name="warning" className="text-[13px]" />
+              {tr(...CONCERN[first])}
+              {concerns.length > 1 && ` +${concerns.length - 1}`}
             </span>
           )}
         </span>
@@ -190,7 +216,7 @@ export default function TransactionsPage() {
 
   return (
     <AppShell role="ADMIN">
-      <div id="main" className="space-y-6">
+      <div id="main" className="space-y-[22px]">
         <ConsoleHeader
           mark="transactions"
           eyebrow={tr("Every transfer patients have reported", "Har transfer jo mareezon ne bataya")}
@@ -328,7 +354,10 @@ export default function TransactionsPage() {
                   </tbody>
                 </table>
               </div>
-              <Pager offset={offset} limit={PAGE} total={ledger.data?.meta.total ?? rows.length} onChange={setOffset} />
+              {/* One page is the whole ledger: the table ends at its last row. */}
+              {(ledger.data?.meta.total ?? rows.length) > PAGE && (
+                <Pager offset={offset} limit={PAGE} total={ledger.data?.meta.total ?? rows.length} onChange={setOffset} />
+              )}
             </>
           )}
         </section>

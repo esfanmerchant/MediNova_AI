@@ -24,7 +24,7 @@ import { NewMenu } from "@/components/admin/NewMenu";
 import { WeekBySpeciality } from "@/components/admin/OverviewSections";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { NeedsList, PastelTile } from "@/components/admin/console";
-import { RevenueChart } from "@/components/admin/RevenueChart";
+import { RevenueChart, RevenuePanel } from "@/components/admin/RevenueChart";
 import { StaffAccountDialog } from "@/components/admin/StaffAccountDialog";
 import * as api from "@/lib/api";
 
@@ -84,23 +84,42 @@ function point(daysAgo: number, handled: string, pharmacy = "0"): api.RevenuePoi
 
 describe("RevenueChart", () => {
   it("keeps a slot for every day in the window, paid or not", () => {
-    // Three paid days out of thirty-one. Drawing three bars would squeeze the
+    // Three paid days out of thirty. Drawing three bars would squeeze the
     // month into three days and lie about its shape.
     render(<RevenueChart grain="day" currency="PKR" points={[point(0, "500"), point(3, "1200", "200"), point(20, "800")]} />);
 
     const table = screen.getByRole("table");
     const rows = within(table).getAllByRole("row").slice(1);
-    expect(rows).toHaveLength(31);
+    expect(rows).toHaveLength(30);
     expect(rows.filter((row) => row.textContent?.endsWith("0"))).not.toHaveLength(0);
-    expect(screen.getAllByRole("button")).toHaveLength(31);
+    expect(screen.getAllByRole("button")).toHaveLength(30);
   });
 
-  it("names the best period and splits it by whose money it was", () => {
-    render(<RevenueChart grain="day" currency="PKR" points={[point(1, "900"), point(2, "2400", "600")]} />);
+  it("splits each period by whose money it was", () => {
+    render(<RevenueChart grain="day" currency="PKR" points={[point(2, "2400", "600")]} />);
 
-    expect(screen.getByText("PKR 2,400")).toBeInTheDocument();
     // Consultations are what is left once medicine is taken out.
-    expect(screen.getByText(/Visits 1,800 · Medicine 600/)).toBeInTheDocument();
+    const row = within(screen.getByRole("table")).getAllByRole("row").at(-3)!;
+    expect(row).toHaveTextContent("1,800");
+    expect(row).toHaveTextContent("600");
+    expect(row).toHaveTextContent("2,400");
+  });
+
+  it("leaves the partial oldest day off the chart and out of the total", () => {
+    // The server's thirty days reach into a thirty-first; that day is not drawn.
+    render(
+      <RevenuePanel grain="day" currency="PKR" points={[point(1, "900"), point(30, "5000")]} loading={false} error={null} onRetry={() => {}} />,
+    );
+    expect(screen.getAllByText("PKR 900")).not.toHaveLength(0);
+    expect(screen.queryByText("PKR 5,900")).not.toBeInTheDocument();
+  });
+
+  it("names the best day on the overview's panel", () => {
+    render(
+      <RevenuePanel grain="day" currency="PKR" points={[point(1, "900"), point(2, "2400", "600")]} loading={false} error={null} onRetry={() => {}} />,
+    );
+    expect(screen.getByText(/best day/)).toBeInTheDocument();
+    expect(screen.getByText("PKR 2,400")).toBeInTheDocument();
   });
 
   it("says so when nothing was paid at all", () => {

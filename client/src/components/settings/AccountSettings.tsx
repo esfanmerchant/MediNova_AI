@@ -21,6 +21,7 @@ import { useCallback, useState, useSyncExternalStore } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { ConsoleHeader } from "@/components/admin/console";
 import { Segmented } from "@/components/forms";
+import { cx } from "@/components/ui";
 import { AppearanceTab } from "@/components/settings/AppearanceTab";
 import { DataTab } from "@/components/settings/DataTab";
 import { NotificationsTab } from "@/components/settings/NotificationsTab";
@@ -136,7 +137,7 @@ export function AccountSettings({ role }: { role: Role }) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className={role === "ADMIN" ? "space-y-[22px]" : "space-y-6"}>
       {/* The console opens every page with its own header; the portals keep theirs. */}
       {role === "ADMIN" ? (
         <ConsoleHeader mark="settings" icon="settings" eyebrow={tr("Your account", "Aap ka account")} title={tr("Settings", "Settings")}>
@@ -158,17 +159,18 @@ export function AccountSettings({ role }: { role: Role }) {
         />
       )}
 
-      <div className="-mx-1 overflow-x-auto px-1 pb-1">
+      <div className={cx("-mx-1 overflow-x-auto px-1", role === "ADMIN" ? "pb-0" : "pb-1")}>
         <Segmented
           label={tr("Settings sections", "Settings ke hisse")}
           value={tab}
           onChange={pick}
           size="sm"
           className={role === "ADMIN" ? "w-max" : "w-max min-w-full"}
+          // The console's tabs are words alone, as its other tabs are.
           options={available.map((value) => ({
             value,
             label: tr(...labels[value]),
-            icon: icons[value],
+            icon: role === "ADMIN" ? undefined : icons[value],
           }))}
         />
       </div>
@@ -185,6 +187,7 @@ export function AccountSettings({ role }: { role: Role }) {
           exit="exit"
           role="tabpanel"
           aria-label={tr(...labels[tab])}
+          className={role === "ADMIN" ? "max-w-[860px]" : undefined}
         >
           {tab === "profile" && <ProfileTab role={role} />}
           {tab === "security" && <SecurityTab />}

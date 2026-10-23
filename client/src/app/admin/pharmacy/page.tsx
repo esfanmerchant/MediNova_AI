@@ -17,6 +17,7 @@ import { Fragment, useState, type DragEvent } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
 import {
+  CardLink,
   ConsoleCard,
   ConsoleHeader,
   ConsoleLoading,
@@ -25,7 +26,6 @@ import {
   MedicinePack,
   PastelTile,
 } from "@/components/admin/console";
-import { relativeTime } from "@/components/doctorApplication/shared";
 import { PharmacyAdminTabs } from "@/components/pharmacy/AdminTabs";
 import { productTitle, rupees } from "@/components/pharmacy/shared";
 import { ErrorState, SkeletonRows, cx } from "@/components/ui";
@@ -49,6 +49,45 @@ function figure(value: string): string {
 
 /** How many tickets a column shows before it says "+ n more". */
 const COLUMN_DEPTH = 3;
+
+/** "2 h ago", "yesterday", "2 days ago" — a ticket's age, as the counter says it. */
+function ticketAge(iso: string, now: number, urdu: boolean): string {
+  const minutes = Math.max(0, Math.floor((now - Date.parse(iso)) / 60_000));
+  if (minutes < 60) return urdu ? `${minutes} min pehle` : `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return urdu ? `${hours} ghante pehle` : `${hours} h ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return urdu ? "kal" : "yesterday";
+  return urdu ? `${days} din pehle` : `${days} days ago`;
+}
+
+/** The three packs the price check is about: a bottle, a capsule, a blister. */
+function PackArt() {
+  return (
+    <span aria-hidden className="flex">
+      <span className="grid h-[52px] w-[52px] -rotate-6 place-items-center rounded-[14px] bg-white/70">
+        <svg width="34" height="34" viewBox="0 0 34 34" fill="none">
+          <rect x="10" y="9" width="14" height="20" rx="3" fill="#E8F0FE" stroke="#0B3FA8" strokeWidth="1.6" />
+          <rect x="12" y="4" width="10" height="5" rx="1.5" fill="#0B3FA8" />
+          <rect x="12.5" y="15" width="9" height="6" rx="1" fill="#5EEAD4" />
+        </svg>
+      </span>
+      <span className="relative z-[1] -ml-2.5 grid h-[52px] w-[52px] place-items-center rounded-[14px] bg-white/85">
+        <svg width="34" height="34" viewBox="0 0 34 34" fill="none">
+          <rect x="5" y="13" width="24" height="9" rx="4.5" fill="#FFFFFF" stroke="#0B3FA8" strokeWidth="1.6" />
+          <path d="M17 13v9" stroke="#0B3FA8" strokeWidth="1.6" />
+          <path d="M17 13h7.5a4.5 4.5 0 0 1 0 9H17z" fill="#F59E0B" />
+        </svg>
+      </span>
+      <span className="-ml-2.5 grid h-[52px] w-[52px] rotate-6 place-items-center rounded-[14px] bg-white/70">
+        <svg width="34" height="34" viewBox="0 0 34 34" fill="none">
+          <rect x="5" y="9" width="24" height="16" rx="3" fill="#FFFFFF" stroke="#0B3FA8" strokeWidth="1.6" />
+          {[11, 17, 23].flatMap((cx) => [14, 20].map((cy) => <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="2.2" fill="#5EEAD4" />))}
+        </svg>
+      </span>
+    </span>
+  );
+}
 
 export default function PharmacyOverview() {
   const tr = useTr();
@@ -126,6 +165,7 @@ export default function PharmacyOverview() {
         }
       : {};
 
+  const now = new Date().getTime();
   const totalProducts = catalog.data?.meta.total ?? 0;
   const checked = data ? Math.max(0, totalProducts - data.unreviewedPrices) : 0;
   const topRevenue = Math.max(1, ...(data?.bestSellers ?? []).map((row) => Number(row.revenue) || 0));
@@ -178,20 +218,20 @@ export default function PharmacyOverview() {
             </p>
           )}
         </ConsoleHeader>
-        <div className="mt-6">
+        <div className="mt-[22px]">
           <PharmacyAdminTabs openOrders={data?.openOrders} />
         </div>
 
         {summary.loading && !data ? (
-          <div className="mt-6">
+          <div className="mt-[22px]">
             <ConsoleLoading />
           </div>
         ) : summary.error ? (
-          <div className="mt-6">
+          <div className="mt-[22px]">
             <ErrorState message={summary.error.message} onRetry={summary.reload} />
           </div>
         ) : data ? (
-          <div className="mt-6 space-y-6">
+          <div className="mt-[22px] space-y-[22px]">
             <div className="stagger grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <PastelTile
                 pastel="mint"
@@ -227,8 +267,8 @@ export default function PharmacyOverview() {
                 unit="PKR"
                 value={figure(data.marginThisMonth)}
                 note={tr(
-                  `On ${data.marginCoveragePercent}% of sales with a cost price`,
-                  `Cost price wali ${data.marginCoveragePercent}% farokht par`,
+                  `On ${Math.round(Number(data.marginCoveragePercent) || 0)}% of sales with a cost price`,
+                  `Cost price wali ${Math.round(Number(data.marginCoveragePercent) || 0)}% farokht par`,
                 )}
               />
             </div>
@@ -236,10 +276,10 @@ export default function PharmacyOverview() {
             {data.refundsDue > 0 && (
               <Link
                 href="/admin/pharmacy/orders?queue=refunds"
-                className="rise-in flex flex-wrap items-center gap-3.5 rounded-[18px] border border-critical/35 bg-critical-soft px-[18px] py-3.5 text-sm text-strong transition-shadow hover:shadow-card focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                className="rise-in flex flex-wrap items-center gap-3.5 rounded-[18px] border border-critical/35 bg-critical-soft px-[18px] py-3.5 text-[14px] text-strong transition-shadow hover:shadow-card focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 <span aria-hidden className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-card text-critical">
-                  <Icon name="currency_exchange" className="text-[19px]" />
+                  <Icon name="currency_exchange" className="text-[18px]" />
                 </span>
                 <span className="min-w-0 flex-1">
                   <b className="font-semibold text-critical">
@@ -250,7 +290,9 @@ export default function PharmacyOverview() {
                   </b>{" "}
                   {tr("Record each refund once it has been sent.", "Har wapsi bhejne ke baad darj karein.")}
                 </span>
-                <span className="text-[12.5px] font-semibold text-critical">{tr("Record refunds →", "Wapsi darj karein →")}</span>
+                <span className="inline-flex h-8 items-center px-[13px] text-[12.5px] font-semibold text-critical">
+                  {tr("Record refunds →", "Wapsi darj karein →")}
+                </span>
               </Link>
             )}
 
@@ -258,21 +300,17 @@ export default function PharmacyOverview() {
               // The price check: the one task in the pharmacy with a law behind it.
               <section
                 aria-label={tr("Price check", "Qeemat ki jaanch")}
-                className="flex flex-wrap items-center gap-5 rounded-3xl bg-pastel-butter p-5 text-pastel-ink sm:p-6"
+                className="flex flex-wrap items-center gap-5 rounded-3xl bg-pastel-butter px-6 py-5 text-pastel-ink"
               >
-                <span aria-hidden className="flex -space-x-3">
-                  <MedicinePack form="SYRUP" size={44} className="rotate-[-6deg] bg-card/70" />
-                  <MedicinePack form="CAPSULE" size={44} className="z-10 bg-card/70" />
-                  <MedicinePack form="TABLET" size={44} className="rotate-[6deg] bg-card/70" />
-                </span>
-                <div className="flex min-w-[16rem] flex-1 flex-col gap-1.5">
-                  <p className="font-display text-[1.05rem] font-bold">
+                <PackArt />
+                <div className="flex min-w-[16rem] flex-[1_1_320px] flex-col gap-1.5">
+                  <p className="font-display text-[17px] font-bold">
                     {tr(
                       `${data.unreviewedPrices} starter ${data.unreviewedPrices === 1 ? "price is" : "prices are"} still estimates`,
                       `${data.unreviewedPrices} starter qeematein abhi andaze hain`,
                     )}
                   </p>
-                  <p className="text-[13.5px] opacity-80">
+                  <p className="text-[13.5px] opacity-[0.85]">
                     {tr(
                       "Check each against the pack's DRAP maximum retail price before the pharmacy sells it.",
                       "Bechne se pehle har aik ko pack ki DRAP MRP se mila lein.",
@@ -286,7 +324,7 @@ export default function PharmacyOverview() {
                         aria-valuemax={totalProducts}
                         aria-valuenow={checked}
                         aria-label={tr("Prices checked", "Check shuda qeematein")}
-                        className="h-2 w-full max-w-xs overflow-hidden rounded-full bg-pastel-ink/10"
+                        className="h-2 flex-[0_1_300px] overflow-hidden rounded-full bg-pastel-ink/10"
                       >
                         <span
                           className="bar-grow-x block h-full rounded-full bg-[#B45309] dark:bg-[#FBD27A]"
@@ -299,7 +337,7 @@ export default function PharmacyOverview() {
                     </div>
                   )}
                 </div>
-                <HeaderPill href="/admin/pharmacy/catalog?unreviewed=1" icon="price_check" tone="primary">
+                <HeaderPill href="/admin/pharmacy/catalog?unreviewed=1" tone="primary">
                   {tr("Start checking", "Check karna shuru karein")}
                 </HeaderPill>
               </section>
@@ -312,11 +350,7 @@ export default function PharmacyOverview() {
                 "Every open order, by what it is waiting for. Drag a ticket from To pack to To dispatch once it is packed.",
                 "Har khula order, is hisaab se ke woh kis ka muntazir hai. Pack hone par ticket ko To pack se To dispatch mein le jayein.",
               )}
-              action={
-                <Link href="/admin/pharmacy/orders?queue=all" className="text-sm font-semibold text-primary hover:underline">
-                  {tr("All orders", "Tamam orders")} →
-                </Link>
-              }
+              action={<CardLink href="/admin/pharmacy/orders?queue=all">{tr("All orders →", "Tamam orders →")}</CardLink>}
               footer={
                 <p className="text-[13px] text-muted">
                   <Link href="/admin/pharmacy/orders?status=DELIVERED" className="font-semibold text-strong hover:underline">
@@ -336,13 +370,13 @@ export default function PharmacyOverview() {
                 </p>
               )}
               {open.error ? (
-                <div className="px-5 pb-5">
+                <div className="px-[22px] pb-[18px]">
                   <ErrorState message={open.error.message} onRetry={open.reload} />
                 </div>
               ) : (
                 // On a phone the columns scroll sideways and land one at a time.
-                <div className="snap-x snap-mandatory overflow-x-auto scroll-px-5 px-5 pb-5 sm:px-6">
-                  <div className="grid min-w-[56rem] grid-cols-5 gap-3">
+                <div className="snap-x snap-mandatory overflow-x-auto scroll-px-5 px-[22px] pb-[18px]">
+                  <div className="grid min-w-[900px] grid-cols-5 gap-2.5">
                     {COLUMNS.map((column) => {
                       const tickets = byStatus.get(column.status) ?? [];
                       const count = data.ordersByStatus[column.status] ?? tickets.length;
@@ -354,7 +388,7 @@ export default function PharmacyOverview() {
                             "flex snap-start flex-col gap-2 rounded-[18px] p-2.5 transition-colors",
                             dragging && column.status === "PACKED"
                               ? "bg-[#E8F0FE] outline-2 outline-offset-[-2px] outline-[#0B3FA8]/50 outline-dashed dark:bg-[#132E52]"
-                              : "bg-sunken/60",
+                              : "bg-[var(--console-soft,var(--surface-sunken))]",
                           )}
                         >
                           <div className="flex items-center gap-2 px-1 pt-0.5 pb-1">
@@ -382,7 +416,7 @@ export default function PharmacyOverview() {
                                   }}
                                   onDragEnd={() => setDragging(null)}
                                   className={cx(
-                                    "flex flex-col rounded-[14px] border border-line bg-card shadow-sm transition-[box-shadow,transform,opacity] hover:-translate-y-0.5 hover:shadow-card",
+                                    "flex flex-col rounded-[14px] border border-line bg-card shadow-[0_1px_2px_rgba(11,22,48,0.06)] transition-[box-shadow,transform,opacity] hover:-translate-y-0.5 hover:shadow-card",
                                     column.status === "CONFIRMED" && "cursor-grab active:cursor-grabbing",
                                     (dragging === order.id || packing === order.id) && "opacity-50",
                                   )}
@@ -394,17 +428,17 @@ export default function PharmacyOverview() {
                                   >
                                     <span className="flex items-center justify-between gap-2 text-[11.5px]">
                                       <span className="font-mono font-semibold text-primary">{order.orderNumber.replace(/^ORD-\d{4}-/, "")}</span>
-                                      <span className="text-faint">{relativeTime(new Date(order.createdAt).getTime(), Date.now(), urdu)}</span>
+                                      <span className="text-faint">{ticketAge(order.createdAt, now, urdu)}</span>
                                     </span>
                                     <span className="truncate text-[13.5px] font-semibold text-strong">
                                       {order.patientName ?? order.recipientName}
                                     </span>
                                     <span className="truncate text-[12px] text-muted">
-                                      {order.items[0]?.productName}
+                                      {order.items[0] && productTitle({ name: order.items[0].productName, strength: order.items[0].strength })}
                                       {order.items.length > 1 && ` + ${order.items.length - 1}`}
                                     </span>
                                     <span className="flex items-center justify-between gap-2 pt-0.5 text-[12px]">
-                                      <span className="font-semibold tabular-nums text-strong">{rupees(order.total)}</span>
+                                      <span className="font-bold tabular-nums text-strong">{rupees(order.total)}</span>
                                       <span className="text-faint">{order.paymentMethod === "COD" ? "COD" : tr("Online", "Online")}</span>
                                     </span>
                                   </Link>
@@ -439,19 +473,19 @@ export default function PharmacyOverview() {
               )}
             </ConsoleCard>
 
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-[22px] lg:grid-cols-2">
               <ConsoleCard icon="star" title={tr("Best sellers", "Sab se zyada bikne wali")} subtitle={tr("Last 30 days", "Pichhle 30 din")}>
                 {data.bestSellers.length === 0 ? (
                   <FinishedState size={110} title={tr("No sales yet", "Abhi koi farokht nahi")} />
                 ) : (
-                  <ol className="flex flex-col gap-3 px-5 pb-5 sm:px-6">
-                    {data.bestSellers.map((row, index) => (
+                  <ol className="flex flex-col gap-3 px-[22px] pb-5">
+                    {data.bestSellers.slice(0, 5).map((row, index) => (
                       <li key={`${row.productId}-${row.name}`} className="grid grid-cols-[1.75rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1">
                         <span className="grid h-7 w-7 place-items-center rounded-full bg-sunken text-[12px] font-bold tabular-nums text-muted">
                           {index + 1}
                         </span>
                         <span className="truncate text-[14px] font-semibold text-strong">{row.name}</span>
-                        <span className="text-right text-[14px] font-semibold tabular-nums text-strong">{rupees(row.revenue)}</span>
+                        <span className="text-right text-[14px] font-bold tabular-nums text-strong">{rupees(row.revenue)}</span>
                         <span aria-hidden />
                         <span className="flex items-center gap-2">
                           <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-sunken">
@@ -474,16 +508,14 @@ export default function PharmacyOverview() {
                 subtitle={tr("At or below their reorder level", "Reorder level par ya kam")}
                 action={
                   data.lowStock.length > 0 ? (
-                    <Link href="/admin/pharmacy/catalog?lowStock=1" className="text-sm font-semibold text-primary hover:underline">
-                      {tr("Reorder", "Reorder")} →
-                    </Link>
+                    <CardLink href="/admin/pharmacy/catalog?lowStock=1">{tr("Reorder →", "Reorder →")}</CardLink>
                   ) : undefined
                 }
               >
                 {data.lowStock.length === 0 ? (
                   <FinishedState size={110} title={tr("Everything is stocked", "Sab stock mein hai")} />
                 ) : (
-                  <ul className="flex flex-col gap-3.5 px-5 pb-5 sm:px-6">
+                  <ul className="flex flex-col gap-3.5 px-[22px] pb-5">
                     {data.lowStock.map((product) => {
                       const left = product.stock ?? 0;
                       // The bar runs to twice the reorder level, so "at the level" sits halfway.
@@ -500,8 +532,8 @@ export default function PharmacyOverview() {
                             </div>
                             <span className="h-1.5 overflow-hidden rounded-full bg-sunken">
                               <span
-                                className={cx("bar-grow-x block h-full rounded-full", left === 0 ? "bg-critical" : "bg-warning")}
-                                style={{ width: `${Math.min(100, (left / scale) * 100)}%` }}
+                                className={cx("bar-grow-x block h-full rounded-full", left === 0 ? "bg-critical" : "bg-[#F59E0B]")}
+                                style={{ width: `${Math.max(3, Math.min(100, (left / scale) * 100))}%` }}
                               />
                             </span>
                             <span className="text-[12px] text-muted">

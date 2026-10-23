@@ -198,12 +198,12 @@ export default function AdminAppointments() {
         </ConsoleHeader>
 
         {!stats && tally.loading && (
-          <div className="mt-6">
+          <div className="mt-[22px]">
             <ConsoleLoading rows={0} />
           </div>
         )}
         {stats && (
-          <PastelRow className="mt-6">
+          <PastelRow className="mt-[22px]">
             <PastelTile
               pastel="mint"
               icon="today"
@@ -242,7 +242,7 @@ export default function AdminAppointments() {
           </PastelRow>
         )}
 
-        <div className="mt-6">
+        <div className="mt-[22px]">
           {view === "week" ? (
             <AppointmentWeek
               lead={views}
@@ -252,14 +252,14 @@ export default function AdminAppointments() {
               }}
             />
           ) : (
-            <ClinicPulse navigable lead={views} title={tr("The day, by doctor", "Din, doctor ke hisaab se")} />
+            <ClinicPulse navigable lead={views} />
           )}
         </div>
 
         <section
           id="list"
           aria-label={tr("Appointments", "Appointments")}
-          className="mt-6 scroll-mt-24 overflow-hidden rounded-3xl border border-line bg-card shadow-card"
+          className="mt-[22px] scroll-mt-24 overflow-hidden rounded-3xl border border-line bg-card shadow-card"
         >
           <div className="flex flex-wrap items-center gap-3 px-[18px] py-4">
             <Segmented

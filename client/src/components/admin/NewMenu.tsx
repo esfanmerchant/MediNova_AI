@@ -150,11 +150,11 @@ export function NewMenu() {
         onClick={() => setOpen((value) => !value)}
         aria-label={tr("Create something new", "Kuchh naya banayein")}
         className={cx(
-          "inline-flex h-10 items-center gap-1.5 rounded-full bg-[#0B3FA8] px-3 text-sm font-semibold text-white shadow-[0_10px_20px_-12px_rgba(11,63,168,0.9)] transition-colors hover:bg-[#0A3796] sm:px-4",
+          "inline-flex h-10 items-center gap-2 rounded-full bg-[#0B3FA8] px-3 text-[13.5px] font-semibold text-white shadow-[0_10px_22px_-12px_rgba(11,63,168,0.8)] transition-colors hover:bg-[#0A3796] sm:px-[18px]",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:bg-[#3B6FE0] dark:hover:bg-[#4A7BEA]",
         )}
       >
-        <Icon name="add" className="text-[20px]" />
+        <Icon name="add" className="text-[16px]" />
         <span className="hidden lg:inline">{tr("New", "Naya")}</span>
       </button>
 

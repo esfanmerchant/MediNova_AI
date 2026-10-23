@@ -13,7 +13,7 @@
 import { useState, type ReactNode } from "react";
 
 import { Icon } from "@/components/Icon";
-import { ConsoleCard } from "@/components/admin/console";
+import { ConsoleCard, dayMonth } from "@/components/admin/console";
 import { ErrorState, cx } from "@/components/ui";
 import { appointments, type Appointment, type AppointmentStatus } from "@/lib/api";
 import { useTr } from "@/lib/lang";
@@ -54,8 +54,8 @@ export const KIND: Record<AppointmentStatus, Kind> = {
 };
 
 export const CHIP: Record<Kind, string> = {
-  done: "border-l-[#0E8A60] bg-stable-soft",
-  booked: "border-l-[#0B3FA8] bg-[#E8F0FE] dark:border-l-[#7DA2FF] dark:bg-[#132E52]",
+  done: "border-l-stable bg-stable-soft",
+  booked: "border-l-[#0B3FA8] bg-info-soft dark:border-l-[#7DA2FF]",
   ask: "border-l-[#F59E0B] bg-warning-soft",
   off: "border-l-[#9DB0CC] bg-sunken text-faint line-through decoration-faint/60",
 };
@@ -89,17 +89,28 @@ export function AppointmentWeek({
     new Date(`${date}T00:00:00Z`).toLocaleDateString("en-GB", { ...options, timeZone: "UTC" });
   const live = (week.data?.data ?? []).filter((appointment) => KIND[appointment.status] !== "off");
   const truncated = (week.data?.meta.total ?? 0) > (week.data?.data.length ?? 0);
+  // "19 – 25 Oct", or "28 Sep – 4 Oct" when the week crosses a month.
+  const sameMonth = monday.slice(0, 7) === sunday.slice(0, 7);
+  const title = sameMonth
+    ? `${fmt(monday, { day: "numeric" })} – ${dayMonth(new Date(`${sunday}T00:00:00Z`), { utc: true })}`
+    : `${dayMonth(new Date(`${monday}T00:00:00Z`), { utc: true })} – ${dayMonth(new Date(`${sunday}T00:00:00Z`), { utc: true })}`;
+  const weekday = fmt(today, { weekday: "long" });
 
   return (
     <ConsoleCard
       icon="calendar_month"
-      title={`${fmt(monday, { day: "numeric", month: "short" })} – ${fmt(sunday, { day: "numeric", month: "short" })}`}
+      title={title}
       subtitle={
         week.data
-          ? tr(
-              `${live.length} ${live.length === 1 ? "visit" : "visits"} this week${truncated ? " (first 100 shown)" : ""}`,
-              `Is hafte ${live.length} visits${truncated ? " (pehle 100)" : ""}`,
-            )
+          ? offset === 0
+            ? tr(
+                `${live.length} ${live.length === 1 ? "visit" : "visits"} this week${truncated ? " (first 100 shown)" : ""} · today is ${weekday}`,
+                `Is hafte ${live.length} visits${truncated ? " (pehle 100)" : ""} · aaj ${weekday} hai`,
+              )
+            : tr(
+                `${live.length} ${live.length === 1 ? "visit" : "visits"} that week${truncated ? " (first 100 shown)" : ""}`,
+                `Us hafte ${live.length} visits${truncated ? " (pehle 100)" : ""}`,
+              )
           : tr("Loading the week…", "Hafta load ho raha hai…")
       }
       action={
@@ -109,15 +120,15 @@ export function AppointmentWeek({
             type="button"
             aria-label={tr("Previous week", "Pichhla hafta")}
             onClick={() => setOffset((value) => value - 1)}
-            className="grid h-9 w-9 place-items-center rounded-full border border-line bg-card text-strong hover:bg-sunken focus-visible:outline-2 focus-visible:outline-primary"
+            className="grid h-8 w-8 place-items-center rounded-full border border-line-strong bg-card text-strong hover:bg-sunken focus-visible:outline-2 focus-visible:outline-primary"
           >
-            <Icon name="chevron_left" className="text-[20px]" />
+            <Icon name="chevron_left" className="text-[16px]" />
           </button>
           {offset !== 0 && (
             <button
               type="button"
               onClick={() => setOffset(0)}
-              className="h-9 rounded-full border border-line bg-card px-3 text-[13px] font-semibold text-strong hover:bg-sunken focus-visible:outline-2 focus-visible:outline-primary"
+              className="h-8 rounded-full border border-line-strong bg-card px-[13px] text-[12.5px] font-semibold text-strong hover:bg-sunken focus-visible:outline-2 focus-visible:outline-primary"
             >
               {tr("This week", "Yeh hafta")}
             </button>
@@ -126,14 +137,14 @@ export function AppointmentWeek({
             type="button"
             aria-label={tr("Next week", "Agla hafta")}
             onClick={() => setOffset((value) => value + 1)}
-            className="grid h-9 w-9 place-items-center rounded-full border border-line bg-card text-strong hover:bg-sunken focus-visible:outline-2 focus-visible:outline-primary"
+            className="grid h-8 w-8 place-items-center rounded-full border border-line-strong bg-card text-strong hover:bg-sunken focus-visible:outline-2 focus-visible:outline-primary"
           >
-            <Icon name="chevron_right" className="text-[20px]" />
+            <Icon name="chevron_right" className="text-[16px]" />
           </button>
         </div>
       }
       footer={
-        <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-[12px] text-muted">
+        <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-[12.5px] text-muted">
           {(
             [
               ["done", tr("Done", "Mukammal")],
@@ -151,12 +162,12 @@ export function AppointmentWeek({
       }
     >
       {week.error ? (
-        <div className="px-5 pb-5">
+        <div className="px-[22px] pb-[18px]">
           <ErrorState message={week.error.message} onRetry={week.reload} />
         </div>
       ) : (
-        <div className="overflow-x-auto px-5 pb-5 sm:px-6">
-          <ol className="grid min-w-[52rem] grid-cols-7 gap-2">
+        <div className="overflow-x-auto px-[22px] pb-[18px]">
+          <ol className="grid min-w-[860px] grid-cols-7 gap-2">
             {days.map((date) => {
               const visits = byDay.get(date) ?? [];
               const isToday = date === today;
@@ -165,8 +176,10 @@ export function AppointmentWeek({
                   key={date}
                   aria-label={fmt(date, { weekday: "long", day: "numeric", month: "long" })}
                   className={cx(
-                    "flex min-h-40 flex-col gap-1.5 rounded-2xl p-2",
-                    isToday ? "bg-[#E8F0FE] ring-1 ring-[#0B3FA8]/30 dark:bg-[#132E52] dark:ring-[#7DA2FF]/30" : "bg-sunken/60",
+                    "flex min-h-[180px] flex-col gap-1.5 rounded-2xl p-2",
+                    isToday
+                      ? "bg-pastel-sky ring-1 ring-[#0B3FA8]/30 ring-inset dark:ring-[#7DA2FF]/30"
+                      : "bg-[var(--console-soft,var(--surface-sunken))]",
                   )}
                 >
                   <button
@@ -174,11 +187,13 @@ export function AppointmentWeek({
                     onClick={() => onPickDay(date)}
                     className="flex items-baseline gap-1.5 rounded-lg px-1 py-0.5 text-left hover:bg-card/70 focus-visible:outline-2 focus-visible:outline-primary"
                   >
-                    <span className={cx("text-[11px] font-bold uppercase tracking-wider", isToday ? "text-primary" : "text-faint")}>
+                    <span className={cx("text-[11px] font-bold tracking-[0.06em] uppercase", isToday ? "text-primary" : "text-faint")}>
                       {fmt(date, { weekday: "short" })}
                     </span>
                     <span className="font-display text-[15px] font-bold text-strong">{fmt(date, { day: "numeric" })}</span>
-                    {visits.length > 0 && <span className="ml-auto text-[11px] font-semibold tabular-nums text-muted">{visits.length}</span>}
+                    {visits.length > 0 && (
+                      <span className="ml-auto text-[11px] font-semibold text-muted tabular-nums">{visits.length}</span>
+                    )}
                   </button>
                   {week.loading && !week.data ? (
                     <span aria-hidden className="h-12 animate-pulse rounded-lg bg-card/70" />
@@ -191,15 +206,14 @@ export function AppointmentWeek({
                           onClick={() => onPickDay(date)}
                           title={`${visit.localTime} · ${visit.patientName ?? ""} · ${visit.doctorName ?? ""}`}
                           className={cx(
-                            "flex flex-col rounded-lg border-l-[3px] px-2 py-1.5 text-left transition-transform hover:-translate-y-px focus-visible:outline-2 focus-visible:outline-primary",
+                            "flex flex-col gap-px rounded-[9px] border-l-[3px] px-2 py-1.5 text-left transition-transform hover:-translate-y-px focus-visible:outline-2 focus-visible:outline-primary",
                             CHIP[KIND[visit.status]],
                           )}
                         >
-                          <span className="flex items-center gap-1 text-[11px] font-semibold tabular-nums text-strong">
-                            {visit.localTime}
-                            {visit.mode === "ONLINE" && <Icon name="videocam" className="text-[13px] text-muted" />}
+                          <span className="text-[11px] font-semibold tabular-nums">{visit.localTime}</span>
+                          <span className={cx("truncate text-[12px] font-semibold", KIND[visit.status] !== "off" && "text-strong")}>
+                            {visit.patientName}
                           </span>
-                          <span className="truncate text-[12px] font-semibold text-strong">{visit.patientName}</span>
                           <span className="truncate text-[11px] text-muted">{visit.doctorName}</span>
                         </button>
                       ))}

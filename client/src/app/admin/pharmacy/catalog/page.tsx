@@ -204,7 +204,7 @@ function Catalog() {
           </p>
         )}
       </ConsoleHeader>
-      <div className="mt-6">
+      <div className="mt-[22px]">
         <PharmacyAdminTabs openOrders={data?.openOrders} />
       </div>
 
@@ -213,7 +213,7 @@ function Catalog() {
         // only an amber dot beside its price.
         <section
           aria-label={tr("Price check", "Qeemat ki jaanch")}
-          className="rise-in mt-6 flex flex-wrap items-center gap-x-5 gap-y-3.5 rounded-[18px] bg-pastel-butter px-[18px] py-3.5 text-pastel-ink"
+          className="rise-in mt-[22px] flex flex-wrap items-center gap-x-5 gap-y-3.5 rounded-[18px] bg-pastel-butter px-[18px] py-3.5 text-pastel-ink"
         >
           <span aria-hidden className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-card/70 text-[#B45309] dark:text-[#FBD27A]">
             <Icon name="price_check" className="text-[19px]" />
@@ -259,7 +259,7 @@ function Catalog() {
       <section
         id="medicines"
         aria-label={tr("Medicines", "Dawaiyan")}
-        className="rise-in mt-6 scroll-mt-24 overflow-hidden rounded-3xl border border-line bg-card shadow-card"
+        className="rise-in mt-[22px] scroll-mt-24 overflow-hidden rounded-3xl border border-line bg-card shadow-card"
       >
         <div className="flex flex-wrap items-center gap-2.5 px-[18px] py-4">
           <label className="flex h-10 w-full items-center gap-2.5 rounded-full border border-line-strong bg-card pr-3 pl-3.5 text-muted focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary sm:w-[340px]">
@@ -306,9 +306,8 @@ function Catalog() {
           />
         ) : (
           <>
-            {/* Scrolls inside itself so the column names stay in sight. */}
-            <div className="max-h-[760px] overflow-auto">
-              <table className="console-table min-w-[50rem] [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-10">
+            <div className="relative overflow-x-auto">
+              <table className="console-table min-w-[50rem]">
                 <thead>
                   <tr>
                     <th scope="col">{tr("Medicine", "Dawa")}</th>

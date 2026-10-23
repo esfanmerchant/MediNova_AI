@@ -23,9 +23,10 @@
  * above the table, not by repeating it.
  */
 
-import { Fragment, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 
 import { Icon } from "@/components/Icon";
+import { ROLE_LABEL } from "@/components/admin/PersonDrawer";
 import { Pager, StatusPill } from "@/components/admin/console";
 import { useNow } from "@/components/doctorApplication/shared";
 import { Segmented } from "@/components/forms";
@@ -36,6 +37,7 @@ import {
   type AuditEntry,
   type AuditSeverity,
   type ChainVerification,
+  type Role,
 } from "@/lib/api";
 import { DATE_BOUNDS } from "@/lib/dates";
 import { useTr } from "@/lib/lang";
@@ -62,8 +64,19 @@ function when(iso: string): string {
   });
 }
 
+/** Where the plain reading of the name says less than the page means. */
+const ACTION_NAMES: Record<string, string> = {
+  AUDIT_VIEWED: "Audit trail viewed",
+};
+
+/** "c7f1a2c4…09be" — an id short enough for its column, both ends kept. */
+function shortId(value: string): string {
+  return value.length > 16 ? `${value.slice(0, 8)}…${value.slice(-4)}` : value;
+}
+
 /** "PATIENT_RECORD_VIEW" reads badly in a table; "Patient record view" does. */
 function humanise(action: string): string {
+  if (ACTION_NAMES[action]) return ACTION_NAMES[action];
   const words = action.toLowerCase().replaceAll("_", " ");
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
@@ -85,61 +98,25 @@ function iconFor(action: string, severity: AuditSeverity): string {
 }
 
 // ---------------------------------------------------------------------------
-// Metadata, lightly coloured
+// Metadata, as one line
 // ---------------------------------------------------------------------------
 
-/** One JSON value, coloured by kind. Status colours are not used here: a red
-    `false` in a metadata block would read as an alarm, and it is not one. */
-function coloured(token: string): ReactNode {
-  const trailing = token.endsWith(",") ? "," : "";
-  const core = trailing ? token.slice(0, -1) : token;
-  let tone = "text-muted";
-  if (core.startsWith('"')) tone = "text-accent";
-  else if (/^-?\d/.test(core)) tone = "text-warning";
-  else if (core === "true" || core === "false" || core === "null") tone = "text-info";
+/** The recorded detail on one dark line, as the design sets it: `{ "count": 2 }`. */
+function JsonLine({ value }: { value: unknown }) {
+  const text = (JSON.stringify(value, null, 1) ?? "null").replace(/\n\s*/g, " ");
   return (
-    <>
-      <span className={tone}>{core}</span>
-      {trailing && <span className="text-faint">,</span>}
-    </>
-  );
-}
-
-function colourLine(line: string): ReactNode {
-  const keyed = /^(\s*)("(?:[^"\\]|\\.)*")(\s*:\s*)(.*)$/.exec(line);
-  if (keyed) {
-    const [, indent, key, colon, rest] = keyed;
-    return (
-      <>
-        {indent}
-        <span className="font-semibold text-primary">{key}</span>
-        <span className="text-faint">{colon}</span>
-        {coloured(rest)}
-      </>
-    );
-  }
-  const indent = /^\s*/.exec(line)?.[0] ?? "";
-  return (
-    <>
-      {indent}
-      {coloured(line.trim())}
-    </>
-  );
-}
-
-/** Pre-formatted JSON with keys, strings and numbers told apart by colour. */
-function JsonBlock({ value }: { value: unknown }) {
-  const text = JSON.stringify(value, null, 2) ?? "null";
-  return (
-    <pre className="overflow-x-auto rounded-xl border border-line bg-sunken p-4 font-mono text-xs leading-relaxed text-strong">
-      {text.split("\n").map((line, index) => (
-        <Fragment key={index}>
-          {colourLine(line)}
-          {"\n"}
-        </Fragment>
-      ))}
+    <pre className="overflow-x-auto rounded-xl bg-[#0B1630] px-3.5 py-3 font-mono text-[12px] leading-[1.6] text-[#DCE7F7] dark:bg-[#050D1F]">
+      {text}
     </pre>
   );
+}
+
+/** "AuditLog" as a person would say it: "Audit log"; a patient is their record. */
+function entityName(type: string | null): string | null {
+  if (!type) return null;
+  if (type === "Patient") return "Patient record";
+  const words = type.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 // ---------------------------------------------------------------------------
@@ -220,7 +197,7 @@ function ChainStatus({ entries }: { entries: number | null }) {
         {result ? (
           <>
             <span className="flex flex-wrap items-center gap-3">
-              <b className={cx("font-semibold", holds ? "text-stable" : "text-critical")}>{result.detail}</b>
+              <b className={cx("text-[14px] font-semibold", holds ? "text-stable" : "text-critical")}>{result.detail}</b>
               <ChainLinks broken={broken} />
             </span>
             <span className="text-[13px] text-strong tabular-nums">
@@ -231,7 +208,7 @@ function ChainStatus({ entries }: { entries: number | null }) {
           </>
         ) : (
           <>
-            <b className="font-semibold text-strong">
+            <b className="text-[14px] font-semibold text-strong">
               {entries !== null
                 ? tr(
                     `${count(entries)} entries, each hashed together with the one before it`,
@@ -263,8 +240,10 @@ function ChainStatus({ entries }: { entries: number | null }) {
 function Reference({ label, value }: { label: string; value: string | null }) {
   return (
     <div className="min-w-0">
-      <dt className="text-[12px] text-faint">{label}</dt>
-      <dd className={cx("mt-0.5 truncate font-mono text-[12.5px]", value ? "text-strong" : "text-faint")}>{value ?? "—"}</dd>
+      <dt className="text-faint">{label}</dt>
+      <dd className={cx("mt-0.5 truncate font-mono", value ? "text-strong" : "text-faint")} title={value ?? undefined}>
+        {value ? shortId(value) : "—"}
+      </dd>
     </div>
   );
 }
@@ -322,9 +301,13 @@ function EntryRows({ entry }: { entry: AuditEntry }) {
           <span className="block font-medium whitespace-nowrap">
             {entry.actorName ?? <span className="text-faint italic">{tr("(deleted account)", "(hazf shuda account)")}</span>}
           </span>
-          {entry.actorRole && <span className="block text-[12px] text-muted">{humanise(entry.actorRole)}</span>}
+          {entry.actorRole && (
+            <span className="block text-[12px] text-muted">
+              {tr(...(ROLE_LABEL[entry.actorRole as Role] ?? [humanise(entry.actorRole), humanise(entry.actorRole)]))}
+            </span>
+          )}
         </td>
-        <td className="text-muted">{entry.entityType ?? "—"}</td>
+        <td className="text-muted">{entityName(entry.entityType) ?? "—"}</td>
         <td className="font-mono text-[12.5px] text-muted">{entry.ipAddress ?? "—"}</td>
         <td className="text-right">
           <button
@@ -336,9 +319,9 @@ function EntryRows({ entry }: { entry: AuditEntry }) {
               event.stopPropagation();
               setOpen((value) => !value);
             }}
-            className="grid h-[30px] w-[30px] place-items-center rounded-full text-muted hover:bg-sunken hover:text-strong focus-visible:outline-2 focus-visible:outline-primary"
+            className="grid h-[30px] w-[30px] place-items-center rounded-full text-strong hover:bg-sunken focus-visible:outline-2 focus-visible:outline-primary"
           >
-            <Icon name="expand_more" className={cx("text-[20px] transition-transform duration-300", open && "rotate-180")} />
+            <Icon name="expand_more" className={cx("text-[16px] transition-transform duration-300", open && "rotate-180")} />
           </button>
         </td>
       </tr>
@@ -346,16 +329,19 @@ function EntryRows({ entry }: { entry: AuditEntry }) {
         <tr id={panelId} className="[&>td]:!bg-sunken/50">
           <td colSpan={6} className="!pt-1 !pb-4">
             <div className="space-y-3">
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 sm:grid-cols-3 lg:grid-cols-6">
-                <Reference label={tr("Entity", "Cheez")} value={entry.entityType} />
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-[12.5px] sm:grid-cols-4">
+                <Reference label={tr("Entity", "Cheez")} value={entityName(entry.entityType)} />
                 <Reference label={tr("Entity id", "Cheez ki id")} value={entry.entityId} />
-                <Reference label={tr("Patient", "Mareez")} value={entry.patientId} />
-                <Reference label={tr("Actor id", "Amal karne wale ki id")} value={entry.userId} />
                 <Reference label={tr("Request", "Darkhwast")} value={entry.requestId} />
                 <Reference label={tr("Emergency grant", "Emergency grant")} value={entry.emergencyAccessId} />
+                {/* Whose record, when the entry was about a patient by way of
+                    something else — a document, a prescription. */}
+                {entry.patientId && entry.patientId !== entry.entityId && (
+                  <Reference label={tr("Patient", "Mareez")} value={entry.patientId} />
+                )}
               </dl>
               {hasMetadata ? (
-                <JsonBlock value={entry.metadata} />
+                <JsonLine value={entry.metadata} />
               ) : (
                 <p className="rounded-xl border border-dashed border-line px-4 py-3 text-sm text-faint">
                   {tr(
@@ -364,13 +350,6 @@ function EntryRows({ entry }: { entry: AuditEntry }) {
                   )}
                 </p>
               )}
-              <p className="flex items-center gap-1.5 text-xs text-faint">
-                <Icon name="verified_user" className="text-[14px] text-accent" />
-                {tr(
-                  "References only — field names, ids and counts. Clinical values are never written to the trail.",
-                  "Sirf hawale — field ke naam, ids aur ginti. Clinical values kabhi trail mein nahi likhi jaatin.",
-                )}
-              </p>
             </div>
           </td>
         </tr>
@@ -382,14 +361,33 @@ function EntryRows({ entry }: { entry: AuditEntry }) {
 /** Fifty to a page: a day's worth, most days. */
 const PAGE = 50;
 
-type Kind = "all" | "SECURITY" | "BREAK_GLASS";
+export type AuditKind = "all" | "SECURITY" | "BREAK_GLASS";
 
-export function AuditPanel() {
+/** What the page's sentence quotes: the whole trail's size, and the week's alarms. */
+export interface AuditSummary {
+  total: number | null;
+  alertsThisWeek: number;
+}
+
+export function AuditPanel({
+  kind: chosen,
+  onKind,
+  onSummary,
+}: {
+  /** Set from outside — the page's "security events" link opens that tab. */
+  kind?: AuditKind;
+  onKind?: (kind: AuditKind) => void;
+  /** Reading the trail is itself audited, so the page takes its figures from
+      this one read rather than making another. */
+  onSummary?: (summary: AuditSummary) => void;
+}) {
   const tr = useTr();
   const now = useNow(true, 60_000);
-  const [kind, setKindState] = useState<Kind>("all");
-  const setKind = (next: Kind) => {
-    setKindState(next);
+  const [own, setOwn] = useState<AuditKind>("all");
+  const kind = chosen ?? own;
+  const setKind = (next: AuditKind) => {
+    if (onKind) onKind(next);
+    else setOwn(next);
     setOffset(0);
   };
   const [since, setSince] = useState("");
@@ -412,7 +410,13 @@ export function AuditPanel() {
   );
 
   const rows = fetched.data?.data ?? [];
-  const securityEvents = fetched.data?.meta.securityEvents;
+  const bySeverity = fetched.data?.meta.bySeverity;
+  const unfiltered = kind === "all" && !since && !until;
+  const meta = fetched.data?.meta;
+  useEffect(() => {
+    if (!meta || !onSummary) return;
+    onSummary({ total: unfiltered ? meta.total : null, alertsThisWeek: meta.alertsThisWeek });
+  }, [meta, unfiltered, onSummary]);
 
   // Rows under the day they happened, in the order the server sent them.
   const today = new Date(now).toDateString();
@@ -427,10 +431,10 @@ export function AuditPanel() {
   }
 
   const dateInput =
-    "h-10 w-[150px] rounded-xl border border-line-strong bg-card px-3 text-[14px] text-strong focus-visible:outline-2 focus-visible:outline-primary";
+    "h-10 w-[160px] rounded-xl border border-line-strong bg-card px-3.5 text-[14px] text-strong focus-visible:outline-2 focus-visible:outline-primary";
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-[22px]">
       {/* The total is the unfiltered list's; with a filter on it would be only
           part of the trail. */}
       <ChainStatus entries={kind === "all" && !since && !until ? (fetched.data?.meta.total ?? null) : null} />
@@ -444,44 +448,48 @@ export function AuditPanel() {
           <Segmented
             options={[
               { value: "all" as const, label: tr("All", "Sab") },
-              { value: "SECURITY" as const, label: tr("Security", "Security"), count: kind === "all" ? securityEvents : undefined },
-              { value: "BREAK_GLASS" as const, label: tr("Break-glass", "Emergency") },
+              { value: "SECURITY" as const, label: tr("Security", "Security"), count: bySeverity?.SECURITY },
+              { value: "BREAK_GLASS" as const, label: tr("Break-glass", "Emergency"), count: bySeverity?.BREAK_GLASS },
             ]}
             value={kind}
             onChange={setKind}
             label={tr("Filter the audit trail", "Audit trail filter karein")}
           />
-          <span className="flex flex-wrap items-center gap-2 sm:ml-auto">
-            <label htmlFor="audit-since" className="text-[13px] font-semibold text-muted">
-              {tr("From", "Se")}
-            </label>
-            <input
-              id="audit-since"
-              type="date"
-              min={DATE_BOUNDS.min}
-              max={DATE_BOUNDS.max}
-              value={since}
-              onChange={(event) => {
-                setSince(event.target.value);
-                setOffset(0);
-              }}
-              className={dateInput}
-            />
-            <label htmlFor="audit-until" className="text-[13px] font-semibold text-muted">
-              {tr("To", "Tak")}
-            </label>
-            <input
-              id="audit-until"
-              type="date"
-              min={DATE_BOUNDS.min}
-              max={DATE_BOUNDS.max}
-              value={until}
-              onChange={(event) => {
-                setUntil(event.target.value);
-                setOffset(0);
-              }}
-              className={dateInput}
-            />
+          <span className="flex flex-wrap items-center gap-3 sm:ml-auto">
+            <span className="flex items-center gap-2">
+              <label htmlFor="audit-since" className="text-[13px] font-semibold text-muted">
+                {tr("From", "Se")}
+              </label>
+              <input
+                id="audit-since"
+                type="date"
+                min={DATE_BOUNDS.min}
+                max={DATE_BOUNDS.max}
+                value={since}
+                onChange={(event) => {
+                  setSince(event.target.value);
+                  setOffset(0);
+                }}
+                className={dateInput}
+              />
+            </span>
+            <span className="flex items-center gap-2">
+              <label htmlFor="audit-until" className="text-[13px] font-semibold text-muted">
+                {tr("To", "Tak")}
+              </label>
+              <input
+                id="audit-until"
+                type="date"
+                min={DATE_BOUNDS.min}
+                max={DATE_BOUNDS.max}
+                value={until}
+                onChange={(event) => {
+                  setUntil(event.target.value);
+                  setOffset(0);
+                }}
+                className={dateInput}
+              />
+            </span>
           </span>
         </div>
 

@@ -17,7 +17,7 @@ import { Fragment, type ReactNode } from "react";
 
 import { Icon } from "@/components/Icon";
 import { Drawer } from "@/components/overlays";
-import { StatusPill, consoleDay, consoleStamp } from "@/components/admin/console";
+import { StatusPill, consoleDay, consoleStamp, groupPhone } from "@/components/admin/console";
 import { ErrorState, cx } from "@/components/ui";
 import { appointments, doctors, invoices, type AccountRow, type Role } from "@/lib/api";
 import { useTr } from "@/lib/lang";
@@ -112,15 +112,17 @@ function DoctorFacts({ doctorId }: { doctorId: string }) {
         <div className="grid grid-cols-3 gap-2">
           <Stat label={tr("Seen, 30 days", "30 din mein dekhe")} value={stats.data.seen} />
           <Stat label={tr("Coming up", "Aane wale")} value={stats.data.coming} />
-          <Stat label={tr("No-shows, 30 days", "Nahi aaye, 30 din")} value={stats.data.missed} />
+          <Stat
+            label={tr("No-shows, 30 days", "Nahi aaye, 30 din")}
+            value={stats.data.missed}
+            tone={stats.data.missed > 0 ? "warning" : undefined}
+          />
         </div>
       )}
       {profile.error && <ErrorState message={profile.error.message} onRetry={profile.reload} />}
       {doctor && (
         <dl className="grid grid-cols-[8.5rem_minmax(0,1fr)] gap-x-3 gap-y-2.5">
           <Fact label={tr("Speciality", "Speciality")}>{doctor.specialization}</Fact>
-          {doctor.department && <Fact label={tr("Department", "Shoba")}>{doctor.department.name}</Fact>}
-          {doctor.qualifications && <Fact label={tr("Qualifications", "Taleem")}>{doctor.qualifications}</Fact>}
           <Fact label={tr("Visit fee", "Visit fee")}>
             PKR {new Intl.NumberFormat("en-PK", { maximumFractionDigits: 0 }).format(doctor.consultationFee)}
           </Fact>
@@ -130,9 +132,6 @@ function DoctorFacts({ doctorId }: { doctorId: string }) {
           {(doctor.clinicName || doctor.city) && (
             <Fact label={tr("Clinic", "Clinic")}>{[doctor.clinicName, doctor.city].filter(Boolean).join(", ")}</Fact>
           )}
-          <Fact label={tr("New patients", "Naye mareez")}>
-            {doctor.acceptingPatients ? tr("Accepting", "Le rahe hain") : tr("Not accepting", "Nahi le rahe")}
-          </Fact>
         </dl>
       )}
     </section>
@@ -229,7 +228,7 @@ export function PersonDrawer({ person, onClose }: { person: AccountRow | null; o
             {(
               [
                 [tr("Email", "Email"), person.email],
-                [tr("Phone", "Phone"), person.phone ?? "—"],
+                [tr("Phone", "Phone"), person.phone ? groupPhone(person.phone) : "—"],
                 [tr("Last sign-in", "Aakhri sign-in"), person.lastLoginAt ? consoleStamp(person.lastLoginAt) : tr("Never", "Kabhi nahi")],
                 [tr("Joined", "Shamil hue"), consoleDay(person.createdAt)],
               ] as const

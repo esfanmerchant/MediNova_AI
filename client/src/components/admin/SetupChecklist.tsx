@@ -39,6 +39,11 @@ interface Step {
   href: string;
 }
 
+/** "five" — the count in a sentence. */
+function spellCount(n: number): string {
+  return ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"][n] ?? String(n);
+}
+
 export function SetupChecklist({ doctors }: { doctors: number }) {
   const tr = useTr();
   const [hidden, setHidden] = useState(() => (typeof window === "undefined" ? false : readHidden()));
@@ -113,10 +118,10 @@ export function SetupChecklist({ doctors }: { doctors: number }) {
   return (
     <section
       aria-label={tr("Getting the hospital ready", "Hospital ki tayyari")}
-      className="rise-in rounded-3xl border border-line bg-card p-5 shadow-card sm:p-6"
+      className="rise-in rounded-3xl border border-line bg-card px-[22px] py-[18px] shadow-card"
     >
-      <div className="flex flex-wrap items-center gap-4">
-        <svg aria-hidden viewBox="0 0 40 40" className="h-12 w-12 shrink-0 -rotate-90">
+      <div className="flex flex-wrap items-center gap-3">
+        <svg aria-hidden viewBox="0 0 40 40" className="h-[42px] w-[42px] shrink-0 -rotate-90">
           <circle cx="20" cy="20" r="16" fill="none" strokeWidth="5" className="stroke-sunken" />
           <circle
             cx="20"
@@ -131,12 +136,15 @@ export function SetupChecklist({ doctors }: { doctors: number }) {
           />
         </svg>
         <div className="min-w-0 flex-1">
-          <h2 className="font-display text-[1.05rem] font-bold text-strong">
+          <h2 className="font-display text-[16px] font-bold text-strong">
             {tr("Getting the hospital ready", "Hospital ki tayyari")}
           </h2>
-          <p className="text-[13px] text-muted">
+          <p className="text-[12.5px] text-muted">
             {tr(`${done} of ${steps.length} done.`, `${steps.length} mein se ${done} mukammal.`)}{" "}
-            {tr("Each step ticks itself when it is really done.", "Har qadam asal mein mukammal hone par khud tick hota hai.")}
+            {tr(
+              `Each step ticks itself when it is really done. Gone once all ${spellCount(steps.length)} are.`,
+              `Har qadam asal mein mukammal hone par khud tick hota hai. Sab ${steps.length} hone par yeh chala jayega.`,
+            )}
           </p>
         </div>
         <button
@@ -149,13 +157,13 @@ export function SetupChecklist({ doctors }: { doctors: number }) {
               // A private window: hidden for this visit only.
             }
           }}
-          className="rounded-full px-3 py-1.5 text-[13px] font-semibold text-muted hover:bg-sunken hover:text-strong focus-visible:outline-2 focus-visible:outline-primary"
+          className="inline-flex h-8 items-center rounded-full px-[13px] text-[12.5px] font-semibold text-primary hover:bg-[var(--console-soft)] focus-visible:outline-2 focus-visible:outline-primary"
         >
           {tr("Hide", "Chhupayein")}
         </button>
       </div>
 
-      <ol className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+      <ol className="mt-3.5 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-5">
         {steps.map((step) => {
           const upNext = step === next;
           return (
@@ -165,20 +173,20 @@ export function SetupChecklist({ doctors }: { doctors: number }) {
                 className={cx(
                   "flex h-full flex-col gap-1.5 rounded-2xl border p-3.5 transition-colors focus-visible:outline-2 focus-visible:outline-primary",
                   step.done
-                    ? "border-transparent bg-sunken/60"
+                    ? "border-transparent bg-[var(--console-soft)]"
                     : upNext
-                      ? "border-[#0B3FA8]/40 bg-[#E8F0FE] hover:bg-[#DCE7FD] dark:border-[#7DA2FF]/40 dark:bg-[#132E52]"
-                      : "border-line bg-card hover:bg-sunken",
+                      ? "border-[#0B3FA8]/30 bg-pastel-sky dark:border-[#7DA2FF]/30"
+                      : "border-line bg-card hover:bg-[var(--console-soft)]",
                 )}
               >
                 <span className="flex items-center gap-2">
                   <Icon
                     name={step.done ? "check_circle" : "radio_button_unchecked"}
                     filled={step.done}
-                    className={cx("text-[20px]", step.done ? "text-stable" : upNext ? "text-primary" : "text-faint")}
+                    className={cx("text-[18px]", step.done ? "text-stable" : upNext ? "text-primary" : "text-faint")}
                   />
                   {upNext && (
-                    <span className="mono-caps text-[0.62rem] text-primary">{tr("Up next", "Agla")}</span>
+                    <span className="font-mono text-[10.5px] tracking-[0.14em] text-primary uppercase">{tr("Up next", "Agla")}</span>
                   )}
                 </span>
                 <span className={cx("text-[13.5px] font-semibold", step.done ? "text-muted line-through decoration-faint/50" : "text-strong")}>

@@ -52,9 +52,10 @@ export default function AdminRevenue() {
 
   return (
     <AppShell role="ADMIN">
-      <div id="main" className="space-y-6">
+      <div id="main" className="space-y-[22px]">
         <ConsoleHeader
           mark="revenue"
+          wide
           eyebrow={tr("Money that has actually been paid", "Woh raqam jo waqai ada ho chuki")}
           title={tr("Revenue", "Aamdani")}
         >
@@ -191,7 +192,7 @@ export default function AdminRevenue() {
               </p>
             }
           >
-            <div className="px-5 pb-5 sm:px-6">
+            <div className="px-[22px] pb-3.5">
               <CategoryBars bars={specialities} currency={currency} label={tr("Where the money came from", "Raqam kahan se aayi")} />
             </div>
           </ConsoleCard>

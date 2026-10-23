@@ -12,9 +12,8 @@
  * its stops land under ΔE 15 of each other — so that chart takes two validated
  * steps from outside it rather than reusing brand or status colours.
  *
- * The colour here is a validated step in each mode, not one colour with
- * opacity: `#1462c4` on light, `#4a86d8` on dark, both inside the mode's
- * lightness band and above 3:1 on its surface.
+ * The colour is the money chart's consultation blue, `#3987e5`, so a bar of
+ * consultation income here is the same blue as consultations there.
  */
 
 import { useTr } from "@/lib/lang";
@@ -57,30 +56,29 @@ export function CategoryBars({
 
   return (
     <figure className="m-0">
-      <figcaption className="mb-4 text-sm text-muted">{label}</figcaption>
+      <figcaption className="sr-only">{label}</figcaption>
 
-      <ul className="space-y-3">
+      {/* One line a row — name, bar, amount — as the design draws it. */}
+      <ul className="flex flex-col gap-3">
         {bars.map((bar, index) => {
           const value = toNumber(bar.value);
           return (
-            <li key={bar.label}>
-              <div className="mb-1 flex items-baseline justify-between gap-3 text-sm">
-                <span className="truncate font-medium text-strong">{bar.label}</span>
-                {/* Directly labelled: with a handful of rows there is room, and
-                    a value beside its bar needs no hover to be read. */}
-                <span className="shrink-0 font-mono text-xs tabular-nums text-muted">
-                  {currency} {format(value)}
-                </span>
-              </div>
-              <div className="h-2.5 overflow-hidden rounded-full bg-sunken">
-                <div
+            <li key={bar.label} className="grid grid-cols-[minmax(0,150px)_minmax(0,1fr)_110px] items-center gap-3.5">
+              <span className="truncate font-semibold text-strong">{bar.label}</span>
+              <span className="h-2.5 overflow-hidden rounded-full bg-sunken">
+                <span
                   style={{
                     width: `${Math.max(2, (value / peak) * 100)}%`,
-                    animationDelay: `${Math.min(index * 0.05, 1).toFixed(2)}s`,
+                    animationDelay: `${Math.min(0.1 + index * 0.05, 1).toFixed(2)}s`,
                   }}
-                  className="bar-grow-x h-full rounded-full bg-[#1462c4] dark:bg-[#4a86d8]"
+                  className="bar-grow-x block h-full rounded-full bg-[#3987e5]"
                 />
-              </div>
+              </span>
+              {/* Directly labelled: with a handful of rows there is room, and
+                  a value beside its bar needs no hover to be read. */}
+              <b className="text-right font-bold whitespace-nowrap text-strong tabular-nums">
+                {currency} {format(value)}
+              </b>
             </li>
           );
         })}

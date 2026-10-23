@@ -565,8 +565,18 @@ export const dashboard = {
         severity: string;
         timestamp: string;
         userId: string | null;
+        /** The account the event concerns; null when there is none, as for an unknown email. */
+        actorName: string | null;
+        actorEmail: string | null;
+        entityType: string | null;
         ipAddress: string | null;
       }>;
+      /** The detail lines under "Needs you": the oldest of each kind still waiting. */
+      oldest?: {
+        unreviewedGrant: { grantedAt: string; requesterName: string | null } | null;
+        applicationSubmittedAt: string | null;
+        unpaidInvoiceDueAt: string | null;
+      };
       /** Completed visits in the last 30 days, the five busiest doctors. */
       busiestDoctors: Array<{ doctorId: string; name: string; specialization: string; visits: number }>;
     }>("/dashboard/admin"),
@@ -2302,7 +2312,17 @@ export const audit = {
     until?: string;
     limit?: number;
     offset?: number;
-  }) => apiList<AuditEntry, { securityEvents: number }>("/audit-logs", query),
+  }) =>
+    apiList<
+      AuditEntry,
+      {
+        securityEvents: number;
+        /** What each severity tab would show under the same filters. */
+        bySeverity: Partial<Record<AuditSeverity, number>>;
+        /** Security and break-glass entries in the last seven days, unfiltered. */
+        alertsThisWeek: number;
+      }
+    >("/audit-logs", query),
 
   verify: (limit?: number) =>
     apiRequest<ChainVerification>("/audit-logs/verify", { query: { limit } }),

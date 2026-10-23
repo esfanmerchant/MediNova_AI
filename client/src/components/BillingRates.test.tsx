@@ -12,7 +12,7 @@
  * which.
  */
 
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -109,7 +109,8 @@ describe("what somebody is allowed to type", () => {
     // on the field itself.
     mount();
     await screen.findByLabelText("Tax");
-    await userEvent.click(screen.getAllByRole("button", { name: "PKR" })[0]);
+    // The unit printed in the box is the switch.
+    await userEvent.click(screen.getByRole("button", { name: /Tax: a percentage/ }));
     await userEvent.clear(taxBox());
     await userEvent.type(taxBox(), "150");
 
@@ -123,8 +124,7 @@ describe("the mode travels with the value", () => {
     await screen.findByLabelText("Platform fee");
 
     // Platform fee: rupees by default, switched to a percentage.
-    const platformSwitch = screen.getByRole("group", { name: "Platform fee: amount or percentage" });
-    await userEvent.click(within(platformSwitch).getByRole("button", { name: "%" }));
+    await userEvent.click(screen.getByRole("button", { name: /Platform fee: PKR per invoice/ }));
 
     await userEvent.clear(screen.getByLabelText("Platform fee"));
     await userEvent.type(screen.getByLabelText("Platform fee"), "2");
@@ -142,13 +142,13 @@ describe("the mode travels with the value", () => {
 
   it("shows what the number means, and changes it with the mode", async () => {
     mount();
-    await screen.findByLabelText("Late payment charge");
-    expect(screen.getByText("PKR, added once.")).toBeInTheDocument();
+    await screen.findByLabelText("Late fee");
+    const unit = screen.getByRole("button", { name: /Late fee: PKR per invoice/ });
+    expect(unit).toHaveTextContent("PKR");
 
-    const lateSwitch = screen.getByRole("group", { name: "Late payment charge: amount or percentage" });
-    await userEvent.click(within(lateSwitch).getByRole("button", { name: "%" }));
+    await userEvent.click(unit);
 
-    expect(screen.getByText("Of the invoice total.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Late fee: a percentage/ })).toHaveTextContent("%");
   });
 });
 
@@ -157,12 +157,32 @@ describe("what the screen promises", () => {
     // The assumption everybody makes is the opposite one.
     mount();
     expect(
-      await screen.findByText(/Invoices already issued keep the rates they were charged at/),
+      await screen.findByText(/An invoice already issued keeps the rates it was issued with/),
     ).toBeInTheDocument();
   });
 
-  it("says the late charge lands once rather than daily", async () => {
+  it("shows the days a patient has to pay, which this screen does not change", async () => {
     mount(settings({ paymentTermsDays: 3 }));
-    expect(await screen.findByText(/added once — never per day/)).toBeInTheDocument();
+    const days = await screen.findByLabelText("Days to pay");
+    expect(days).toHaveValue("3");
+    expect(days).toHaveAttribute("readonly");
+  });
+});
+
+describe("the wallets", () => {
+  it("shows a wallet's number, and opens it for changing only from Edit", async () => {
+    // A wrong number sends a patient's money to a stranger; it is not a box
+    // left open on the screen.
+    const update = mount(settings({ payeeName: "MediNova Health", nayapayNumber: "03004182291" }));
+    expect(await screen.findByText("0300 418 2291")).toBeInTheDocument();
+    expect(screen.queryByLabelText("NayaPay number")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await userEvent.clear(screen.getByLabelText("NayaPay number"));
+    await userEvent.type(screen.getByLabelText("NayaPay number"), "03111234567");
+    await userEvent.click(save());
+
+    await waitFor(() => expect(update).toHaveBeenCalledOnce());
+    expect(update.mock.calls[0][0]).toMatchObject({ nayapayNumber: "03111234567", payeeName: "MediNova Health" });
   });
 });

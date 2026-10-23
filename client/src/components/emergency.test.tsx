@@ -223,7 +223,9 @@ describe("the review queue", () => {
     mockQueue([grant({ patientMrn: "MRN-2026-0042" })], 1);
     render(<EmergencyReviewPanel />);
 
-    expect(await screen.findByText("MRN-2026-0042")).toBeInTheDocument();
+    // In the open grant's banner and on its row alike.
+    expect(await screen.findAllByText("MRN-2026-0042")).not.toHaveLength(0);
+    expect(screen.queryByText(/c4eebf57/)).toBeNull();
   });
 
   it("puts an open grant at the top, and ends it only on a second press", async () => {

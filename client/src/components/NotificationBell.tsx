@@ -14,11 +14,11 @@
  */
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 import { Icon } from "@/components/Icon";
-import { Button, EmptyState, cx } from "@/components/ui";
+import { Button, ConsoleSurface, EmptyState, cx } from "@/components/ui";
 import { notifications, type Notification, type Role } from "@/lib/api";
 import { useLang, useTr } from "@/lib/lang";
 import { useAsync, QUEUE_REFRESH_MS } from "@/lib/useAsync";
@@ -80,6 +80,7 @@ const TONE = {
 
 export function NotificationBell({ role }: { role: Role }) {
   const tr = useTr();
+  const inConsole = useContext(ConsoleSurface);
   const urdu = useLang() === "ur";
   const [open, setOpen] = useState(false);
   const [unreadOnly, setUnreadOnly] = useState(false);
@@ -148,18 +149,29 @@ export function NotificationBell({ role }: { role: Role }) {
           if (!open) void load();
         }}
         className={cx(
-          "group relative grid h-11 w-11 place-items-center rounded-full text-muted transition-[background-color,color,transform] duration-200 hover:scale-105 hover:bg-gradient-soft hover:text-primary",
+          "group relative grid place-items-center rounded-full transition-[background-color,color,transform] duration-200",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-          open && "bg-gradient-soft text-primary",
+          inConsole
+            ? cx("h-10 w-10 border border-line-strong text-strong hover:bg-sunken", open ? "bg-sunken" : "bg-card")
+            : cx("h-11 w-11 text-muted hover:scale-105 hover:bg-gradient-soft hover:text-primary", open && "bg-gradient-soft text-primary"),
         )}
       >
-        <Icon name="notifications" filled={open || unread > 0} className="icon-ring text-[24px]" />
-        {unread > 0 && (
-          <span className="absolute right-2 top-2 flex h-2.5 w-2.5">
-            <span className="pulse-dot absolute inline-flex h-full w-full rounded-full bg-critical" />
-            <span className="sr-only">{unread}</span>
-          </span>
-        )}
+        <Icon
+          name="notifications"
+          filled={open || unread > 0}
+          className={inConsole ? "text-[18px]" : "icon-ring text-[24px]"}
+        />
+        {unread > 0 &&
+          (inConsole ? (
+            <span className="absolute top-2 right-[9px] h-[9px] w-[9px] rounded-full border-2 border-card bg-[#E5484D]">
+              <span className="sr-only">{unread}</span>
+            </span>
+          ) : (
+            <span className="absolute right-2 top-2 flex h-2.5 w-2.5">
+              <span className="pulse-dot absolute inline-flex h-full w-full rounded-full bg-critical" />
+              <span className="sr-only">{unread}</span>
+            </span>
+          ))}
       </button>
 
       <AnimatePresence>

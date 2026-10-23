@@ -24,6 +24,7 @@ from app.db.enums import (
     AppointmentStatus,
     AuditAction,
     AuditSeverity,
+    DoctorApplicationStatus,
     EmergencyAccessStatus,
     InvoiceStatus,
     Role,
@@ -35,6 +36,7 @@ from app.db.models import (
     AuditLog,
     Department,
     Doctor,
+    DoctorApplication,
     DoctorPatientAssignment,
     EmergencyAccess,
     Invoice,
@@ -273,9 +275,13 @@ async def admin_dashboard(request: Request, auth: CurrentAuth, db: DbSession) ->
         select(func.count(EmergencyAccess.id)).where(EmergencyAccess.reviewed_at.is_(None)),
     )
 
+    # Each event with the account it concerns, so the card can say who and not
+    # only what. An outer join: `userId` is not a foreign key, and a failed
+    # sign-in for an unknown email has no account at all.
     recent_security = (
         await db.execute(
-            select(AuditLog)
+            select(AuditLog, User.name, User.email)
+            .outerjoin(User, User.id == AuditLog.user_id)
             .where(
                 AuditLog.severity.in_([AuditSeverity.SECURITY, AuditSeverity.BREAK_GLASS]),
                 AuditLog.timestamp >= week_ago,
@@ -283,7 +289,30 @@ async def admin_dashboard(request: Request, auth: CurrentAuth, db: DbSession) ->
             .order_by(AuditLog.timestamp.desc())
             .limit(10)
         )
-    ).scalars().all()
+    ).all()
+
+    # The detail under each line of "Needs you": who opened the oldest record
+    # still awaiting review, how long the oldest application has waited, and
+    # when the oldest unpaid invoice fell due. One row each, never a list.
+    first_unreviewed = (
+        await db.execute(
+            select(EmergencyAccess.granted_at, User.name)
+            .outerjoin(User, User.id == EmergencyAccess.requester_id)
+            .where(EmergencyAccess.reviewed_at.is_(None))
+            .order_by(EmergencyAccess.granted_at)
+            .limit(1)
+        )
+    ).first()
+    oldest_application = await db.scalar(
+        select(func.min(DoctorApplication.submitted_at)).where(
+            DoctorApplication.status == DoctorApplicationStatus.SUBMITTED
+        )
+    )
+    oldest_due = await db.scalar(
+        select(func.min(Invoice.due_at)).where(
+            Invoice.status.in_([InvoiceStatus.ISSUED, InvoiceStatus.OVERDUE])
+        )
+    )
 
     # Who saw the most patients in the last thirty days. Counted here, in one
     # grouped query, because the appointment list pages a hundred rows at a time
@@ -369,12 +398,26 @@ async def admin_dashboard(request: Request, auth: CurrentAuth, db: DbSession) ->
                     "id": entry.id,
                     "action": str(entry.action),
                     "severity": str(entry.severity),
-                    "timestamp": entry.timestamp.isoformat(),
+                    # Naive UTC in the database; the "Z" is what stops a browser
+                    # reading it as its own local time.
+                    "timestamp": entry.timestamp.isoformat() + "Z",
                     "userId": entry.user_id,
+                    "actorName": actor_name,
+                    "actorEmail": actor_email,
+                    "entityType": entry.entity_type,
                     "ipAddress": entry.ip_address,
                 }
-                for entry in recent_security
+                for entry, actor_name, actor_email in recent_security
             ],
+            "oldest": {
+                "unreviewedGrant": first_unreviewed
+                and {
+                    "grantedAt": first_unreviewed.granted_at.isoformat() + "Z",
+                    "requesterName": first_unreviewed.name,
+                },
+                "applicationSubmittedAt": oldest_application and oldest_application.isoformat() + "Z",
+                "unpaidInvoiceDueAt": oldest_due and oldest_due.isoformat() + "Z",
+            },
             "busiestDoctors": [
                 {"doctorId": doctor_id, "name": name, "specialization": specialization, "visits": int(visits)}
                 for doctor_id, name, specialization, visits in busiest
