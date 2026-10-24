@@ -695,10 +695,9 @@ function DoctorPanel({ appointment }: { appointment: Appointment }) {
           <p className="text-sm text-muted">{tr("Nothing active.", "Koi dawa jari nahi.")}</p>
         ) : (
           <ul className="divide-y divide-line">
+            {/* The row is its own <li>; wrapping it again nests one list item in another. */}
             {active.map((prescription) => (
-              <li key={prescription.id}>
-                <PrescriptionRow prescription={prescription} />
-              </li>
+              <PrescriptionRow key={prescription.id} prescription={prescription} />
             ))}
           </ul>
         )}
