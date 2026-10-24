@@ -206,12 +206,14 @@ async def list_invoices(
         if auth.has(Permission.INVOICE_READ_ANY):
             # Staff find a bill the way it reaches them: by its number, or by
             # whose it is. A patient's own search only ever narrows their own.
-            whose = (
+            matching_patients = (
                 select(Patient.id)
                 .join(User, User.id == Patient.user_id)
                 .where(or_(User.name.ilike(term), Patient.medical_record_number.ilike(term)))
             )
-            filters.append(or_(Invoice.invoice_number.ilike(term), Invoice.patient_id.in_(whose)))
+            filters.append(
+                or_(Invoice.invoice_number.ilike(term), Invoice.patient_id.in_(matching_patients))
+            )
         else:
             filters.append(Invoice.invoice_number.ilike(term))
 
